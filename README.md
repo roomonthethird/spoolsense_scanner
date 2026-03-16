@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/spoolsense-logo.png" width="200" alt="SpoolSense">
+</p>
+
 # SpoolSense Scanner
 
 ## Overview
