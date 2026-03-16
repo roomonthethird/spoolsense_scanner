@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0] - 2026-03-16
+
+### Added
+- ISO14443A tag detection (NTAG215 and other Type A tags) via PN5180ISO14443
+  library (Copyright 2019 Dirk Carstensen, LGPL-2.1)
+- `TagProtocol`, `TagKind`, and `TagScanResult` classification model for
+  multi-format tag routing
+- `GENERIC_TAG_DETECTED` application event for UID-only ISO14443A tags —
+  LCD shows "Generic Tag / UID scan only", HA publishes `blank:false`
+- `OpenTag3D` reserved in `TagKind` enum for future support
+
 ## [1.0.0] - 2026-03-16
 
 ### Added
