@@ -18,6 +18,7 @@ enum class AppMessageType {
     SPOOL_DETECTED,         // Full spool info parsed from NFC
     SPOOL_UPDATED,          // Spool was written to successfully
     BLANK_TAG_DETECTED,     // Tag present but not OpenPrintTag format
+    GENERIC_TAG_DETECTED,   // UID-only tag (e.g., NTAG215 for Spoolman UID lookup)
     SPOOLMAN_SYNCED,        // Spoolman sync completed
     TAG_REMOVED,            // Tag was present, now gone
     HA_WRITE_TAG,           // HA commands full tag write
@@ -54,6 +55,10 @@ struct SpoolUpdatedPayload {
 };
 
 struct BlankTagPayload {
+    char spool_id[17];           // UID hex string
+};
+
+struct GenericTagPayload {
     char spool_id[17];           // UID hex string
 };
 
@@ -99,6 +104,7 @@ struct AppMessage {
         SpoolDetectedPayload spoolDetected;
         SpoolUpdatedPayload spoolUpdated;
         BlankTagPayload blankTag;
+        GenericTagPayload genericTag;
         SpoolmanSyncedPayload spoolmanSynced;
         TagRemovedPayload tagRemoved;
         HAWriteTagPayload haWriteTag;
@@ -179,6 +185,7 @@ private:
     void handleSpoolDetected(const AppMessage& msg);
     void handleSpoolUpdated(const AppMessage& msg);
     void handleBlankTagDetected(const AppMessage& msg);
+    void handleGenericTagDetected(const AppMessage& msg);
     void handleSpoolmanSynced(const AppMessage& msg);
     void handleTagRemoved(const AppMessage& msg);
     void handleHAWriteTag(const AppMessage& msg);

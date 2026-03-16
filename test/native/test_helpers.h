@@ -83,6 +83,16 @@ inline AppMessage createTagRemoved(const char* spoolId, float lastRemainingKg = 
     return msg;
 }
 
+inline AppMessage createGenericTagDetected(const char* spoolId) {
+    AppMessage msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = AppMessageType::GENERIC_TAG_DETECTED;
+    strncpy(msg.payload.genericTag.spool_id, spoolId,
+            sizeof(msg.payload.genericTag.spool_id) - 1);
+    msg.payload.genericTag.spool_id[sizeof(msg.payload.genericTag.spool_id) - 1] = '\0';
+    return msg;
+}
+
 inline AppMessage createBlankTagDetected(const char* spoolId) {
     AppMessage msg;
     memset(&msg, 0, sizeof(msg));

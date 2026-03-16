@@ -57,8 +57,10 @@ private:
     // Internal operations
     bool readAndParseTag(uint8_t* uid, uint8_t uid_length);
     bool formatNewSpool();
+    TagScanResult classifyTag(const uint8_t* uid, uint8_t uid_length);
     void sendSpoolDetectedMessage(bool suppress_spoolman_sync = false);
     void sendBlankTagMessage();
+    void sendGenericTagMessage();
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);

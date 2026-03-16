@@ -174,6 +174,10 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
             handleBlankTagDetected(msg);
             break;
 
+        case AppMessageType::GENERIC_TAG_DETECTED:
+            handleGenericTagDetected(msg);
+            break;
+
         case AppMessageType::SPOOLMAN_SYNCED:
             handleSpoolmanSynced(msg);
             break;
@@ -468,6 +472,36 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
                  "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
                  "\"blank\":true}",
                  msg.payload.blankTag.spool_id);
+        publishToHA("tag/state", json, true);
+    }
+}
+
+void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
+    Serial.printf("EVENT: GenericTagDetected - uid=%s\n",
+        msg.payload.genericTag.spool_id);
+#if USE_STATUS_LED
+    ledManager.flashParseFailed();
+#endif
+
+    pendingStatusAfterTagRemoved = false;
+
+    if (lcdManager && strcmp(lastDisplayedBlankId, msg.payload.genericTag.spool_id) != 0) {
+        strncpy(lastDisplayedBlankId, msg.payload.genericTag.spool_id, sizeof(lastDisplayedBlankId) - 1);
+        lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
+        lastDisplayedSpoolId[0] = '\0';
+
+        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", "Generic Tag", "UID scan only");
+    }
+
+    // Publish generic tag state to HA
+    {
+        char json[256];
+        snprintf(json, sizeof(json),
+                 "{\"uid\":\"%s\",\"present\":true,\"material_type\":\"\","
+                 "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
+                 "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
+                 "\"blank\":false}",
+                 msg.payload.genericTag.spool_id);
         publishToHA("tag/state", json, true);
     }
 }

@@ -398,6 +398,22 @@ int test_tag_removed_delayed_status_screen() {
     return 0;
 }
 
+// Test: Generic UID tag shows correct LCD message
+int test_generic_tag_detected_shows_lcd() {
+    setup_test();
+
+    g_app->injectMessage(createGenericTagDetected("AABBCCDD11223344"));
+
+    TEST_ASSERT_EQ(g_lcd->updateCount, 1);
+    TEST_ASSERT_STR_CONTAINS(g_lcd->lastLine1, "Spool");
+    TEST_ASSERT_STR_CONTAINS(g_lcd->lastLine2, "Scanned");
+    TEST_ASSERT_STR_CONTAINS(g_lcd->lastLine3, "Generic Tag");
+    TEST_ASSERT_STR_CONTAINS(g_lcd->lastLine4, "UID scan only");
+
+    teardown_test();
+    return 0;
+}
+
 // Test: Blank/unknown tags use scanned 4-line LCD treatment
 int test_blank_tag_shows_scanned_4line_message() {
     setup_test();
@@ -594,6 +610,7 @@ int main() {
     RUN_TEST(test_ha_update_remaining_enqueues_write);
     RUN_TEST(test_tag_removed_clears_display_state);
     RUN_TEST(test_tag_removed_delayed_status_screen);
+    RUN_TEST(test_generic_tag_detected_shows_lcd);
     RUN_TEST(test_blank_tag_shows_scanned_4line_message);
     RUN_TEST(test_default_automation_mode);
 

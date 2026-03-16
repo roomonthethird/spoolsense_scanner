@@ -228,6 +228,7 @@ if (!readAndParseTag(uid, uidLength)) {
         currentSpool.present = true;
         currentSpool.tag_data_valid = false;
         currentSpool.blank_tag_present = true;
+        currentSpool.kind = TagKind::BlankTag;
 
         memcpy(lastSeenUid, uid, uidLength);
         lastSeenUidLength = uidLength;
@@ -448,6 +449,7 @@ bool NFCManager::formatNewSpool() {
                 currentSpool.tag_data = localTag;
                 currentSpool.tag_data_valid = true;
                 currentSpool.blank_tag_present = false;
+                currentSpool.kind = TagKind::OpenPrintTag;
                 addToRecentSpools();
 
                 // Check if write queue is empty (no batched writes pending)
@@ -491,6 +493,7 @@ bool NFCManager::formatNewSpool() {
     currentSpool.tag_data = localTag;
     currentSpool.tag_data_valid = true;
     currentSpool.blank_tag_present = false;
+    currentSpool.kind = TagKind::OpenPrintTag;
     addToRecentSpools();
 
     // Check if write queue is empty (no batched writes pending)
@@ -598,6 +601,33 @@ void NFCManager::sendBlankTagMessage() {
     msg.payload.blankTag.spool_id[sizeof(msg.payload.blankTag.spool_id) - 1] = '\0';
 
     ApplicationManager::getInstance().sendMessage(msg);
+}
+
+void NFCManager::sendGenericTagMessage() {
+    AppMessage msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = AppMessageType::GENERIC_TAG_DETECTED;
+    strncpy(msg.payload.genericTag.spool_id, currentSpool.spool_id,
+            sizeof(msg.payload.genericTag.spool_id) - 1);
+    msg.payload.genericTag.spool_id[sizeof(msg.payload.genericTag.spool_id) - 1] = '\0';
+    ApplicationManager::getInstance().sendMessage(msg);
+}
+
+TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
+    TagScanResult result;
+    result.present = true;
+    result.tag_data_valid = false;
+    // All tags currently detected via ISO15693 inventory command only.
+    // ISO14443A detection will be added when NTAG215 support lands.
+    result.protocol = TagProtocol::ISO15693;
+    // Default to BlankTag; readAndParseTag() upgrades to OpenPrintTag on success.
+    result.kind = TagKind::BlankTag;
+    uint8_t len = uid_length < 8 ? uid_length : 8;
+    for (uint8_t i = 0; i < len; i++) {
+        snprintf(result.uid_hex + (i * 2), 3, "%02X", uid[i]);
+    }
+    result.uid_hex[len * 2] = '\0';
+    return result;
 }
 
 void NFCManager::sendTagRemovedMessage() {
@@ -856,6 +886,7 @@ bool NFCManager::writeRawTag() {
                 currentSpool.tag_data = localTag;
                 currentSpool.tag_data_valid = true;
                 currentSpool.blank_tag_present = false;
+                currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;  // Force re-detection on next scan
                 addToRecentSpools();
                 sendSpoolDetectedMessage();
@@ -888,6 +919,7 @@ bool NFCManager::writeRawTag() {
     currentSpool.tag_data = localTag;
     currentSpool.tag_data_valid = true;
     currentSpool.blank_tag_present = false;
+    currentSpool.kind = TagKind::OpenPrintTag;
     lastSeenValid = false;
     addToRecentSpools();
     sendSpoolDetectedMessage();
@@ -1040,6 +1072,7 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
                 currentSpool.tag_data = updatedTag;
                 currentSpool.tag_data_valid = true;
                 currentSpool.blank_tag_present = false;
+                currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;
                 addToRecentSpools();
                 sendSpoolDetectedMessage();
@@ -1061,6 +1094,7 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
     currentSpool.tag_data = updatedTag;
     currentSpool.tag_data_valid = true;
     currentSpool.blank_tag_present = false;
+    currentSpool.kind = TagKind::OpenPrintTag;
     xSemaphoreGive(tagMutex);
 
     switch (request.type) {
@@ -1281,6 +1315,7 @@ if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     currentSpool.present = true;
     currentSpool.tag_data_valid = false;
     currentSpool.blank_tag_present = true;
+    currentSpool.kind = TagKind::BlankTag;
     memcpy(lastSeenUid, uid, uidLength);
     lastSeenUidLength = uidLength;
     lastSeenValid = true;

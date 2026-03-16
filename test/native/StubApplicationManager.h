@@ -14,6 +14,7 @@ enum class AppMessageType {
     SPOOL_DETECTED,
     SPOOL_UPDATED,
     BLANK_TAG_DETECTED,
+    GENERIC_TAG_DETECTED,
     SPOOLMAN_SYNCED,
     TAG_REMOVED,
     HA_WRITE_TAG,
@@ -50,6 +51,10 @@ struct SpoolUpdatedPayload {
 };
 
 struct BlankTagPayload {
+    char spool_id[17];
+};
+
+struct GenericTagPayload {
     char spool_id[17];
 };
 
@@ -95,6 +100,7 @@ struct AppMessage {
         SpoolDetectedPayload spoolDetected;
         SpoolUpdatedPayload spoolUpdated;
         BlankTagPayload blankTag;
+        GenericTagPayload genericTag;
         SpoolmanSyncedPayload spoolmanSynced;
         TagRemovedPayload tagRemoved;
         HAWriteTagPayload haWriteTag;
