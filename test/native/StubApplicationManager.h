@@ -33,6 +33,7 @@ struct SpoolDetectedPayload {
     uint8_t material_type;
     float kg_remaining;
     uint8_t primary_color[4];
+    bool has_color;
     char material_name[32];
     float density;
     float diameter;

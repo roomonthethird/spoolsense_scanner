@@ -79,6 +79,7 @@ void ApplicationManager::processMessages() {
         }
     }
 
+
     // Check for delayed Type/Remain display
     if (pendingTypeRemainDisplay && lcdManager) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - typeRemainScheduledAtMs);
@@ -253,12 +254,23 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         msg.payload.spoolDetected.kg_remaining);
     
     #if USE_STATUS_LED
+    {
+        // Set target first so task restores it after the flash
+        float remaining_g = msg.payload.spoolDetected.kg_remaining * 1000.0f;
+        if (msg.payload.spoolDetected.has_color) {
+            uint8_t r = msg.payload.spoolDetected.primary_color[0];
+            uint8_t g = msg.payload.spoolDetected.primary_color[1];
+            uint8_t b = msg.payload.spoolDetected.primary_color[2];
+            if (remaining_g > 0.0f && remaining_g <= 100.0f) {
+                ledManager.breatheFilamentColor(r, g, b);
+            } else {
+                ledManager.showFilamentColor(r, g, b);
+            }
+        } else {
+            ledManager.showOff();
+        }
         ledManager.flashTagDetected();
-        ledManager.showFilamentColor(
-            msg.payload.spoolDetected.primary_color[0],
-            msg.payload.spoolDetected.primary_color[1],
-            msg.payload.spoolDetected.primary_color[2]
-        );
+    }
     #endif
 
     if (currentState == AppState::MONITORING_PRINT) {
@@ -349,12 +361,7 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
 #endif
 
 #if USE_STATUS_LED
-    if (msg.payload.spoolUpdated.success) {
-        ledManager.flashWriteSuccess();
-    } else {
-        ledManager.flashWriteFailure();
-    }
-
+    // Set target first, then flash — task restores target after flash completes
     if (state.tag_data_valid) {
         uint8_t color[4] = {0};
         if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
@@ -364,6 +371,11 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
         }
     } else {
         ledManager.showOff();
+    }
+    if (msg.payload.spoolUpdated.success) {
+        ledManager.flashWriteSuccess();
+    } else {
+        ledManager.flashWriteFailure();
     }
 #endif
 
@@ -450,6 +462,7 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: BlankTagDetected - spool_id=%s\n",
         msg.payload.blankTag.spool_id);
 #if USE_STATUS_LED
+    ledManager.showOff();          // target = OFF, restored after flash
     ledManager.flashParseFailed();
 #endif
 
@@ -480,7 +493,8 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: GenericTagDetected - uid=%s\n",
         msg.payload.genericTag.spool_id);
 #if USE_STATUS_LED
-    ledManager.flashParseFailed();
+    ledManager.showOff();          // target = OFF, restored after flash
+    ledManager.flashTagDetected();
 #endif
 
     pendingStatusAfterTagRemoved = false;
@@ -624,9 +638,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     Serial.printf("EVENT: TagRemoved - spool_id=%s\n",
         msg.payload.tagRemoved.spool_id);
-#if USE_STATUS_LED
-    ledManager.showOff();
-#endif
+    // LED intentionally not changed — keep showing last filament color until next scan
 
     // Clear displayed spool so next scan re-displays
     lastDisplayedSpoolId[0] = '\0';

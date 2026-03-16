@@ -20,9 +20,12 @@ Configuration is set at compile time by editing `include/UserConfig.h` before fl
 
 ## Supported Tag Formats
 
-**OpenPrintTag is the only supported tag format.** The scanner reads and writes NFC tags formatted according to the [OpenPrintTag specification](https://openprinttag.org/generator/). Tags must be written in OpenPrintTag format for the scanner to recognize and process them.
+| Format | Protocol | Support |
+|--------|----------|---------|
+| OpenPrintTag | ISO15693 | Full read/write — CBOR/NDEF filament data, weight tracking, Spoolman sync |
+| UID-only (NTAG215, etc.) | ISO14443A | UID detected and published as `GENERIC_TAG_DETECTED`; middleware looks up spool by UID |
 
-Support for simple UID-only tags (e.g. NTAG215) is planned for a future release.
+OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag specification](https://openprinttag.org/generator/).
 
 ## Functionality
 * **NFC Tag Reading/Writing:** Reads and writes OpenPrintTag-formatted NFC tags.
@@ -77,15 +80,16 @@ A common ground between the ESP32 and the LED is required.
 
 | Event | LED Behavior |
 |------|--------------|
-| Booting | White |
+| Booting | White (W channel) |
 | WiFi connected | Cyan |
 | Ready | Blue |
-| Tag detected | Yellow flash |
-| Valid spool/tag | Filament color |
-| Blank/invalid tag | Red flash |
-| Tag removed | Off |
-| Write success | Green flash, then firmware restores filament color |
-| Write failure | Red flash, then firmware restores filament color or turns LED off |
+| Tag detected | 3 white flashes |
+| Valid OpenPrintTag spool | Filament color (solid); breathing if ≤100g remaining |
+| Generic/UID-only tag | 3 white flashes, then off |
+| Blank/invalid tag | Red flash, then off |
+| Tag removed | Color persists — stays at last scanned filament color |
+| Write success | Green flash, then restores filament color |
+| Write failure | Red flash, then restores filament color |
 
 ### Enabling the LED
 

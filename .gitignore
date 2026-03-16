@@ -1,6 +1,7 @@
 .pio/
 .vscode/
 CLAUDE.md
+AI_CONTEXT.md
 include/UserConfig.h
 serial.log
 test/build/

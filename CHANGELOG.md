@@ -1,8 +1,9 @@
 # Changelog
 
-## [1.1.0] - 2026-03-16
+## [1.0.0] - 2026-03-16 — Initial Release
 
 ### Added
+- OpenPrintTag (ISO15693) full CBOR/NDEF read and write via PN5180
 - ISO14443A tag detection (NTAG215 and other Type A tags) via PN5180ISO14443
   library (Copyright 2019 Dirk Carstensen, LGPL-2.1)
 - `TagProtocol`, `TagKind`, and `TagScanResult` classification model for
@@ -10,15 +11,16 @@
 - `GENERIC_TAG_DETECTED` application event for UID-only ISO14443A tags —
   LCD shows "Generic Tag / UID scan only", HA publishes `blank:false`
 - `OpenTag3D` reserved in `TagKind` enum for future support
-
-## [1.0.0] - 2026-03-16
-
-### Added
 - `UserConfig.h` compile-time configuration — WiFi, MQTT, Spoolman, LCD, LED,
   automation mode, and board selection are now set before flashing
 - `AUTOMATION_MODE` define: `0` = Self Directed (scanner auto-deducts filament),
   `1` = Controlled by Home Assistant
 - Simplified board selection: `#define BOARD_ESP32_WROOM` or `#define BOARD_ESP32_S3`
+- Status LED (SK6812 RGBW) support via FreeRTOS task — non-blocking flash,
+  persistent filament color, breathing animation for low spool (≤100g)
+- Full SpoolDetected payload dump to serial log for debugging
+- Read cache batching (16-block reads) to fix WDT crash on SLIX2 tags with
+  per-command block limits
 
 ### Changed
 - Project renamed from `openprinttag_scanner` to `spoolsense_scanner`
@@ -27,6 +29,9 @@
   (old entities are auto-removed on first connection)
 - BLE device name changed from `OpenPrintTag-XXXX` to `SpoolSense-XXXX`
 - `ConfigurationManager` loads from compile-time config instead of NVS
+- LED persists last filament color after tag removal — no longer clears on
+  `TAG_REMOVED`; color stays until the next scan
+- Tag scan flash changed from single yellow to 3 white flashes
 
 ### Removed
 - BLE device configuration (WiFi, MQTT, Spoolman settings via BLE app)

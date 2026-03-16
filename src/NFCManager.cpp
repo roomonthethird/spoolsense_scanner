@@ -161,9 +161,13 @@ void NFCManager::scanLoop() {
             attemptRecovery();
         }
 
-        // Re-arm RF field for each scan (reset + setupRF).
-        // The reset is needed to clear transceiver state between scans.
-        connection_->reset();
+        // Re-arm RF field for each scan.
+        // Only do a full hardware reset when no tag is present — reset briefly cuts the RF
+        // field, de-powering any passive tag in the field and causing false TAG_REMOVED events.
+        // When a tag is already detected, only re-arm the transceiver state via setupRF().
+        if (!lastSeenValid) {
+            connection_->reset();
+        }
         if (!connection_->setupRF()) {
             consecutiveFailures_++;
             if (failCount++ % 200 == 0) {
@@ -174,8 +178,10 @@ void NFCManager::scanLoop() {
         }
 
         // Give tag time to power up from RF field before sending inventory.
-        // ISO15693 tags need ~5-10ms to charge from the RF field.
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Only needed after a reset (which cuts RF); skip when tag is already present.
+        if (!lastSeenValid) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
 
         // setupRF succeeded, chip is responsive
         consecutiveFailures_ = 0;
@@ -262,32 +268,9 @@ if (!readAndParseTag(uid, uidLength)) {
         Serial.println("NFCManager: Could not acquire tagMutex");
     }
 
-#ifndef NATIVE_TEST
-    bool testWriteSucceeded = false;
-    if (blankStateCaptured) {
-        HardwareNFCConnection* hw = static_cast<HardwareNFCConnection*>(connection_);
-        Serial.println("NFCManager: Attempting temporary test OpenPrintTag write...");
-        testWriteSucceeded = hw->writeTestOpenPrintTag();
-
-        if (testWriteSucceeded) {
-            Serial.println("NFCManager: Test OpenPrintTag write succeeded, re-reading tag...");
-            vTaskDelay(pdMS_TO_TICKS(100));
-            if (!readAndParseTag(uid, uidLength)) {
-                Serial.println("NFCManager: Test tag write succeeded but re-read failed");
-            }
-        } else {
-            Serial.println("NFCManager: Temporary test OpenPrintTag write failed");
-        }
-    }
-
-    if (!testWriteSucceeded && blankStateCaptured) {
-        sendBlankTagMessage();
-    }
-#else
     if (blankStateCaptured) {
         sendBlankTagMessage();
     }
-#endif
 }
                 } // end ISO15693 else branch
             } else {
@@ -571,6 +554,9 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
     // Get primary color
     if (opt_get_primary_color(&currentSpool.tag_data, msg.payload.spoolDetected.primary_color) != OPT_OK) {
         memset(msg.payload.spoolDetected.primary_color, 0, 4);
+        msg.payload.spoolDetected.has_color = false;
+    } else {
+        msg.payload.spoolDetected.has_color = true;
     }
 
     // Get density (use 0 to signal "not available" to caller)
@@ -612,6 +598,23 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
         } else {
             msg.payload.spoolDetected.material_name[0] = '\0';
         }
+    }
+
+    // Full payload dump for development/debug
+    {
+        const auto& s = msg.payload.spoolDetected;
+        Serial.println("--- SpoolDetected payload ---");
+        Serial.printf("  uid:          %s\n", s.spool_id);
+        Serial.printf("  manufacturer: %s\n", s.manufacturer);
+        Serial.printf("  material:     %s (type=%d)\n", s.material_name, s.material_type);
+        Serial.printf("  color:        #%02X%02X%02X (has_color=%d)\n",
+                      s.primary_color[0], s.primary_color[1], s.primary_color[2], s.has_color);
+        Serial.printf("  weight:       %.1fg remaining / %.1fg initial\n",
+                      s.kg_remaining * 1000.0f, s.initial_weight_g);
+        Serial.printf("  density:      %.3f g/cm3  diameter: %.2fmm\n", s.density, s.diameter);
+        Serial.printf("  spoolman_id:  %d  suppress_sync=%d\n",
+                      s.spoolman_id, s.suppress_spoolman_sync);
+        Serial.println("-----------------------------");
     }
 
     ApplicationManager::getInstance().sendMessage(msg);
@@ -1351,19 +1354,9 @@ if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     xSemaphoreGive(tagMutex);
 }
 
-#ifndef NATIVE_TEST
 if (blankStateCaptured) {
-    HardwareNFCConnection* hw = static_cast<HardwareNFCConnection*>(connection_);
-    Serial.println("NFCManager: Attempting temporary test OpenPrintTag write...");
-    if (hw->writeTestOpenPrintTag()) {
-        Serial.println("NFCManager: Test OpenPrintTag write succeeded, re-reading tag...");
-        vTaskDelay(pdMS_TO_TICKS(100));
-        result = readAndParseTag(uid, uidLength);
-    } else {
-        Serial.println("NFCManager: Temporary test OpenPrintTag write failed");
-    }
+    sendBlankTagMessage();
 }
-#endif
             }
         }
         processWriteQueue();

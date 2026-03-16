@@ -37,6 +37,7 @@ struct SpoolDetectedPayload {
     uint8_t material_type;       // OPT_MATERIAL_TYPE_PLA, etc.
     float kg_remaining;          // Remaining weight in kg
     uint8_t primary_color[4];    // RGBA color
+    bool has_color;              // false if tag has no color field (don't override LED with black)
     char material_name[32];      // Material name string
     float density;               // g/cm3 (0 if not available)
     float diameter;              // mm (0 if not available)

@@ -19,7 +19,6 @@ public:
     bool detectTag(uint8_t* uid, uint8_t* uidLength) override;
     void setCurrentUid(const uint8_t* uid, uint8_t length) override;
     opt_nfc_hal_t* getHal() override;
-    bool writeTestOpenPrintTag();
     // Diagnostics: log RF_STATUS, IRQ_STATUS, SYSTEM_STATUS registers
     void logDiagnostics();
 
@@ -28,6 +27,12 @@ private:
     PN5180ISO14443* iso14443a_ = nullptr;
     opt_nfc_hal_t hal_;
     uint8_t currentUid_[8];
+
+    // Read cache: filled by a single readMultipleBlocks call on first halReadPage
+    // access, then served page-by-page. Invalidated when a new tag is presented.
+    static constexpr uint8_t READ_CACHE_PAGES = 78;
+    uint8_t readCache_[READ_CACHE_PAGES * 4];
+    bool readCacheValid_ = false;
 
     // PN5180 SPI pins (right side of ESP32, top to bottom)
     static constexpr int PN5180_RST   = 13;  // Hardware reset (active low)

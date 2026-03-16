@@ -152,6 +152,37 @@ ISO15693ErrorCode PN5180ISO15693::readSingleBlock(uint8_t *uid, uint8_t blockNo,
 }
 
 /*
+ * Read multiple blocks, code=23
+ *
+ * Reads numBlocks consecutive blocks starting at startBlock in a single RF
+ * transaction. Much faster than numBlocks separate readSingleBlock calls and
+ * avoids positioning failures on slow per-block reads.
+ *
+ * Request format:  SOF, Req.Flags, ReadMultipleBlocks, UID (8), startBlock, numBlocks-1, CRC16, EOF
+ * Response format: SOF, Resp.Flags, [Block0Data ... BlockN-1Data], CRC16, EOF
+ *                  (no block-security-status bytes — OPTION flag not set)
+ */
+ISO15693ErrorCode PN5180ISO15693::readMultipleBlocks(uint8_t *uid, uint8_t startBlock,
+                                                     uint8_t numBlocks, uint8_t *blockData,
+                                                     uint8_t blockSize) {
+  //                              flags, cmd,  uid (8 bytes),            startBlock, numBlocks-1
+  uint8_t cmd[12] = { 0x22, 0x23, 0,0,0,0,0,0,0,0, startBlock, (uint8_t)(numBlocks - 1) };
+  for (int i = 0; i < 8; i++) cmd[2 + i] = uid[i];
+
+  uint8_t *resultPtr;
+  ISO15693ErrorCode rc = issueISO15693Command(cmd, sizeof(cmd), &resultPtr);
+  if (ISO15693_EC_OK != rc) return rc;
+
+  // resultPtr[0] = response flags; block data follows immediately
+  for (int i = 0; i < numBlocks; i++) {
+    for (int j = 0; j < blockSize; j++) {
+      blockData[i * blockSize + j] = resultPtr[1 + i * blockSize + j];
+    }
+  }
+  return ISO15693_EC_OK;
+}
+
+/*
  * Write single block, code=21
  *
  * Request format: SOF, Requ.Flags, WriteSingleBlock, UID (opt.), BlockNumber, BlockData (len=blcokLength), CRC16, EOF
@@ -546,6 +577,12 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
   PN5180DEBUG(formatHex(cmd[1]));
   PN5180DEBUG("...\n");
 #endif
+
+  // Clear stale IRQ bits from any previous command before starting a new transaction.
+  // RX_SOF_DET_IRQ_STAT and RX_IRQ_STAT are sticky and must be cleared explicitly;
+  // otherwise the post-send checks below can fire on leftover state from the prior command
+  // (e.g. getInventory) and cause readSingleBlock to fail or return garbage.
+  clearIRQStatus(0xffffffff);
 
   sendData(cmd, cmdLen);
   delay(10);

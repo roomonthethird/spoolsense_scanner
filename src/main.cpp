@@ -184,6 +184,7 @@ void setup() {
 
 #if USE_STATUS_LED
   ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
+  ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
 #endif
 
   Serial.println("=== Setup complete ===");
