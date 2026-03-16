@@ -170,8 +170,13 @@ void NFCManager::scanLoop() {
         }
         if (!connection_->setupRF()) {
             consecutiveFailures_++;
-            if (failCount++ % 200 == 0) {
-                Serial.println("NFCManager: setupRF() failed");
+            Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
+                          consecutiveFailures_, lastSeenValid ? 1 : 0);
+            // If RF is stuck with a tag still marked present, clear the flag so the
+            // next iteration performs a full reset() before retrying setupRF().
+            if (lastSeenValid) {
+                Serial.println("NFCManager: clearing lastSeenValid to force hardware reset");
+                lastSeenValid = false;
             }
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
@@ -243,8 +248,21 @@ void NFCManager::scanLoop() {
 
                 // ISO15693 — attempt OpenPrintTag parse
                 // readAndParseTag manages its own mutex internally
-if (!readAndParseTag(uid, uidLength)) {
-    Serial.println("NFCManager: readAndParseTag() failed - treating as blank tag");
+                bool readOk = false;
+                for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
+                    if (attempt > 0) {
+                        Serial.printf("NFCManager: Read attempt %d — resetting RF...\n", attempt + 1);
+                        connection_->reset();
+                        bool rfOk = connection_->setupRF();
+                        Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
+                        vTaskDelay(pdMS_TO_TICKS(100));
+                    }
+                    Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
+                    readOk = readAndParseTag(uid, uidLength);
+                    Serial.printf("NFCManager: readAndParseTag attempt %d: %s\n", attempt + 1, readOk ? "OK" : "FAILED");
+                }
+if (!readOk) {
+    Serial.println("NFCManager: readAndParseTag() failed after retries - treating as blank tag");
 
     bool blankStateCaptured = false;
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -983,6 +1001,22 @@ static opt_error_t applyWriteUpdate(opt_tag_t& tag, const NFCWriteRequest& reque
             return opt_set_brand_name(&tag, request.data.brand_name);
         case NFCWriteType::WRITE_SPOOLMAN_ID:
             return opt_set_gp_spoolman_id(&tag, request.data.spoolman_id);
+        case NFCWriteType::SET_DENSITY:
+            return opt_set_density(&tag, request.data.float_value);
+        case NFCWriteType::SET_DIAMETER:
+            return opt_set_filament_diameter(&tag, request.data.float_value);
+        case NFCWriteType::SET_MATERIAL_NAME:
+            return opt_set_material_name(&tag, request.data.material_name);
+        case NFCWriteType::SET_MIN_PRINT_TEMP:
+            return opt_set_min_print_temp(&tag, request.data.temp_celsius);
+        case NFCWriteType::SET_MAX_PRINT_TEMP:
+            return opt_set_max_print_temp(&tag, request.data.temp_celsius);
+        case NFCWriteType::SET_PREHEAT_TEMP:
+            return opt_set_preheat_temp(&tag, request.data.temp_celsius);
+        case NFCWriteType::SET_MIN_BED_TEMP:
+            return opt_set_min_bed_temp(&tag, request.data.temp_celsius);
+        case NFCWriteType::SET_MAX_BED_TEMP:
+            return opt_set_max_bed_temp(&tag, request.data.temp_celsius);
         default:
             return OPT_ERR_INVALID_PARAM;
     }
@@ -1151,6 +1185,30 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
             break;
         case NFCWriteType::WRITE_SPOOLMAN_ID:
             Serial.printf("NFCManager: Wrote spoolman ID %d to tag\n", request.data.spoolman_id);
+            break;
+        case NFCWriteType::SET_DENSITY:
+            Serial.printf("NFCManager: Set density to %.3f g/cm3\n", request.data.float_value);
+            break;
+        case NFCWriteType::SET_DIAMETER:
+            Serial.printf("NFCManager: Set diameter to %.2f mm\n", request.data.float_value);
+            break;
+        case NFCWriteType::SET_MATERIAL_NAME:
+            Serial.printf("NFCManager: Set material name to %s\n", request.data.material_name);
+            break;
+        case NFCWriteType::SET_MIN_PRINT_TEMP:
+            Serial.printf("NFCManager: Set min print temp to %d C\n", request.data.temp_celsius);
+            break;
+        case NFCWriteType::SET_MAX_PRINT_TEMP:
+            Serial.printf("NFCManager: Set max print temp to %d C\n", request.data.temp_celsius);
+            break;
+        case NFCWriteType::SET_PREHEAT_TEMP:
+            Serial.printf("NFCManager: Set preheat temp to %d C\n", request.data.temp_celsius);
+            break;
+        case NFCWriteType::SET_MIN_BED_TEMP:
+            Serial.printf("NFCManager: Set min bed temp to %d C\n", request.data.temp_celsius);
+            break;
+        case NFCWriteType::SET_MAX_BED_TEMP:
+            Serial.printf("NFCManager: Set max bed temp to %d C\n", request.data.temp_celsius);
             break;
         default:
             break;

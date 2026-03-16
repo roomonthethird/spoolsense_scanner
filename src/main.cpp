@@ -9,7 +9,7 @@
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
 #include "LCDManager.h"
-
+#include "WebServerManager.h"
 
 #if USE_STATUS_LED
 #include "LEDManager.h"
@@ -187,6 +187,11 @@ void setup() {
   ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
 #endif
 
+  // Start HTTP tag writer server (WiFi must be connected)
+  if (WiFi.status() == WL_CONNECTED) {
+    WebServerManager::getInstance().begin();
+  }
+
   Serial.println("=== Setup complete ===");
 }
 
@@ -194,6 +199,9 @@ void loop() {
   // Process any pending messages for the application
   ApplicationManager::getInstance().processMessages();
 
+  // Process HTTP requests for the tag writer web UI
+  WebServerManager::getInstance().handleClient();
+
   // LCD and NFC scanning are handled by their own tasks
-  delay(100);
+  delay(10);
 }

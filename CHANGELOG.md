@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0] - 2026-03-16 — Built-in Tag Writer (Early Beta)
+
+### Added
+- Built-in HTTP web server (port 80) — reachable at `http://spoolsense.local` after WiFi connects
+- Tag writer UI served directly from the device — write OpenPrintTag fields from any browser on the local network
+- REST API for tag operations: `GET /api/status`, `POST /api/write-tag`, `POST /api/format-tag`
+- Tag writer supports all OpenPrintTag fields: material type, manufacturer, custom material name,
+  full/remaining weight, color, density, diameter, print/bed/preheat temperatures, and Spoolman ID
+- CORS headers on all endpoints for local development testing
+- mDNS registration as `spoolsense.local`
+- NFC read retry logic (up to 3 attempts with RF reset between retries) — fixes ISO15693 read
+  failures that previously left the NFC stack in a stuck state
+- `setupRF()` failure recovery: clears stuck RF state immediately instead of waiting 30s for watchdog
+
+### Changed
+- NFC scan loop now performs a full hardware reset when `setupRF()` fails with a tag present,
+  recovering in one cycle instead of ~30 seconds
+
 ## [1.0.0] - 2026-03-16 — Initial Release
 
 ### Added

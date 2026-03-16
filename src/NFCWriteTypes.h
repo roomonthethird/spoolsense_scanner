@@ -15,7 +15,15 @@ enum class NFCWriteType : uint8_t {
     FORMAT_NEW,           // Format a blank tag with defaults
     WRITE_SPOOLMAN_ID,    // Write Spoolman spool ID to aux region
     WRITE_RAW_TAG,        // Write raw binary data to entire tag
-    SET_INITIAL_WEIGHT    // Set initial/full weight of spool
+    SET_INITIAL_WEIGHT,   // Set initial/full weight of spool
+    SET_DENSITY,          // Set filament density (g/cm³)
+    SET_DIAMETER,         // Set filament diameter (mm)
+    SET_MATERIAL_NAME,    // Set custom material name string
+    SET_MIN_PRINT_TEMP,   // Set minimum print temperature (°C)
+    SET_MAX_PRINT_TEMP,   // Set maximum print temperature (°C)
+    SET_PREHEAT_TEMP,     // Set preheat temperature (°C)
+    SET_MIN_BED_TEMP,     // Set minimum bed temperature (°C)
+    SET_MAX_BED_TEMP,     // Set maximum bed temperature (°C)
 };
 
 struct NFCWriteRequest {
@@ -25,11 +33,14 @@ struct NFCWriteRequest {
     char expected_spool_id[17];  // Only write if this spool is present (empty = any)
     union {
         float grams_to_remove;
-        uint8_t new_color[4];    // RGBA
+        uint8_t new_color[4];       // RGBA
         uint8_t new_material_type;
-        float consumed_weight;   // Absolute consumed weight in grams
-        char brand_name[33];     // Manufacturer name
-        int32_t spoolman_id;     // Spoolman spool ID for tag write-back
+        float consumed_weight;      // Absolute consumed weight in grams; reused for SET_INITIAL_WEIGHT
+        float float_value;          // Generic float: density (g/cm³), diameter (mm)
+        int16_t temp_celsius;       // Temperature in Celsius: print/bed/preheat temps
+        char brand_name[33];        // Manufacturer name
+        char material_name[33];     // Custom material name string
+        int32_t spoolman_id;        // Spoolman spool ID for tag write-back
     } data;
 };
 

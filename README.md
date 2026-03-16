@@ -33,6 +33,7 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
 
 ## Functionality
 * **NFC Tag Reading/Writing:** Reads and writes OpenPrintTag-formatted NFC tags.
+* **Built-in Tag Writer UI *(early beta)*:** After connecting to WiFi, navigate to `http://spoolsense.local` from any browser on your local network to write OpenPrintTag data directly to a tag — no app required. Supports all fields including material type, manufacturer, weight, color, density, diameter, temperatures, and Spoolman ID.
 * **Home Assistant Integration:** Publishes spool state via MQTT with full HA discovery support.
 * **Spoolman Sync (optional):** Syncs spool weight and metadata with a Spoolman instance.
 * **BLE Spool Operations:** Write tag data, set filament weight, and manage spools via the BLE web UI.
