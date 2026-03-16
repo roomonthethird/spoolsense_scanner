@@ -1,32 +1,25 @@
-
-# OpenPrintTag Scanner
+# SpoolSense Scanner
 
 ## Overview
-This project is an ESP32-based NFC scanner and writer designed to work with 3D printer filament spools that follow the [OpenPrintTag](https://openprinttag.org) standard. It allows you to tap a filament spool to the scanner to select it in your printer's management software (e.g., PrusaLink), and automatically deducts the filament used after a print.
+SpoolSense Scanner is an ESP32‑based NFC scanner designed for managing 3D printer filament spools using NFC tags. It supports reading and writing tags formatted according to the OpenPrintTag standard and is designed to integrate with the SpoolSense ecosystem.
 
-The device can be configured via a web interface served over Bluetooth Low Energy (BLE), allowing you to set up WiFi and printer credentials without recompiling the firmware.
+The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows.
 
-More details available on the printables website: https://www.printables.com/model/1581648-openprinttag-scanner 
-
-## Compatibility
-Validated by the model author with a Prusa MK4S + MMU3 setup using PrusaLink. The same flow can work with other printers/controllers that expose compatible status and job data.
+Configuration is performed through a web interface delivered over Bluetooth Low Energy (BLE), allowing WiFi credentials and other device settings to be configured without recompiling firmware.
 
 ## How to configure
 1.  On first boot, or when WiFi is not configured, the device will start a BLE service.
-2.  Connect to the device named "OpenPrintTag" from your computer or phone.
-3.  Once connected, you can access a web interface at https://ryanch.github.io/openprinttag_scanner/ to:
+2.  Connect to the device named "SpoolSenseScanner" from your computer or phone.
+3.  Once connected, you can access the configuration web interface to:
     *   Configure WiFi SSID and password.
     *   Set the IP address and API key for your PrusaLink-compatible printer.
 
 ## Functionality
-*   **NFC Tag Reading/Writing:** Reads and writes data to NFC tags formatted according to the OpenPrintTag specification.
-*   **Printer Integration:** Communicates with PrusaLink and OctoPrint to:
-    *   Notify the printer when a spool has been selected.
-    *   Automatically subtract filament weight from the tag after a print is completed or canceled (canceled prints are estimated from progress).
-*   **LCD Display:** Shows the current status of the device, including WiFi connection, NFC scans, and printer status.
-*   **Bluetooth Configuration:** Provides a web-based UI over BLE for easy setup.
-*   **Extensible Printer Strategy:** The `IPrinterLinkStrategy` interface allows for adding support for other printer control software in the future.
-*   **Polling Cadence:** Polls printer state on a short interval (about every 10 seconds in the model description) and syncs spool weight accordingly.
+* **NFC Tag Reading/Writing:** Reads and writes NFC tags formatted according to the OpenPrintTag specification.
+* **UID Tag Support (planned):** Future support for simple UID‑only NFC tags such as NTAG215 used with spool tracking systems like Spoolman.
+* **LCD Display (optional):** Displays device status, NFC scan results, and system information.
+* **Bluetooth Configuration:** Provides a web‑based UI over BLE for easy device setup.
+* **Extensible Architecture:** The firmware is designed so additional tag formats and integrations can be added over time.
 
 # Hardware Setup
 
@@ -161,8 +154,5 @@ Connect the components to the ESP32 as follows:
 > **Note:** D35 and D34 are input-only pins on the ESP32 (no internal pull-up). D12 is a strapping pin and is skipped.
 
 # Specs Referenced:
-*   Python Example: https://github.com/prusa3d/OpenPrintTag/blob/main/utils/rec_update.py
-*   PN5180 Datasheet: https://www.nxp.com/docs/en/data-sheet/PN5180A0xx-C3.pdf
-*   PrusaLink API Docs: https://hexdocs.pm/prusa_link/PrusaLink.Api.html
-*   https://openprinttag.org/generator/ 
+*   OpenPrintTag tag generator: https://openprinttag.org/generator/ 
 *   Spoolman API: https://donkie.github.io/Spoolman/#tag/filament/operation/Find_filaments_filament_get 
