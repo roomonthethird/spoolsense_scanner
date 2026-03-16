@@ -213,6 +213,29 @@ void NFCManager::scanLoop() {
 
             if (!shouldSkipReRead) {
                 Serial.println("NFCManager: New spool detected, reading tag...");
+                TagScanResult scan = classifyTag(uid, uidLength);
+
+                if (scan.kind == TagKind::GenericUidTag) {
+                    // ISO14443A tag (e.g. NTAG215) — UID only, no OpenPrintTag parse
+                    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
+                        memcpy(currentSpool.uid, uid, uidLength);
+                        currentSpool.uid_length = uidLength;
+                        currentSpool.present = true;
+                        currentSpool.tag_data_valid = false;
+                        currentSpool.blank_tag_present = false;
+                        currentSpool.kind = TagKind::GenericUidTag;
+                        memcpy(lastSeenUid, uid, uidLength);
+                        lastSeenUidLength = uidLength;
+                        lastSeenValid = true;
+                        xSemaphoreGive(tagMutex);
+                    } else {
+                        Serial.println("NFCManager: Could not acquire tagMutex");
+                    }
+                    sendGenericTagMessage();
+                } else {
+
+                // ISO15693 — attempt OpenPrintTag parse
                 // readAndParseTag manages its own mutex internally
 if (!readAndParseTag(uid, uidLength)) {
     Serial.println("NFCManager: readAndParseTag() failed - treating as blank tag");
@@ -266,6 +289,7 @@ if (!readAndParseTag(uid, uidLength)) {
     }
 #endif
 }
+                } // end ISO15693 else branch
             } else {
                 // Tag is a duplicate - skip re-reading
                 // This log would be too verbose (every 50ms), so commenting out
@@ -617,11 +641,15 @@ TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
     TagScanResult result;
     result.present = true;
     result.tag_data_valid = false;
-    // All tags currently detected via ISO15693 inventory command only.
-    // ISO14443A detection will be added when NTAG215 support lands.
-    result.protocol = TagProtocol::ISO15693;
-    // Default to BlankTag; readAndParseTag() upgrades to OpenPrintTag on success.
-    result.kind = TagKind::BlankTag;
+    // Protocol inferred from UID length: ISO15693 always 8 bytes, ISO14443A always 4 or 7.
+    if (uid_length == 8) {
+        result.protocol = TagProtocol::ISO15693;
+        // Default to BlankTag; readAndParseTag() upgrades to OpenPrintTag on success.
+        result.kind = TagKind::BlankTag;
+    } else {
+        result.protocol = TagProtocol::ISO14443A;
+        result.kind = TagKind::GenericUidTag;
+    }
     uint8_t len = uid_length < 8 ? uid_length : 8;
     for (uint8_t i = 0; i < len; i++) {
         snprintf(result.uid_hex + (i * 2), 3, "%02X", uid[i]);

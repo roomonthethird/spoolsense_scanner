@@ -40,6 +40,7 @@ HardwareNFCConnection::HardwareNFCConnection() {
 
 HardwareNFCConnection::~HardwareNFCConnection() {
     delete nfc_;
+    delete iso14443a_;
 }
 
 opt_error_t HardwareNFCConnection::halReadPage(void* ctx, uint8_t page, uint8_t* buffer) {
@@ -67,9 +68,12 @@ bool HardwareNFCConnection::begin() {
 
     nfc_ = new PN5180ISO15693(PN5180_NSS, PN5180_BUSY, PN5180_RST,
                                PN5180_SCK, PN5180_MISO, PN5180_MOSI);
+    iso14443a_ = new PN5180ISO14443(PN5180_NSS, PN5180_BUSY, PN5180_RST,
+                                    PN5180_SCK, PN5180_MISO, PN5180_MOSI);
 
     Serial.println("HardwareNFCConnection: Starting PN5180...");
     nfc_->begin();
+    iso14443a_->begin();
     Serial.println("HardwareNFCConnection: SPI begin done, resetting...");
     Serial.printf("HardwareNFCConnection: BUSY pin=%d before reset\n", digitalRead(PN5180_BUSY));
 
@@ -205,6 +209,18 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
 
         *uidLength = 8;  // ISO15693 uses 8-byte UID
         return true;
+    }
+
+    // ISO15693 not found — try ISO14443A (NTAG215 etc.)
+    if (iso14443a_) {
+        iso14443a_->setupRF();
+        uint8_t iso14443aBuf[7] = {0};
+        uint8_t iso14443aLen = iso14443a_->readCardSerial(iso14443aBuf);
+        if (iso14443aLen >= 4) {
+            memcpy(uid, iso14443aBuf, iso14443aLen);
+            *uidLength = iso14443aLen;
+            return true;
+        }
     }
 
     // Log non-OK errors periodically (not every poll to avoid spam)

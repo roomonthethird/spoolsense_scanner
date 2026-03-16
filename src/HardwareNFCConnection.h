@@ -4,6 +4,7 @@
 #include "NFCConnectionI.h"
 #include <PN5180.h>
 #include <PN5180ISO15693.h>
+#include <PN5180ISO14443.h>
 
 // Production NFC connection using PN5180 hardware
 class HardwareNFCConnection : public NFCConnectionI {
@@ -24,6 +25,7 @@ public:
 
 private:
     PN5180ISO15693* nfc_ = nullptr;
+    PN5180ISO14443* iso14443a_ = nullptr;
     opt_nfc_hal_t hal_;
     uint8_t currentUid_[8];
 
