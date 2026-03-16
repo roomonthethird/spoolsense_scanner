@@ -37,11 +37,11 @@ Support for simple UID-only tags (e.g. NTAG215) is planned for a future release.
 
 ## Hardware Needed
 *   NFC Reader/Writer: PN5180 NFC module (ISO 15693)
-*   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (only 1 needed)
-*   ESP32: [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ) (only 1 needed)
+*   ESP32: ESP32-WROOM-32 (primary supported board — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ)). ESP32-S3 support (e.g. ESP32-S3-Zero) is in progress.
 *   USB Cable: USB-A to USB-C (1)
 *   Jumper wires: male-to-female Dupont wires (9)
-*   Optional Status LED: SK6812 RGBW (WS2812-compatible addressable LED, 1 pixel)
+*   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional — full optional support is in progress)
+*   Status LED: SK6812 RGBW (WS2812-compatible addressable LED, 1 pixel) (optional)
 
 ## Optional Status LED
 
