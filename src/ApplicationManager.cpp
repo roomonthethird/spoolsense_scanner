@@ -497,10 +497,10 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
     {
         char json[256];
         snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"material_type\":\"\","
-                 "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
-                 "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
-                 "\"blank\":false}",
+                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
+                 "\"material_type\":\"\",\"material_name\":\"\",\"color\":\"\","
+                 "\"manufacturer\":\"\",\"remaining_g\":0.0,\"initial_weight_g\":0.0,"
+                 "\"spoolman_id\":-1,\"blank\":false}",
                  msg.payload.genericTag.spool_id);
         publishToHA("tag/state", json, true);
     }

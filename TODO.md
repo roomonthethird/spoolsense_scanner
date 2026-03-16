@@ -15,3 +15,6 @@
 
 ### Integration
 - **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI
+
+### Architecture / Overlap to Resolve
+- **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
