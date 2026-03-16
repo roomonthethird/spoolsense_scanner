@@ -18,8 +18,6 @@ Configuration is set at compile time by editing `include/UserConfig.h` before fl
    - Board selection (`BOARD_ESP32_WROOM` or `BOARD_ESP32_S3`)
 3. Flash the firmware: `pio run -t upload`
 
-> **Note:** Do not commit `UserConfig.h` — it contains credentials and is excluded by `.gitignore`.
-
 ## Supported Tag Formats
 
 **OpenPrintTag is the only supported tag format.** The scanner reads and writes NFC tags formatted according to the [OpenPrintTag specification](https://openprinttag.org/generator/). Tags must be written in OpenPrintTag format for the scanner to recognize and process them.
