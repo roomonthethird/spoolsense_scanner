@@ -5,12 +5,9 @@
 #include "ConfigurationManager.h"
 #include "BluetoothManager.h"
 #include "ApplicationManager.h"
-#include "PrinterManager.h"
 #include "NFCManager.h"
-#include "PrusaLinkAPIStrategy.h"
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
-#include "StubPrinterLinkStrategy.h"
 #include "LCDManager.h"
 
 
@@ -34,7 +31,7 @@ void initWiFi() {
 
   if (strlen(config.getWiFiSSID()) == 0) {
     Serial.println("WiFi SSID not configured - skipping WiFi");
-    lcdManager.updateScreen("WiFi: no SSID", "Configure via BLE");
+    lcdManager.updateScreen("WiFi: no SSID", "Check UserConfig.h");
     delay(2000);
     return;
   }
@@ -166,17 +163,6 @@ void setup() {
     lcdManager.updateScreen("NFC FAILED", "");
     while (1) { delay(1000); }
   }
-
-  // Initialize and start PrinterManager
-  static PrusaLinkAPIStrategy printerStrategy;
-  printerStrategy.setHttpMutex(g_httpMutex);
-  PrinterManager::getInstance().setStrategy(&printerStrategy);
-  PrinterManager::getInstance().begin();
-
-  // One synchronous check before polling task starts (no race condition)
-  printerStrategy.update();
-
-  PrinterManager::getInstance().startPollingTask();
 
   // Start NFC scan task
   NFCManager::getInstance().startScanTask();

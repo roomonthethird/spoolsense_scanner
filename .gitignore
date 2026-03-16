@@ -2,3 +2,11 @@
 .vscode/
 CLAUDE.md
 include/UserConfig.h
+serial.log
+test/build/
+test/native/*.o
+test/native/test_runner
+test/native/test_runner_asan
+test/native/test_runner_asan.dSYM/
+test/native/test_*_runner
+test/native/test_bgcode_parser

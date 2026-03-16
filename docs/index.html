@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenPrintTag Scanner</title>
+    <title>SpoolSense Scanner</title>
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <style>
         /* Typography and Theme - Prusa Connect Aesthetic */
@@ -581,12 +581,12 @@
 
     <div class="container">
         <div class="header">
-            <h1>OpenPrintTag Scanner</h1>
+            <h1>SpoolSense Scanner</h1>
         </div>
 
         <!-- Connection UI (shown before BLE connection) -->
         <div id="connection-ui">
-            <p>Connect to your OpenPrintTag device to view spools and configure settings.</p>
+            <p>Connect to your SpoolSense Scanner to view spools and configure settings.</p>
             <button id="connect-button">Connect to Device</button>
             <div id="status-area"></div>
         </div>
@@ -596,7 +596,6 @@
             <!-- Tab Navigation -->
             <nav class="tab-nav">
                 <button class="tab-btn active" data-tab="spools">Spools</button>
-                <button class="tab-btn" data-tab="settings">Settings</button>
             </nav>
 
             <!-- Spools Tab -->
@@ -617,100 +616,6 @@
                 </div>
             </div>
 
-            <!-- Settings Tab -->
-            <div id="tab-settings" class="tab-content">
-                <div class="form-group">
-                    <label>Device Version</label>
-                    <span id="device-version" style="color: #ccc;">—</span>
-                </div>
-                <form id="config-form">
-                    <div class="section-header" style="margin-top: 1.5rem;">WiFi</div>
-                    <div class="form-group">
-                        <label for="ssid">WiFi SSID</label>
-                        <input type="text" id="ssid" name="ssid" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="wifi_pass">WiFi Password (leave blank to keep existing)</label>
-                        <input type="password" id="wifi_pass" name="wifi_pass">
-                    </div>
-
-                    <div class="section-header" style="margin-top: 1.5rem;">PrusaLink</div>
-                    <div class="form-group">
-                        <label for="prusa_link_url">PrusaLink URL</label>
-                        <input type="text" id="prusa_link_url" name="prusa_link_url" placeholder="e.g., http://192.168.1.100">
-                    </div>
-                    <div class="form-group">
-                        <label for="prusa_link_api_key">PrusaLink API Key</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="password" id="prusa_link_api_key" name="prusa_link_api_key" style="flex: 1;">
-                            <button type="button" id="test-prusalink-btn" class="secondary" style="white-space: nowrap;">Test</button>
-                        </div>
-                        <div id="test-prusalink-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
-                    </div>
-                    <div class="form-group">
-                        <label for="poll_interval_ms">Poll Interval (ms)</label>
-                        <input type="number" id="poll_interval_ms" name="poll_interval_ms" min="1000">
-                    </div>
-
-                    <div class="section-header" style="margin-top: 1.5rem;">Spoolman</div>
-                    <div class="form-group">
-                        <label for="spoolman_url">Spoolman URL (optional)</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="spoolman_url" name="spoolman_url" placeholder="e.g., http://192.168.1.100:7912" style="flex: 1;">
-                            <button type="button" id="test-spoolman-btn" class="secondary" style="white-space: nowrap;">Test</button>
-                        </div>
-                        <div id="test-spoolman-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
-                    </div>
-
-                    <div class="section-header" style="margin-top: 1.5rem;">LCD</div>
-                    <div class="form-group">
-                        <label for="lcd_timeout_minutes">LCD Auto-Off (minutes, 0 = never)</label>
-                        <input type="number" id="lcd_timeout_minutes" name="lcd_timeout_minutes" min="0" step="1">
-                    </div>
-
-                    <div class="section-header" style="margin-top: 1.5rem;">Home Assistant</div>
-                    <div class="form-group">
-                        <label for="ha_enabled">Enable Home Assistant</label>
-                        <select id="ha_enabled" name="ha_enabled">
-                            <option value="false">Disabled</option>
-                            <option value="true">Enabled</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="ha_mqtt_host">MQTT Broker Host</label>
-                        <input type="text" id="ha_mqtt_host" name="ha_mqtt_host" placeholder="e.g., 192.168.1.50">
-                    </div>
-                    <div class="form-group">
-                        <label for="ha_mqtt_port">MQTT Port</label>
-                        <input type="number" id="ha_mqtt_port" name="ha_mqtt_port" min="1" max="65535" value="1883">
-                    </div>
-                    <div class="form-group">
-                        <label for="ha_mqtt_user">MQTT Username</label>
-                        <input type="text" id="ha_mqtt_user" name="ha_mqtt_user">
-                    </div>
-                    <div class="form-group">
-                        <label for="ha_mqtt_pass">MQTT Password</label>
-                        <input type="password" id="ha_mqtt_pass" name="ha_mqtt_pass">
-                    </div>
-                    <div class="form-group">
-                        <label for="automation_mode">Automation Mode</label>
-                        <select id="automation_mode" name="automation_mode">
-                            <option value="0">Self Directed</option>
-                            <option value="1">Controlled by Home Assistant</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <button type="button" id="test-mqtt-btn" class="secondary" style="width: 100%;">Test MQTT Connection</button>
-                        <div id="test-mqtt-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
-                    </div>
-
-                    <div class="button-group">
-                        <button type="submit" id="save-button">Save Configuration</button>
-                    </div>
-                </form>
-
-                <div id="settings-status-area" class="status-area" style="margin-top: 1rem; padding: 1rem; background-color: var(--prusa-medium-gray); border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: #aaa; max-height: 120px; overflow-y: auto; display: none;"></div>
-            </div>
         </div>
     </div>
 
@@ -872,9 +777,6 @@
         const connectionUI = document.getElementById('connection-ui');
         const appUI = document.getElementById('app-ui');
         const statusArea = document.getElementById('status-area');
-        const settingsStatusArea = document.getElementById('settings-status-area');
-        const configForm = document.getElementById('config-form');
-        const saveButton = document.getElementById('save-button');
         const appContainer = document.querySelector('.container');
 
         // Tab elements
@@ -936,7 +838,6 @@
         let recentSpoolsData = [];
         let openActionsSpoolId = null;
         let spoolPollInterval = null;
-        let cachedSpoolmanUrl = '';
         const SPOOL_POLL_INTERVAL_MS = 3000;
         const textDecoder = new TextDecoder('utf-8');
         const textEncoder = new TextEncoder();
@@ -1031,21 +932,12 @@
                 buttons += `<button class="spool-edit-btn" data-spool-id="${spool.id}">Edit</button>`;
                 // Actions dropdown for current spool
                 let dropdownItems = '';
-                if (cachedSpoolmanUrl && spool.spoolman_id > 0) {
-                    dropdownItems += `<button data-action="open-spoolman" data-url="${cachedSpoolmanUrl}/spool/show/${spool.spoolman_id}">Open In Spoolman</button>`;
-                }
-                if (cachedSpoolmanUrl) {
-                    dropdownItems += `<button data-action="write-spoolman">Write from Spoolman</button>`;
-                }
+                dropdownItems += `<button data-action="write-spoolman">Write from Spoolman</button>`;
                 dropdownItems += `<button data-action="write-binary">Write Binary Data</button>`;
                 buttons += `<div class="actions-wrapper">
                     <button type="button" class="spool-edit-btn secondary actions-toggle" aria-haspopup="menu" aria-expanded="false">Actions</button>
                     <div class="actions-dropdown">${dropdownItems}</div>
                 </div>`;
-            } else {
-                if (cachedSpoolmanUrl && spool.spoolman_id > 0) {
-                    buttons += `<button class="spool-edit-btn secondary" data-spoolman-url="${cachedSpoolmanUrl}/spool/show/${spool.spoolman_id}">Open In Spoolman</button>`;
-                }
             }
 
             card.innerHTML = `
@@ -1724,7 +1616,6 @@
 
                 // Load data
                 await loadSpools();
-                await loadConfig();
 
                 // Start polling for spool updates
                 startSpoolPolling();
@@ -1780,119 +1671,6 @@
             }
         }
 
-        async function loadConfig() {
-            if (!configWriteCharacteristic || !configReadCharacteristic) return;
-
-            try {
-                const config = await enqueueCommand(async () => {
-                    await configWriteCharacteristic.writeValue(
-                        textEncoder.encode('{"command":"read_config"}')
-                    );
-
-                    const value = await configReadCharacteristic.readValue();
-                    const configJson = textDecoder.decode(value);
-                    return JSON.parse(configJson);
-                });
-
-                // Populate form
-                document.getElementById('ssid').value = config.ssid || '';
-                document.getElementById('prusa_link_url').value = config.prusa_link_url || '';
-                document.getElementById('prusa_link_api_key').value = config.prusa_link_api_key || '';
-                document.getElementById('spoolman_url').value = config.spoolman_url || '';
-                cachedSpoolmanUrl = config.spoolman_url || '';
-                document.getElementById('poll_interval_ms').value = config.poll_interval_ms || 10000;
-                const lcdTimeoutMs = config.lcd_timeout_ms ?? 120000;
-                document.getElementById('lcd_timeout_minutes').value = Math.round(lcdTimeoutMs / 60000);
-                document.getElementById('wifi_pass').value = '';
-                document.getElementById('device-version').textContent = config.device_version || 'Unknown';
-
-                // HA fields
-                document.getElementById('ha_enabled').value = config.ha_enabled ? 'true' : 'false';
-                document.getElementById('ha_mqtt_host').value = config.ha_mqtt_host || '';
-                document.getElementById('ha_mqtt_port').value = config.ha_mqtt_port || 1883;
-                document.getElementById('ha_mqtt_user').value = config.ha_mqtt_user || '';
-                document.getElementById('ha_mqtt_pass').value = '';
-                document.getElementById('automation_mode').value = (config.automation_mode || 0).toString();
-
-            } catch (error) {
-                console.error('Failed to load config:', error);
-            }
-        }
-
-        async function handleSave(event) {
-            event.preventDefault();
-            if (!configWriteCharacteristic) {
-                log('Not connected.', 'error', settingsStatusArea);
-                return;
-            }
-
-            const ssid = document.getElementById('ssid').value;
-            const wifi_pass = document.getElementById('wifi_pass').value;
-            const prusa_link_url = document.getElementById('prusa_link_url').value;
-            const prusa_link_api_key = document.getElementById('prusa_link_api_key').value;
-            const spoolman_url = document.getElementById('spoolman_url').value;
-            const poll_interval_ms = parseInt(document.getElementById('poll_interval_ms').value, 10);
-            const lcd_timeout_minutes = parseInt(document.getElementById('lcd_timeout_minutes').value, 10);
-            const ha_enabled = document.getElementById('ha_enabled').value === 'true';
-            const ha_mqtt_host = document.getElementById('ha_mqtt_host').value;
-            const ha_mqtt_port = parseInt(document.getElementById('ha_mqtt_port').value, 10) || 1883;
-            const ha_mqtt_user = document.getElementById('ha_mqtt_user').value;
-            const ha_mqtt_pass = document.getElementById('ha_mqtt_pass').value;
-            const automation_mode = parseInt(document.getElementById('automation_mode').value, 10) || 0;
-
-            const configPayload = {
-                command: 'write_config',
-                ssid,
-                prusa_link_url,
-                prusa_link_api_key,
-                spoolman_url,
-                poll_interval_ms,
-                lcd_timeout_ms: Number.isFinite(lcd_timeout_minutes) ? Math.max(0, lcd_timeout_minutes) * 60000 : 120000,
-                ha_enabled,
-                ha_mqtt_host,
-                ha_mqtt_port,
-                ha_mqtt_user,
-                automation_mode
-            };
-
-            if (wifi_pass) {
-                configPayload.wifi_pass = wifi_pass;
-            }
-            if (ha_mqtt_pass) {
-                configPayload.ha_mqtt_pass = ha_mqtt_pass;
-            }
-
-            try {
-                log('Saving configuration...', '', settingsStatusArea);
-                saveButton.disabled = true;
-                saveButton.textContent = 'Saving...';
-
-                const response = await enqueueCommand(async () => {
-                    await configWriteCharacteristic.writeValue(
-                        textEncoder.encode(JSON.stringify(configPayload))
-                    );
-
-                    const responseValue = await configWriteCharacteristic.readValue();
-                    const responseJson = textDecoder.decode(responseValue);
-                    console.log('write_config response:', responseJson);
-                    return JSON.parse(responseJson);
-                });
-
-                if (response.status === 'ok') {
-                    log('Configuration saved successfully.', 'success', settingsStatusArea);
-                    document.getElementById('wifi_pass').value = '';
-                } else {
-                    throw new Error(response.error || 'Unknown error');
-                }
-
-            } catch (error) {
-                log(`Failed to save config: ${error}`, 'error', settingsStatusArea);
-            } finally {
-                saveButton.disabled = false;
-                saveButton.textContent = 'Save Configuration';
-            }
-        }
-
         function onDisconnected() {
             stopSpoolPolling();
             log('Device disconnected.', 'error');
@@ -1905,164 +1683,8 @@
             recentSpoolsData = [];
         }
 
-        // Test connection handlers
-        async function handleTestSpoolman() {
-            const btn = document.getElementById('test-spoolman-btn');
-            const result = document.getElementById('test-spoolman-result');
-            const url = document.getElementById('spoolman_url').value.trim();
-
-            if (!url) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Please enter a Spoolman URL first.';
-                return;
-            }
-
-            if (!configWriteCharacteristic) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Not connected to device.';
-                return;
-            }
-
-            try {
-                btn.disabled = true;
-                btn.textContent = 'Testing...';
-                result.style.display = 'block';
-                result.style.color = '#aaa';
-                result.textContent = 'Testing connection...';
-
-                const response = await enqueueCommand(async () => {
-                    await configWriteCharacteristic.writeValue(
-                        textEncoder.encode(JSON.stringify({ command: 'test_spoolman', url }))
-                    );
-                    const responseValue = await configWriteCharacteristic.readValue();
-                    return JSON.parse(textDecoder.decode(responseValue));
-                });
-
-                if (response.status === 'ok') {
-                    result.style.color = 'var(--prusa-green)';
-                    result.textContent = 'Connection successful!';
-                } else {
-                    result.style.color = 'var(--prusa-red)';
-                    result.innerHTML = `Error: ${response.message || 'Unknown error'}<br><small>Tips: Use "http" not "https". Remove trailing "/". Include port number. Example: http://192.168.45.12:7912</small>`;
-                }
-            } catch (error) {
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = `Error: ${error}`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Test';
-            }
-        }
-
-        async function handleTestPrusalink() {
-            const btn = document.getElementById('test-prusalink-btn');
-            const result = document.getElementById('test-prusalink-result');
-            const url = document.getElementById('prusa_link_url').value.trim();
-            const apiKey = document.getElementById('prusa_link_api_key').value.trim();
-
-            if (!url) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Please enter a PrusaLink URL first.';
-                return;
-            }
-
-            if (!configWriteCharacteristic) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Not connected to device.';
-                return;
-            }
-
-            try {
-                btn.disabled = true;
-                btn.textContent = 'Testing...';
-                result.style.display = 'block';
-                result.style.color = '#aaa';
-                result.textContent = 'Testing connection...';
-
-                const response = await enqueueCommand(async () => {
-                    await configWriteCharacteristic.writeValue(
-                        textEncoder.encode(JSON.stringify({ command: 'test_prusalink', url, api_key: apiKey }))
-                    );
-                    const responseValue = await configWriteCharacteristic.readValue();
-                    return JSON.parse(textDecoder.decode(responseValue));
-                });
-
-                if (response.status === 'ok') {
-                    result.style.color = 'var(--prusa-green)';
-                    result.textContent = 'Connection successful!';
-                } else {
-                    result.style.color = 'var(--prusa-red)';
-                    result.innerHTML = `Error: ${response.message || 'Unknown error'}<br><small>Tips: Use "http" not "https". Remove trailing "/". Include port number. API key and IP are on the printer and Prusa Connect.</small>`;
-                }
-            } catch (error) {
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = `Error: ${error}`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Test';
-            }
-        }
-
-        async function handleTestMqtt() {
-            const btn = document.getElementById('test-mqtt-btn');
-            const result = document.getElementById('test-mqtt-result');
-            const haEnabled = document.getElementById('ha_enabled').value === 'true';
-
-            if (!haEnabled) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Enable Home Assistant before running MQTT test.';
-                return;
-            }
-
-            if (!configWriteCharacteristic) {
-                result.style.display = 'block';
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = 'Not connected to device.';
-                return;
-            }
-
-            try {
-                btn.disabled = true;
-                btn.textContent = 'Testing...';
-                result.style.display = 'block';
-                result.style.color = '#aaa';
-                result.textContent = 'Testing MQTT connection (restart + connect)...';
-
-                const response = await enqueueCommand(async () => {
-                    await configWriteCharacteristic.writeValue(
-                        textEncoder.encode(JSON.stringify({ command: 'test_mqtt' }))
-                    );
-                    const responseValue = await configWriteCharacteristic.readValue();
-                    return JSON.parse(textDecoder.decode(responseValue));
-                });
-
-                if (response.status === 'ok') {
-                    result.style.color = 'var(--prusa-green)';
-                    result.textContent = 'MQTT connection successful!';
-                } else {
-                    result.style.color = 'var(--prusa-red)';
-                    result.textContent = `Error: ${response.message || 'Connection failed'}`;
-                }
-            } catch (error) {
-                result.style.color = 'var(--prusa-red)';
-                result.textContent = `Error: ${error}`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Test MQTT Connection';
-            }
-        }
-
         // Event Listeners
         connectButton.addEventListener('click', handleConnect);
-        configForm.addEventListener('submit', handleSave);
-        document.getElementById('test-spoolman-btn').addEventListener('click', handleTestSpoolman);
-        document.getElementById('test-prusalink-btn').addEventListener('click', handleTestPrusalink);
-        document.getElementById('test-mqtt-btn').addEventListener('click', handleTestMqtt);
     </script>
 </body>
 </html>

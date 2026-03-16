@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 struct WifiConfig {
     const char* ssid;
     const char* password;
@@ -35,6 +37,7 @@ struct DeviceConfig {
     MqttConfig mqtt;
     SpoolmanConfig spoolman;
     PeripheralConfig peripherals;
+    uint8_t automation_mode;
 };
 
 const DeviceConfig& getDeviceConfig();

@@ -390,8 +390,8 @@ void HomeAssistantManager::taskLoop() {
                 mqttClient.publish(req.topic, req.payload, req.retained);
                 char tagStateTopic[64];
                 char tagAttrsTopic[64];
-                snprintf(tagStateTopic, sizeof(tagStateTopic), "openprinttag/%s/tag/state", deviceId_);
-                snprintf(tagAttrsTopic, sizeof(tagAttrsTopic), "openprinttag/%s/tag/attributes", deviceId_);
+                snprintf(tagStateTopic, sizeof(tagStateTopic), "spoolsense/%s/tag/state", deviceId_);
+                snprintf(tagAttrsTopic, sizeof(tagAttrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
                 if (strcmp(req.topic, tagStateTopic) == 0) {
                     // Keep spool attributes aligned with the state payload source.
                     mqttClient.publish(tagAttrsTopic, req.payload, req.retained);
@@ -432,11 +432,11 @@ bool HomeAssistantManager::reconnect() {
 
     // Build client ID
     char clientId[32];
-    snprintf(clientId, sizeof(clientId), "openprinttag_%s", deviceId_);
+    snprintf(clientId, sizeof(clientId), "spoolsense_%s", deviceId_);
 
     // Build LWT topic
     char lwtTopic[64];
-    snprintf(lwtTopic, sizeof(lwtTopic), "openprinttag/%s/availability", deviceId_);
+    snprintf(lwtTopic, sizeof(lwtTopic), "spoolsense/%s/availability", deviceId_);
 
     bool result;
     if (strlen(config.getHAMqttUser()) > 0) {
@@ -461,13 +461,13 @@ bool HomeAssistantManager::reconnect() {
 
 void HomeAssistantManager::publishAvailability(const char* state) {
     char topic[64];
-    snprintf(topic, sizeof(topic), "openprinttag/%s/availability", deviceId_);
+    snprintf(topic, sizeof(topic), "spoolsense/%s/availability", deviceId_);
     mqttClient.publish(topic, state, true);
 }
 
 void HomeAssistantManager::subscribeCommands() {
     char topic[64];
-    snprintf(topic, sizeof(topic), "openprinttag/%s/cmd/#", deviceId_);
+    snprintf(topic, sizeof(topic), "spoolsense/%s/cmd/#", deviceId_);
     mqttClient.subscribe(topic);
     Serial.printf("HomeAssistantManager: Subscribed to %s\n", topic);
 }
@@ -475,7 +475,7 @@ void HomeAssistantManager::subscribeCommands() {
 void HomeAssistantManager::publishDiscovery() {
     // Discovery payloads use abbreviated HA keys to fit in 768-byte buffer.
     char baseTopic[48];
-    snprintf(baseTopic, sizeof(baseTopic), "openprinttag/%s", deviceId_);
+    snprintf(baseTopic, sizeof(baseTopic), "spoolsense/%s", deviceId_);
     char currentUid[64] = {0};
     CurrentSpoolState spoolState;
     if (NFCManager::getInstance().getCurrentSpoolState(spoolState) &&
@@ -500,7 +500,7 @@ void HomeAssistantManager::publishDiscovery() {
     auto publishDiscoveryPayload = [&](const char* component, const char* objectId, const char* payload) {
         char discoveryTopic[128];
         snprintf(discoveryTopic, sizeof(discoveryTopic),
-                 "homeassistant/%s/openprinttag_%s/%s/config",
+                 "homeassistant/%s/spoolsense_%s/%s/config",
                  component, deviceId_, objectId);
         size_t len = strlen(payload);
         bool ok = mqttClient.publish(discoveryTopic, payload, true);
@@ -522,13 +522,13 @@ void HomeAssistantManager::publishDiscovery() {
         char payload[768];
         int written = snprintf(payload, sizeof(payload),
                                "{\"~\":\"%s\",\"name\":\"%s\","
-                               "\"unique_id\":\"openprinttag_%s_%s\",\"obj_id\":\"openprinttag_%s_%s\","
+                               "\"unique_id\":\"spoolsense_%s_%s\",\"obj_id\":\"spoolsense_%s_%s\","
                                "\"stat_t\":\"~/tag/state\",\"val_tpl\":\"%s\","
                                "\"json_attr_t\":\"~/tag/state\",\"json_attr_tpl\":\"{{ value_json }}\","
                                "\"cmd_t\":\"%s\",\"cmd_tpl\":\"%s\","
                                "\"avty_t\":\"~/availability\",\"min\":%.1f,\"max\":%.1f,\"step\":%.1f,\"mode\":\"box\","
                                "\"unit_of_meas\":\"%s\",\"ic\":\"%s\","
-                               "\"dev\":{\"ids\":[\"openprinttag_%s\"]}}",
+                               "\"dev\":{\"ids\":[\"spoolsense_%s\"]}}",
                                baseTopic, name,
                                deviceId_, objectId, deviceId_, objectId,
                                valTpl, cmdTopic, cmdTpl,
@@ -545,13 +545,13 @@ void HomeAssistantManager::publishDiscovery() {
         char payload[768];
         int written = snprintf(payload, sizeof(payload),
                                "{\"~\":\"%s\",\"name\":\"%s\","
-                               "\"unique_id\":\"openprinttag_%s_%s\",\"obj_id\":\"openprinttag_%s_%s\","
+                               "\"unique_id\":\"spoolsense_%s_%s\",\"obj_id\":\"spoolsense_%s_%s\","
                                "\"stat_t\":\"~/tag/state\",\"val_tpl\":\"%s\","
                                "\"json_attr_t\":\"~/tag/state\",\"json_attr_tpl\":\"{{ value_json }}\","
                                "\"cmd_t\":\"%s\",\"cmd_tpl\":\"%s\","
                                "\"avty_t\":\"~/availability\","
                                "\"options\":[\"PLA\",\"PETG\",\"ABS\",\"ASA\",\"TPU\",\"PC\",\"Nylon\",\"PVA\",\"HIPS\"],"
-                               "\"ic\":\"%s\",\"dev\":{\"ids\":[\"openprinttag_%s\"]}}",
+                               "\"ic\":\"%s\",\"dev\":{\"ids\":[\"spoolsense_%s\"]}}",
                                baseTopic, name,
                                deviceId_, objectId, deviceId_, objectId,
                                valTpl, cmdTopic, cmdTpl,
@@ -568,12 +568,12 @@ void HomeAssistantManager::publishDiscovery() {
         char payload[768];
         int written = snprintf(payload, sizeof(payload),
                                "{\"~\":\"%s\",\"name\":\"%s\","
-                               "\"unique_id\":\"openprinttag_%s_%s\",\"obj_id\":\"openprinttag_%s_%s\","
+                               "\"unique_id\":\"spoolsense_%s_%s\",\"obj_id\":\"spoolsense_%s_%s\","
                                "\"stat_t\":\"~/tag/state\",\"val_tpl\":\"%s\","
                                "\"json_attr_t\":\"~/tag/state\",\"json_attr_tpl\":\"{{ value_json }}\","
                                "\"cmd_t\":\"%s\",\"cmd_tpl\":\"%s\","
                                "\"avty_t\":\"~/availability\",\"ic\":\"%s\","
-                               "\"dev\":{\"ids\":[\"openprinttag_%s\"]}}",
+                               "\"dev\":{\"ids\":[\"spoolsense_%s\"]}}",
                                baseTopic, name,
                                deviceId_, objectId, deviceId_, objectId,
                                valTpl, cmdTopic, cmdTpl,
@@ -591,14 +591,14 @@ void HomeAssistantManager::publishDiscovery() {
         char payload[768];
         int written = snprintf(payload, sizeof(payload),
                                "{\"~\":\"%s\",\"name\":\"Spool\","
-                               "\"unique_id\":\"openprinttag_%s_spool\",\"obj_id\":\"openprinttag_%s_spool\","
+                               "\"unique_id\":\"spoolsense_%s_spool\",\"obj_id\":\"spoolsense_%s_spool\","
                                "\"stat_t\":\"~/tag/state\","
                                "\"val_tpl\":\"{{ 'present' if value_json.present else 'not_present' }}\","
                                "\"avty_t\":\"~/availability\","
                                "\"json_attr_t\":\"~/tag/attributes\","
                                "\"ic\":\"mdi:printer-3d-nozzle\","
-                               "\"dev\":{\"ids\":[\"openprinttag_%s\"],\"name\":\"OpenPrintTag Scanner\","
-                               "\"mf\":\"OpenPrintTag\",\"sw\":\"%s\"}}",
+                               "\"dev\":{\"ids\":[\"spoolsense_%s\"],\"name\":\"SpoolSense Scanner\","
+                               "\"mf\":\"SpoolSense\",\"sw\":\"%s\"}}",
                                baseTopic, deviceId_, deviceId_, deviceId_, DEVICE_VERSION);
         if (written >= 0 && written < (int)sizeof(payload)) {
             publishDiscoveryPayload("sensor", "spool", payload);
@@ -614,6 +614,12 @@ void HomeAssistantManager::publishDiscovery() {
     removeLegacyEntity("sensor", "material_type");
     removeLegacyEntity("sensor", "color");
     removeLegacyEntity("sensor", "printer_state");
+    // Remove old openprinttag_-prefixed control entities (renamed to spoolsense_).
+    removeLegacyEntity("number", "set_remaining_weight");
+    removeLegacyEntity("number", "set_initial_weight");
+    removeLegacyEntity("number", "set_spoolman_id");
+    removeLegacyEntity("select", "set_material_type");
+    removeLegacyEntity("text", "set_manufacturer");
 
     // UID is carried in command topic; payload contains only values.
     char updateRemainingCmdTpl[128];
@@ -662,8 +668,8 @@ void HomeAssistantManager::publishCurrentTagState() {
     bool got = NFCManager::getInstance().getCurrentSpoolState(spool);
     char stateTopic[64];
     char attrsTopic[64];
-    snprintf(stateTopic, sizeof(stateTopic), "openprinttag/%s/tag/state", deviceId_);
-    snprintf(attrsTopic, sizeof(attrsTopic), "openprinttag/%s/tag/attributes", deviceId_);
+    snprintf(stateTopic, sizeof(stateTopic), "spoolsense/%s/tag/state", deviceId_);
+    snprintf(attrsTopic, sizeof(attrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
 
     if (!got || !spool.present) {
         // Publish "not present" so HA entities are in a known state.
@@ -737,7 +743,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
     // Parse topic to extract command name (and optional uid suffix)
     // Format: openprinttag/{id}/cmd/{command}[/uid]
     char cmdPrefix[64];
-    snprintf(cmdPrefix, sizeof(cmdPrefix), "openprinttag/%s/cmd/", deviceId_);
+    snprintf(cmdPrefix, sizeof(cmdPrefix), "spoolsense/%s/cmd/", deviceId_);
 
     if (strncmp(topic, cmdPrefix, strlen(cmdPrefix)) != 0) {
         Serial.println("HomeAssistantManager: Unknown topic prefix");
@@ -791,7 +797,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
                  "\"expected\":\"%s\",\"actual\":\"%s\"}",
                  command, uid, spool.spool_id);
         char respTopic[64];
-        snprintf(respTopic, sizeof(respTopic), "openprinttag/%s/cmd/response", deviceId_);
+        snprintf(respTopic, sizeof(respTopic), "spoolsense/%s/cmd/response", deviceId_);
         mqttClient.publish(respTopic, errPayload, false);
         return;
     }
@@ -907,7 +913,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
 
 void HomeAssistantManager::publishCommandResponse(const char* command, bool success, const char* error) {
     char respTopic[64];
-    snprintf(respTopic, sizeof(respTopic), "openprinttag/%s/cmd/response", deviceId_);
+    snprintf(respTopic, sizeof(respTopic), "spoolsense/%s/cmd/response", deviceId_);
 
     char respPayload[128];
     if (success) {

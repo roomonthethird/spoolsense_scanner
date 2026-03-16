@@ -4,7 +4,6 @@
   #include "NFCManager.h"
   #include "LCDManager.h"
   #include "BluetoothManager.h"
-  #include "PrinterManager.h"
   #include "SpoolmanManager.h"
   #include "ConfigurationManager.h"
   #include "HomeAssistantManager.h"
@@ -115,13 +114,6 @@ void ApplicationManager::showStatusOnLCD() {
         wifiInd = (WiFi.status() == WL_CONNECTED) ? '+' : '!';
     }
 
-    char prusaInd;
-    if (strlen(config.getPrusaLinkURL()) == 0) {
-        prusaInd = '?';
-    } else {
-        prusaInd = PrinterManager::getInstance().isConnected() ? '+' : '!';
-    }
-
     char smInd;
     if (strlen(config.getSpoolmanURL()) == 0) {
         smInd = '?';
@@ -141,7 +133,6 @@ void ApplicationManager::showStatusOnLCD() {
     // Native tests do not initialize network/BLE integrations.
     char bleInd = '?';
     char wifiInd = '?';
-    char prusaInd = '?';
     char smInd = '?';
     char haInd = '?';
 #endif
@@ -149,7 +140,7 @@ void ApplicationManager::showStatusOnLCD() {
     char line1[17];
     char line2[17];
     snprintf(line1, sizeof(line1), "NFC+ BLE%c Wifi%c", bleInd, wifiInd);
-    snprintf(line2, sizeof(line2), "PL%c SM%c HA%c", prusaInd, smInd, haInd);
+    snprintf(line2, sizeof(line2), "SM%c HA%c", smInd, haInd);
     lcdManager->updateScreen(line1, line2);
 }
 

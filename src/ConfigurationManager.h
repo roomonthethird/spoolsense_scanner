@@ -1,7 +1,6 @@
 #ifndef CONFIGURATION_MANAGER_H
 #define CONFIGURATION_MANAGER_H
 
-#include <Arduino.h>
 #include <cstdint>
 
 #define DEVICE_VERSION "0.76 BETA"
@@ -10,15 +9,12 @@ class ConfigurationManager {
 public:
     static ConfigurationManager& getInstance();
 
-    bool begin();  // Initialize NVS and load cached values
-    size_t readConfig(char* out, size_t outSize);  // Returns JSON length (excludes wifi_pass)
-    bool postConfigUpdate(const char* json);  // Partial update from JSON
+    bool begin();  // Load compile-time config from DeviceConfig
 
     const char* getWiFiSSID() const;
     const char* getWiFiPassword() const;
-    const char* getPrusaLinkURL() const;
-    const char* getPrusaLinkAPIKey() const;
     const char* getSpoolmanURL() const;
+    bool isSpoolmanEnabled() const;
     uint32_t getPollIntervalMs() const;
     uint32_t getLcdTimeoutMs() const;
 
@@ -35,15 +31,11 @@ private:
     ConfigurationManager(const ConfigurationManager&) = delete;
     ConfigurationManager& operator=(const ConfigurationManager&) = delete;
 
-    bool loadFromNVS();
-    bool saveToNVS();
-
-    // In-memory cache
+    // In-memory cache (loaded from DeviceConfig at boot)
     char _ssid[64];
     char _wifiPass[64];
-    char _prusaLinkUrl[128];
-    char _prusaLinkApiKey[64];
     char _spoolmanUrl[128];
+    bool _spoolmanEnabled;
     uint32_t _pollIntervalMs;
     uint32_t _lcdTimeoutMs;
 
@@ -56,8 +48,6 @@ private:
     uint8_t _automationMode;
 
     bool _initialized = false;
-
-    static constexpr const char* NVS_NAMESPACE = "opt_config";
 };
 
 #endif // CONFIGURATION_MANAGER_H

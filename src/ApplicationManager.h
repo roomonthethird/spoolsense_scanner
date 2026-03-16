@@ -125,6 +125,8 @@ public:
     void setAutomationMode(AutomationMode mode) { automationMode = mode; }
 #ifdef NATIVE_TEST
     void resetForTest() {
+        if (messageQueue) { vQueueDelete(messageQueue); messageQueue = nullptr; }
+        lcdManager = nullptr;
         currentState = AppState::IDLE;
         startingSpoolId[0] = '\0';
         currentJobId = 0;

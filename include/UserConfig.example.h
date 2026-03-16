@@ -24,17 +24,17 @@
 
 #define MQTT_TOPIC_PREFIX "spoolsense"
 
-/* Optional: Spoolman */
+/* Optional: Spoolman (1 = enabled, 0 = disabled) */
 #define SPOOLMAN_ENABLED 0
 #define SPOOLMAN_URL "http://spoolman.local:7912"
+
+/* Automation mode: 0 = Self Directed (scanner auto-deducts), 1 = Controlled by HA */
+#define AUTOMATION_MODE 0
 
 /* Optional hardware features */
 #define ENABLE_LCD 0
 #define ENABLE_STATUS_LED 1
 
-/* Board profile (select one) */
-#define BOARD_PROFILE_ESP32_WROOM 1
-#define BOARD_PROFILE_ESP32_S3 2
-
-/* Set the active board profile */
-#define BOARD_PROFILE BOARD_PROFILE_ESP32_WROOM
+/* Board selection: uncomment ONE of the following */
+#define BOARD_ESP32_WROOM
+// #define BOARD_ESP32_S3

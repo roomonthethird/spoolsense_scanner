@@ -1,7 +1,5 @@
 #include "BluetoothManager.h"
 #include "ApplicationManager.h"
-#include "ConfigurationManager.h"
-#include "HomeAssistantManager.h"
 #include "NFCManager.h"
 #include "LCDManager.h"
 #include "ConversionUtils.h"
@@ -18,8 +16,6 @@
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include <time.h>
-#include <HTTPClient.h>
-#include <WiFiClient.h>
 #include <base64.hpp>
 
 extern SemaphoreHandle_t g_httpMutex;
@@ -61,8 +57,6 @@ struct ParsedBleCommand {
     char type[16];
     char color[16];
     char manufacturer[64];
-    char url[160];
-    char api_key[96];
     char data[420];  // Base64-encoded raw tag data (~416 chars for 312 bytes)
     float grams_remaining;
     float initial_weight;
@@ -75,8 +69,6 @@ struct ParsedBleCommand {
     bool has_grams_remaining;
     bool has_initial_weight;
     bool has_spoolman_id;
-    bool has_url;
-    bool has_api_key;
     bool has_data;
 };
 
@@ -181,10 +173,6 @@ static bool parseBleCommand(const char* jsonText, ParsedBleCommand& out) {
                     reader.value_type() == json_value_type::integer)) {
             out.initial_weight = static_cast<float>(reader.value_real());
             out.has_initial_weight = true;
-        } else if (strcmp(field, "url") == 0) {
-            out.has_url = readStringValue(reader, out.url, sizeof(out.url));
-        } else if (strcmp(field, "api_key") == 0) {
-            out.has_api_key = readStringValue(reader, out.api_key, sizeof(out.api_key));
         } else if (strcmp(field, "data") == 0) {
             out.has_data = readStringValue(reader, out.data, sizeof(out.data));
         }
@@ -192,25 +180,6 @@ static bool parseBleCommand(const char* jsonText, ParsedBleCommand& out) {
     return out.has_command;
 }
 
-static bool jsonHasTopLevelField(const char* jsonText, const char* fieldName) {
-    const_buffer_stream stm((const uint8_t*)jsonText, strlen(jsonText));
-    json_reader reader(stm);
-    if (!reader.read() || reader.node_type() != json_node_type::object) {
-        return false;
-    }
-    const unsigned rootDepth = reader.depth();
-    while (reader.read()) {
-        if (reader.node_type() == json_node_type::end_object && reader.depth() == rootDepth) {
-            break;
-        }
-        if (reader.node_type() == json_node_type::field &&
-            reader.depth() == rootDepth &&
-            strcmp(reader.value(), fieldName) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
 
 /**
  * @brief Process a JSON command from the client
@@ -225,27 +194,7 @@ static void process_command(const char* json) {
 
     const char* command = cmd.command;
 
-    if (strcmp(command, "read_config") == 0) {
-        char config[512];
-        ConfigurationManager::getInstance().readConfig(config, sizeof(config));
-        if (s_config_read_char) {
-            s_config_read_char->setValue(config);
-        }
-        snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"ok\"}");
-        Serial.printf("%s: Config read requested, len=%u\n", TAG, static_cast<unsigned>(strlen(config)));
-    }
-    else if (strcmp(command, "write_config") == 0) {
-        if (ConfigurationManager::getInstance().postConfigUpdate(json)) {
-            lcdManager.setScreenTimeoutMs(ConfigurationManager::getInstance().getLcdTimeoutMs());
-            ApplicationManager::getInstance().showStatusOnLCD();
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"ok\"}");
-            Serial.printf("%s: Config updated successfully\n", TAG);
-        } else {
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"error\":\"Failed to save config\"}");
-            Serial.printf("%s: Config update failed\n", TAG);
-        }
-    }
-    else if (strcmp(command, "list_spools") == 0) {
+    if (strcmp(command, "list_spools") == 0) {
         // Use static buffer to avoid stack overflow
         CurrentSpoolState& spool = s_spool_state_buffer;
         if (!NFCManager::getInstance().getCurrentSpoolState(spool)) {
@@ -525,60 +474,6 @@ static void process_command(const char* json) {
             }
         }
     }
-    else if (strcmp(command, "test_spoolman") == 0) {
-        const char* url = cmd.has_url ? cmd.url : "";
-        if (strlen(url) == 0) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"error\",\"message\":\"Missing url\"}");
-        } else if (xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"error\",\"message\":\"Device busy\"}");
-        } else {
-            WiFiClient client;
-            HTTPClient http;
-            char testUrl[192];
-            snprintf(testUrl, sizeof(testUrl), "%s/api/v1/info", url);
-            http.begin(client, testUrl);
-            http.setTimeout(5000);
-            int httpCode = http.GET();
-            String body = http.getString();
-            http.end();
-            xSemaphoreGive(g_httpMutex);
-            if (httpCode != 200) {
-                snprintf(s_response_buffer, sizeof(s_response_buffer),
-                    "{\"status\":\"error\",\"message\":\"HTTP %d\",\"code\":%d}", httpCode, httpCode);
-            } else {
-                if (!jsonHasTopLevelField(body.c_str(), "version")) {
-                    snprintf(s_response_buffer, sizeof(s_response_buffer),
-                        "{\"status\":\"error\",\"message\":\"Missing version in response\"}");
-                } else {
-                    snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"ok\"}");
-                }
-            }
-            Serial.printf("%s: test_spoolman %s -> %d\n", TAG, testUrl, httpCode);
-        }
-    }
-    else if (strcmp(command, "test_mqtt") == 0) {
-        auto& config = ConfigurationManager::getInstance();
-        auto& haManager = HomeAssistantManager::getInstance();
-
-        if (!config.getHAEnabled()) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer),
-                     "{\"status\":\"error\",\"message\":\"Home Assistant must be enabled\"}");
-        } else if (strlen(config.getHAMqttHost()) == 0) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer),
-                     "{\"status\":\"error\",\"message\":\"MQTT host not configured\"}");
-        } else {
-            int mqttState = -1;
-            bool connected = haManager.restartAndTestConnection(10000, &mqttState);
-            if (connected) {
-                snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"ok\"}");
-            } else {
-                snprintf(s_response_buffer, sizeof(s_response_buffer),
-                         "{\"status\":\"error\",\"message\":\"MQTT state %d\"}", mqttState);
-            }
-            Serial.printf("%s: test_mqtt restart -> %s (state=%d)\n", TAG,
-                          connected ? "OK" : "FAIL", mqttState);
-        }
-    }
     else if (strcmp(command, "write_raw_tag") == 0) {
         // Use static buffer to avoid stack overflow
         CurrentSpoolState& spool = s_spool_state_buffer;
@@ -628,35 +523,6 @@ static void process_command(const char* json) {
                     }
                 }
             }
-        }
-    }
-    else if (strcmp(command, "test_prusalink") == 0) {
-        const char* url = cmd.has_url ? cmd.url : "";
-        const char* apiKey = cmd.has_api_key ? cmd.api_key : "";
-        if (strlen(url) == 0) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"error\",\"message\":\"Missing url\"}");
-        } else if (xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
-            snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"error\",\"message\":\"Device busy\"}");
-        } else {
-            WiFiClient client;
-            HTTPClient http;
-            char testUrl[192];
-            snprintf(testUrl, sizeof(testUrl), "%s/api/v1/status", url);
-            http.begin(client, testUrl);
-            http.setTimeout(5000);
-            if (strlen(apiKey) > 0) {
-                http.addHeader("X-Api-Key", apiKey);
-            }
-            int httpCode = http.GET();
-            http.end();
-            xSemaphoreGive(g_httpMutex);
-            if (httpCode == 200) {
-                snprintf(s_response_buffer, sizeof(s_response_buffer), "{\"status\":\"ok\"}");
-            } else {
-                snprintf(s_response_buffer, sizeof(s_response_buffer),
-                    "{\"status\":\"error\",\"message\":\"HTTP %d\",\"code\":%d}", httpCode, httpCode);
-            }
-            Serial.printf("%s: test_prusalink %s -> %d\n", TAG, testUrl, httpCode);
         }
     }
     else if (strcmp(command, "get_spoolman_spool") == 0) {
@@ -934,7 +800,7 @@ bool BluetoothManager::begin() {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_BT);
     char device_name[24];
-    snprintf(device_name, sizeof(device_name), "OpenPrintTag-%02X%02X", mac[4], mac[5]);
+    snprintf(device_name, sizeof(device_name), "SpoolSense-%02X%02X", mac[4], mac[5]);
     Serial.printf("%s: BLE device name: %s\n", TAG, device_name);
 
     // Debug: Check controller state

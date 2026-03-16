@@ -19,10 +19,6 @@ APP_FLOW_TARGET = test_runner
 NFC_READ_SRCS = test_nfc_read.cpp $(COMMON_NATIVE_SRCS)
 NFC_READ_TARGET = test_nfc_read_runner
 
-# Bgcode parser tests
-BGCODE_SRCS = test_bgcode_parser.cpp $(COMMON_NATIVE_SRCS)
-BGCODE_TARGET = test_bgcode_parser
-
 LCD_MANAGER_SRCS = test_lcd_manager.cpp $(COMMON_NATIVE_SRCS)
 LCD_MANAGER_TARGET = test_lcd_manager_runner
 
@@ -33,10 +29,9 @@ JSON_PULL_HELPERS_TARGET = test_json_pull_helpers_runner
 RAW_WRITE_SRCS = test_raw_write.cpp $(COMMON_NATIVE_SRCS)
 RAW_WRITE_TARGET = test_raw_write_runner
 
-all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(BGCODE_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET)
+all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET)
 	./$(APP_FLOW_TARGET)
 	./$(NFC_READ_TARGET)
-	./$(BGCODE_TARGET)
 	./$(LCD_MANAGER_TARGET)
 	./$(JSON_PULL_HELPERS_TARGET)
 	./$(RAW_WRITE_TARGET)
@@ -54,9 +49,6 @@ $(APP_FLOW_TARGET): $(APP_FLOW_SRCS) $(OPT_OBJS)
 $(NFC_READ_TARGET): $(NFC_READ_SRCS) $(OPT_OBJS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(NFC_READ_SRCS) $(OPT_OBJS) -o $(NFC_READ_TARGET)
 
-$(BGCODE_TARGET): $(BGCODE_SRCS)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(BGCODE_SRCS) -o $(BGCODE_TARGET)
-
 $(LCD_MANAGER_TARGET): $(LCD_MANAGER_SRCS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LCD_MANAGER_SRCS) -o $(LCD_MANAGER_TARGET)
 
@@ -72,9 +64,6 @@ run-app-flow: $(APP_FLOW_TARGET)
 run-nfc-read: $(NFC_READ_TARGET)
 	./$(NFC_READ_TARGET)
 
-run-bgcode: $(BGCODE_TARGET)
-	./$(BGCODE_TARGET)
-
 run-lcd-manager: $(LCD_MANAGER_TARGET)
 	./$(LCD_MANAGER_TARGET)
 
@@ -85,6 +74,6 @@ run-raw-write: $(RAW_WRITE_TARGET)
 	./$(RAW_WRITE_TARGET)
 
 clean:
-	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(BGCODE_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(OPT_OBJS)
+	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(OPT_OBJS)
 
-.PHONY: all clean run-app-flow run-nfc-read run-bgcode run-lcd-manager run-json-pull-helpers run-raw-write
+.PHONY: all clean run-app-flow run-nfc-read run-lcd-manager run-json-pull-helpers run-raw-write
