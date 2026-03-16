@@ -18,7 +18,7 @@
 - NFC scan loop now performs a full hardware reset when `setupRF()` fails with a tag present,
   recovering in one cycle instead of ~30 seconds
 
-## [1.0.0] - 2026-03-16 — Initial Release
+## [1.0.0] - 2026-03-14 — Initial Release
 
 ### Added
 - OpenPrintTag (ISO15693) full CBOR/NDEF read and write via PN5180
