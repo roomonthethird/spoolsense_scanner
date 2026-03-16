@@ -1,0 +1,2068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenPrintTag Scanner</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <style>
+        /* Typography and Theme - Prusa Connect Aesthetic */
+        @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&display=swap');
+
+        :root {
+            --prusa-orange: #FA6831;
+            --prusa-black: #0a0a0a;
+            --prusa-dark-gray: #1a1a1a;
+            --prusa-medium-gray: #313131;
+            --prusa-light-gray: #707070;
+            --prusa-text: #efefef;
+            --prusa-red: #d63031;
+            --prusa-green: #2ecc71;
+            --font-main: Helvetica, 'Exo 2', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--prusa-black);
+            color: var(--prusa-text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        /* Main Container */
+        .container {
+            background-color: var(--prusa-dark-gray);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--prusa-black);
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--prusa-medium-gray);
+        }
+
+        .header h1 {
+            color: var(--prusa-orange);
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 0.5px;
+        }
+
+        /* Tab Navigation */
+        .tab-nav {
+            display: flex;
+            background-color: var(--prusa-black);
+            border-bottom: 1px solid var(--prusa-medium-gray);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 1rem;
+            background: none;
+            border: none;
+            color: var(--prusa-light-gray);
+            font-family: var(--font-main);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tab-btn:hover {
+            color: var(--prusa-text);
+        }
+
+        .tab-btn.active {
+            color: var(--prusa-orange);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: var(--prusa-orange);
+        }
+
+        /* Tab Content */
+        .tab-content {
+            padding: 1.5rem;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Connection UI */
+        #connection-ui {
+            padding: 2rem 1.5rem;
+            text-align: center;
+        }
+
+        #connection-ui p {
+            color: var(--prusa-light-gray);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--prusa-light-gray);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        input[type="number"],
+        input[type="color"],
+        select {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--prusa-medium-gray);
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: var(--prusa-text);
+            font-family: var(--font-main);
+            font-size: 1rem;
+            transition: all 0.2s ease-in-out;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--prusa-orange);
+            box-shadow: 0 0 0 2px rgba(250, 104, 49, 0.2);
+        }
+
+        input[type="color"] {
+            padding: 4px;
+            height: 44px;
+            cursor: pointer;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            justify-content: flex-end;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            font-family: var(--font-main);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-color: var(--prusa-orange);
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            background-color: #e55a24;
+            transform: translateY(-1px);
+        }
+
+        button.secondary {
+            background-color: var(--prusa-medium-gray);
+            color: var(--prusa-text);
+        }
+
+        button.secondary:hover {
+            background-color: #3a3a3a;
+        }
+
+        button.danger {
+            background-color: var(--prusa-red);
+            color: #fff;
+        }
+
+        button.danger:hover {
+            background-color: #b62526;
+        }
+
+        button:disabled {
+            background-color: #444;
+            color: #777;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Status Area */
+        #status-area {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: var(--prusa-medium-gray);
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #aaa;
+            max-height: 120px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .status-message {
+            margin: 0;
+            padding-bottom: 4px;
+        }
+
+        .status-error { color: var(--prusa-red); }
+        .status-success { color: var(--prusa-green); }
+
+        /* Section Headers */
+        .section-header {
+            color: var(--prusa-light-gray);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--prusa-medium-gray);
+        }
+
+        /* Spool Cards */
+        .spool-card {
+            background-color: var(--prusa-medium-gray);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: background-color 0.2s;
+        }
+
+        .spool-card:hover {
+            background-color: #3a3a3a;
+        }
+
+        .spool-card.current {
+            border-left: 4px solid var(--prusa-orange);
+        }
+
+        .spool-color {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .spool-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .spool-type {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .spool-manufacturer {
+            color: var(--prusa-light-gray);
+            font-size: 0.85rem;
+        }
+
+        .spool-meta {
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .spool-grams {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .spool-time {
+            color: var(--prusa-light-gray);
+            font-size: 0.8rem;
+        }
+
+        .spool-edit-btn {
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+
+        .actions-wrapper {
+            position: relative;
+            margin-left: 0.5rem;
+        }
+
+        .actions-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border: 1px solid #5a5a5a;
+            background-color: #444;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            white-space: nowrap;
+        }
+
+        .actions-toggle::after {
+            content: "▼";
+            font-size: 0.65rem;
+            line-height: 1;
+            opacity: 0.9;
+        }
+
+        .actions-toggle:hover {
+            border-color: #707070;
+            background-color: #505050;
+        }
+
+        .actions-dropdown {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: var(--prusa-dark-gray);
+            border: 1px solid var(--prusa-medium-gray);
+            border-radius: 6px;
+            min-width: 210px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            display: none;
+            margin-top: 0.35rem;
+            white-space: nowrap;
+        }
+
+        .actions-dropdown.open {
+            display: block;
+        }
+
+        .actions-dropdown button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 0.6rem 1rem;
+            background: none;
+            border: none;
+            color: var(--prusa-text);
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0;
+            cursor: pointer;
+            border-radius: 0;
+            white-space: nowrap;
+        }
+
+        .actions-dropdown button:hover {
+            background-color: var(--prusa-medium-gray);
+            transform: none;
+        }
+
+        .file-info {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background-color: var(--prusa-medium-gray);
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .file-info .file-name {
+            font-weight: 600;
+        }
+
+        .file-info .file-size {
+            color: var(--prusa-light-gray);
+        }
+
+        .file-info .file-error {
+            color: var(--prusa-red);
+        }
+
+        .file-info .file-ok {
+            color: #4CAF50;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--prusa-light-gray);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background-color: var(--prusa-dark-gray);
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.2s;
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--prusa-medium-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--prusa-text);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--prusa-light-gray);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--prusa-text);
+            background: none;
+            transform: none;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--prusa-medium-gray);
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .modal-footer-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+        }
+
+        /* Color preview in modal */
+        .color-preview-row {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .color-preview-row input[type="color"] {
+            width: 60px;
+        }
+
+        .color-preview-row input[type="text"] {
+            flex: 1;
+        }
+
+        .consume-adjust-row {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            margin-top: 0.75rem;
+        }
+
+        .consume-adjust-row input[type="number"] {
+            flex: 1;
+        }
+
+        /* Format Spool Card */
+        .format-spool-card {
+            background-color: var(--prusa-medium-gray);
+            border-radius: 6px;
+            padding: 1.5rem;
+            margin-bottom: 0.75rem;
+            border-left: 4px solid var(--prusa-orange);
+            text-align: center;
+        }
+
+        .format-spool-card .format-uid {
+            color: var(--prusa-light-gray);
+            font-family: monospace;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .format-spool-card .format-label {
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .format-spool-card button {
+            min-width: 160px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>OpenPrintTag Scanner</h1>
+        </div>
+
+        <!-- Connection UI (shown before BLE connection) -->
+        <div id="connection-ui">
+            <p>Connect to your OpenPrintTag device to view spools and configure settings.</p>
+            <button id="connect-button">Connect to Device</button>
+            <div id="status-area"></div>
+        </div>
+
+        <!-- Main App UI (shown after BLE connection) -->
+        <div id="app-ui" style="display: none;">
+            <!-- Tab Navigation -->
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-tab="spools">Spools</button>
+                <button class="tab-btn" data-tab="settings">Settings</button>
+            </nav>
+
+            <!-- Spools Tab -->
+            <div id="tab-spools" class="tab-content active">
+                <div class="section-header">Current Spool</div>
+                <div id="current-spool-container">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#128451;</div>
+                        <p>No spool detected.<br>Place a tagged spool on the reader.</p>
+                    </div>
+                </div>
+
+                <div class="section-header" style="margin-top: 1.5rem;">Recently Seen</div>
+                <div id="recent-spools-container">
+                    <div class="empty-state">
+                        <p>No recent spools.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="tab-settings" class="tab-content">
+                <div class="form-group">
+                    <label>Device Version</label>
+                    <span id="device-version" style="color: #ccc;">—</span>
+                </div>
+                <form id="config-form">
+                    <div class="section-header" style="margin-top: 1.5rem;">WiFi</div>
+                    <div class="form-group">
+                        <label for="ssid">WiFi SSID</label>
+                        <input type="text" id="ssid" name="ssid" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="wifi_pass">WiFi Password (leave blank to keep existing)</label>
+                        <input type="password" id="wifi_pass" name="wifi_pass">
+                    </div>
+
+                    <div class="section-header" style="margin-top: 1.5rem;">PrusaLink</div>
+                    <div class="form-group">
+                        <label for="prusa_link_url">PrusaLink URL</label>
+                        <input type="text" id="prusa_link_url" name="prusa_link_url" placeholder="e.g., http://192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label for="prusa_link_api_key">PrusaLink API Key</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="password" id="prusa_link_api_key" name="prusa_link_api_key" style="flex: 1;">
+                            <button type="button" id="test-prusalink-btn" class="secondary" style="white-space: nowrap;">Test</button>
+                        </div>
+                        <div id="test-prusalink-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="poll_interval_ms">Poll Interval (ms)</label>
+                        <input type="number" id="poll_interval_ms" name="poll_interval_ms" min="1000">
+                    </div>
+
+                    <div class="section-header" style="margin-top: 1.5rem;">Spoolman</div>
+                    <div class="form-group">
+                        <label for="spoolman_url">Spoolman URL (optional)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="spoolman_url" name="spoolman_url" placeholder="e.g., http://192.168.1.100:7912" style="flex: 1;">
+                            <button type="button" id="test-spoolman-btn" class="secondary" style="white-space: nowrap;">Test</button>
+                        </div>
+                        <div id="test-spoolman-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
+                    </div>
+
+                    <div class="section-header" style="margin-top: 1.5rem;">LCD</div>
+                    <div class="form-group">
+                        <label for="lcd_timeout_minutes">LCD Auto-Off (minutes, 0 = never)</label>
+                        <input type="number" id="lcd_timeout_minutes" name="lcd_timeout_minutes" min="0" step="1">
+                    </div>
+
+                    <div class="section-header" style="margin-top: 1.5rem;">Home Assistant</div>
+                    <div class="form-group">
+                        <label for="ha_enabled">Enable Home Assistant</label>
+                        <select id="ha_enabled" name="ha_enabled">
+                            <option value="false">Disabled</option>
+                            <option value="true">Enabled</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ha_mqtt_host">MQTT Broker Host</label>
+                        <input type="text" id="ha_mqtt_host" name="ha_mqtt_host" placeholder="e.g., 192.168.1.50">
+                    </div>
+                    <div class="form-group">
+                        <label for="ha_mqtt_port">MQTT Port</label>
+                        <input type="number" id="ha_mqtt_port" name="ha_mqtt_port" min="1" max="65535" value="1883">
+                    </div>
+                    <div class="form-group">
+                        <label for="ha_mqtt_user">MQTT Username</label>
+                        <input type="text" id="ha_mqtt_user" name="ha_mqtt_user">
+                    </div>
+                    <div class="form-group">
+                        <label for="ha_mqtt_pass">MQTT Password</label>
+                        <input type="password" id="ha_mqtt_pass" name="ha_mqtt_pass">
+                    </div>
+                    <div class="form-group">
+                        <label for="automation_mode">Automation Mode</label>
+                        <select id="automation_mode" name="automation_mode">
+                            <option value="0">Self Directed</option>
+                            <option value="1">Controlled by Home Assistant</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="button" id="test-mqtt-btn" class="secondary" style="width: 100%;">Test MQTT Connection</button>
+                        <div id="test-mqtt-result" style="margin-top: 0.5rem; font-size: 0.85rem; display: none;"></div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" id="save-button">Save Configuration</button>
+                    </div>
+                </form>
+
+                <div id="settings-status-area" class="status-area" style="margin-top: 1rem; padding: 1rem; background-color: var(--prusa-medium-gray); border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: #aaa; max-height: 120px; overflow-y: auto; display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Spool Modal -->
+    <div id="edit-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Edit Spool</h2>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-spool-id">
+                <div class="form-group">
+                    <label for="edit-type">Material Type</label>
+                    <select id="edit-type">
+                        <option value="PLA">PLA</option>
+                        <option value="PETG">PETG</option>
+                        <option value="ABS">ABS</option>
+                        <option value="ASA">ASA</option>
+                        <option value="TPU">TPU</option>
+                        <option value="PC">PC</option>
+                        <option value="Nylon">Nylon</option>
+                        <option value="PVA">PVA</option>
+                        <option value="HIPS">HIPS</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-color">Color</label>
+                    <div class="color-preview-row">
+                        <input type="color" id="edit-color" value="#FF5733">
+                        <input type="text" id="edit-color-hex" placeholder="#FF5733" maxlength="7">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-manufacturer">Manufacturer</label>
+                    <input type="text" id="edit-manufacturer" placeholder="e.g., Prusament">
+                </div>
+                <div class="form-group">
+                    <label for="edit-grams">Grams Remaining</label>
+                    <input type="number" id="edit-grams" min="0" max="5000" placeholder="750">
+                    <div class="consume-adjust-row">
+                        <button type="button" id="adjust-grams-btn" class="secondary">Adjust</button>
+                        <input type="number" id="consume-amount" min="0" placeholder="Consume Amount">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-footer-actions">
+                    <button class="secondary" id="modal-cancel">Cancel</button>
+                    <button id="modal-save">Save to Tag</button>
+                </div>
+                <button id="modal-format" class="danger">Format Spool</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Write Binary Data Modal -->
+    <div id="raw-write-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Write Binary Data</h2>
+                <button class="modal-close" id="raw-write-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--prusa-light-gray); font-size: 0.85rem; margin-bottom: 1rem;">
+                    Upload a .bin file containing raw OpenPrintTag NDEF/CBOR data to write directly to the NFC tag.
+                </p>
+                <input type="hidden" id="raw-write-spool-id">
+                <div class="form-group">
+                    <label for="raw-write-file">Binary File (.bin)</label>
+                    <input type="file" id="raw-write-file" accept=".bin" style="color: var(--prusa-text);">
+                </div>
+                <div id="raw-write-file-info" class="file-info" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-footer-actions">
+                    <button class="secondary" id="raw-write-cancel">Cancel</button>
+                    <button id="raw-write-submit" class="danger" disabled>Write to Tag</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Write from Spoolman Modal -->
+    <div id="write-spoolman-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Write from Spoolman</h2>
+                <button class="modal-close" id="write-spoolman-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="write-spoolman-spool-id">
+
+                <!-- Form View -->
+                <div id="spoolman-form-view">
+                    <p style="color: var(--prusa-light-gray); font-size: 0.85rem; margin-bottom: 1rem;">
+                        Enter a Spoolman spool ID to fetch and write its data to the NFC tag.
+                    </p>
+                    <div class="form-group">
+                        <label for="spoolman-id-input">Spoolman Spool ID</label>
+                        <input type="number" id="spoolman-id-input" min="1" placeholder="e.g., 42">
+                    </div>
+                </div>
+
+                <!-- Preview View -->
+                <div id="spoolman-preview-view" style="display: none;">
+                    <div style="background-color: var(--prusa-medium-gray); padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 0.5rem; font-size: 0.9rem;">
+                            <div style="color: var(--prusa-light-gray);">Spoolman ID:</div>
+                            <div id="preview-spoolman-id" style="font-weight: 600;"></div>
+
+                            <div style="color: var(--prusa-light-gray);">Material:</div>
+                            <div id="preview-material"></div>
+
+                            <div style="color: var(--prusa-light-gray);">Color:</div>
+                            <div id="preview-color"></div>
+
+                            <div style="color: var(--prusa-light-gray);">Manufacturer:</div>
+                            <div id="preview-manufacturer"></div>
+
+                            <div style="color: var(--prusa-light-gray);">Initial Weight:</div>
+                            <div><span id="preview-initial-weight"></span>g</div>
+
+                            <div style="color: var(--prusa-light-gray);">Remaining Weight:</div>
+                            <div><span id="preview-remaining-weight"></span>g</div>
+                        </div>
+                    </div>
+                    <p style="color: var(--prusa-light-gray); font-size: 0.85rem;">
+                        This data will be written to the NFC tag. The operation takes 15-20 seconds.
+                    </p>
+                </div>
+
+                <!-- Progress View -->
+                <div id="spoolman-progress-view" style="display: none;">
+                    <div style="text-align: center; padding: 2rem 0;">
+                        <p style="margin-bottom: 1rem;">Writing to NFC tag...</p>
+                        <p style="color: var(--prusa-light-gray); font-size: 0.85rem;">This may take 15-20 seconds. Please wait.</p>
+                    </div>
+                </div>
+
+                <!-- Result View -->
+                <div id="spoolman-result-view" style="display: none;">
+                    <div id="spoolman-result-message" style="padding: 1rem; border-radius: 4px; margin-bottom: 1rem;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-footer-actions">
+                    <button class="secondary" id="write-spoolman-cancel">Cancel</button>
+                    <button id="write-spoolman-action">Preview</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const connectButton = document.getElementById('connect-button');
+        const connectionUI = document.getElementById('connection-ui');
+        const appUI = document.getElementById('app-ui');
+        const statusArea = document.getElementById('status-area');
+        const settingsStatusArea = document.getElementById('settings-status-area');
+        const configForm = document.getElementById('config-form');
+        const saveButton = document.getElementById('save-button');
+        const appContainer = document.querySelector('.container');
+
+        // Tab elements
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        // Spool containers
+        const currentSpoolContainer = document.getElementById('current-spool-container');
+        const recentSpoolsContainer = document.getElementById('recent-spools-container');
+
+        // Modal elements
+        const editModal = document.getElementById('edit-modal');
+        const modalClose = document.getElementById('modal-close');
+        const modalCancel = document.getElementById('modal-cancel');
+        const modalSave = document.getElementById('modal-save');
+        const modalFormat = document.getElementById('modal-format');
+        const editSpoolId = document.getElementById('edit-spool-id');
+        const editType = document.getElementById('edit-type');
+        const editColor = document.getElementById('edit-color');
+        const editColorHex = document.getElementById('edit-color-hex');
+        const editManufacturer = document.getElementById('edit-manufacturer');
+        const editGrams = document.getElementById('edit-grams');
+        const consumeAmount = document.getElementById('consume-amount');
+        const adjustGramsButton = document.getElementById('adjust-grams-btn');
+
+        // Raw write modal elements
+        const rawWriteModal = document.getElementById('raw-write-modal');
+        const rawWriteClose = document.getElementById('raw-write-close');
+        const rawWriteCancel = document.getElementById('raw-write-cancel');
+        const rawWriteSubmit = document.getElementById('raw-write-submit');
+        const rawWriteSpoolId = document.getElementById('raw-write-spool-id');
+        const rawWriteFile = document.getElementById('raw-write-file');
+        const rawWriteFileInfo = document.getElementById('raw-write-file-info');
+        let rawWriteFileData = null;
+
+        // Write from Spoolman modal elements and state
+        const writeSpoolmanModal = document.getElementById('write-spoolman-modal');
+        const writeSpoolmanClose = document.getElementById('write-spoolman-close');
+        const writeSpoolmanCancel = document.getElementById('write-spoolman-cancel');
+        const writeSpoolmanAction = document.getElementById('write-spoolman-action');
+        const writeSpoolmanSpoolId = document.getElementById('write-spoolman-spool-id');
+        const spoolmanIdInput = document.getElementById('spoolman-id-input');
+        const spoolmanFormView = document.getElementById('spoolman-form-view');
+        const spoolmanPreviewView = document.getElementById('spoolman-preview-view');
+        const spoolmanProgressView = document.getElementById('spoolman-progress-view');
+        const spoolmanResultView = document.getElementById('spoolman-result-view');
+        let spoolmanPreviewData = null;
+
+        // Bluetooth UUIDs
+        const SERVICE_UUID = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b0001";
+        const CONFIG_READ_UUID = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b0002";
+        const CONFIG_WRITE_UUID = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b0003";
+
+        // State
+        let bleDevice;
+        let configWriteCharacteristic;
+        let configReadCharacteristic;
+        let currentSpoolData = null;
+        let recentSpoolsData = [];
+        let openActionsSpoolId = null;
+        let spoolPollInterval = null;
+        let cachedSpoolmanUrl = '';
+        const SPOOL_POLL_INTERVAL_MS = 3000;
+        const textDecoder = new TextDecoder('utf-8');
+        const textEncoder = new TextEncoder();
+
+        // Command queue for serial BLE operations
+        const commandQueue = [];
+        let isProcessingQueue = false;
+
+        // Queue a command and process if not already processing
+        function enqueueCommand(commandFn) {
+            return new Promise((resolve, reject) => {
+                commandQueue.push({ execute: commandFn, resolve, reject });
+                processQueue();
+            });
+        }
+
+        // Process commands one at a time
+        async function processQueue() {
+            if (isProcessingQueue || commandQueue.length === 0) return;
+
+            isProcessingQueue = true;
+
+            while (commandQueue.length > 0) {
+                const { execute, resolve, reject } = commandQueue.shift();
+                try {
+                    const result = await execute();
+                    resolve(result);
+                } catch (error) {
+                    reject(error);
+                }
+            }
+
+            isProcessingQueue = false;
+        }
+
+        // Logging
+        function log(message, type = '', area = statusArea) {
+            area.style.display = 'block';
+            const p = document.createElement('p');
+            p.textContent = `> ${message}`;
+            p.className = `status-message ${type ? 'status-' + type : ''}`;
+            area.appendChild(p);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        // Tab Navigation
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.dataset.tab;
+
+                tabButtons.forEach(b => b.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+
+                btn.classList.add('active');
+                document.getElementById(`tab-${tabId}`).classList.add('active');
+            });
+        });
+
+        // Relative Time Formatting
+        function formatRelativeTime(timestamp) {
+            // Handle missing, invalid, or zero timestamps
+            if (!timestamp || timestamp <= 0) {
+                console.log("no time stamp")
+                return 'Unknown';
+            }
+
+            const now = Date.now() / 1000;
+            const diff = now - timestamp;
+
+            // Handle future timestamps or unreasonably old ones (> 1 year)
+            if (diff < 0 || diff > 31536000) {
+                console.log("timestamp is not valid: " + timestamp);
+                return 'Unknown';
+            }
+
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+            return `${Math.floor(diff / 604800)}w ago`;
+        }
+
+        // Spool Card Rendering
+        function renderSpoolCard(spool, isCurrent = false) {
+            const card = document.createElement('div');
+            card.className = `spool-card${isCurrent ? ' current' : ''}`;
+
+            const timeDisplay = isCurrent ? 'In range' : formatRelativeTime(spool.last_seen);
+
+            let buttons = '';
+            if (isCurrent) {
+                buttons += `<button class="spool-edit-btn" data-spool-id="${spool.id}">Edit</button>`;
+                // Actions dropdown for current spool
+                let dropdownItems = '';
+                if (cachedSpoolmanUrl && spool.spoolman_id > 0) {
+                    dropdownItems += `<button data-action="open-spoolman" data-url="${cachedSpoolmanUrl}/spool/show/${spool.spoolman_id}">Open In Spoolman</button>`;
+                }
+                if (cachedSpoolmanUrl) {
+                    dropdownItems += `<button data-action="write-spoolman">Write from Spoolman</button>`;
+                }
+                dropdownItems += `<button data-action="write-binary">Write Binary Data</button>`;
+                buttons += `<div class="actions-wrapper">
+                    <button type="button" class="spool-edit-btn secondary actions-toggle" aria-haspopup="menu" aria-expanded="false">Actions</button>
+                    <div class="actions-dropdown">${dropdownItems}</div>
+                </div>`;
+            } else {
+                if (cachedSpoolmanUrl && spool.spoolman_id > 0) {
+                    buttons += `<button class="spool-edit-btn secondary" data-spoolman-url="${cachedSpoolmanUrl}/spool/show/${spool.spoolman_id}">Open In Spoolman</button>`;
+                }
+            }
+
+            card.innerHTML = `
+                <div class="spool-color" style="background-color: ${spool.color || '#888'}"></div>
+                <div class="spool-info">
+                    <div class="spool-type">${spool.type || 'Unknown'}</div>
+                    <div class="spool-manufacturer">${spool.manufacturer || 'Unknown manufacturer'}</div>
+                </div>
+                <div class="spool-meta">
+                    <div class="spool-grams">${spool.grams_remaining || '?'}g</div>
+                    <div class="spool-time">${timeDisplay}</div>
+                </div>
+                ${buttons}
+            `;
+
+            if (isCurrent) {
+                const editBtn = card.querySelector('.spool-edit-btn');
+                editBtn.addEventListener('click', () => openEditModal(spool));
+
+                // Actions dropdown toggle
+                const actionsToggle = card.querySelector('.actions-toggle');
+                const actionsDropdown = card.querySelector('.actions-dropdown');
+                if (actionsToggle && actionsDropdown) {
+                    if (openActionsSpoolId === spool.id) {
+                        actionsDropdown.classList.add('open');
+                        actionsToggle.setAttribute('aria-expanded', 'true');
+                    }
+
+                    actionsToggle.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const isOpen = actionsDropdown.classList.toggle('open');
+                        actionsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                        openActionsSpoolId = isOpen ? spool.id : null;
+                    });
+
+                    const spoolmanAction = actionsDropdown.querySelector('[data-action="open-spoolman"]');
+                    if (spoolmanAction) {
+                        spoolmanAction.addEventListener('click', () => {
+                            window.open(spoolmanAction.dataset.url, '_blank');
+                            actionsDropdown.classList.remove('open');
+                            actionsToggle.setAttribute('aria-expanded', 'false');
+                            openActionsSpoolId = null;
+                        });
+                    }
+
+                    const writeBinaryAction = actionsDropdown.querySelector('[data-action="write-binary"]');
+                    if (writeBinaryAction) {
+                        writeBinaryAction.addEventListener('click', () => {
+                            actionsDropdown.classList.remove('open');
+                            actionsToggle.setAttribute('aria-expanded', 'false');
+                            openActionsSpoolId = null;
+                            openRawWriteModal(spool.id);
+                        });
+                    }
+
+                    const writeSpoolmanAction = actionsDropdown.querySelector('[data-action="write-spoolman"]');
+                    if (writeSpoolmanAction) {
+                        writeSpoolmanAction.addEventListener('click', () => {
+                            actionsDropdown.classList.remove('open');
+                            actionsToggle.setAttribute('aria-expanded', 'false');
+                            openActionsSpoolId = null;
+                            openWriteSpoolmanModal(spool.id);
+                        });
+                    }
+                }
+            }
+
+            const spoolmanBtn = card.querySelector('[data-spoolman-url]');
+            if (spoolmanBtn) {
+                spoolmanBtn.addEventListener('click', () => {
+                    window.open(spoolmanBtn.dataset.spoolmanUrl, '_blank');
+                });
+            }
+
+            return card;
+        }
+
+        function renderSpools() {
+            // Render current spool
+            currentSpoolContainer.innerHTML = '';
+            if (currentSpoolData && currentSpoolData.blank) {
+                // Blank tag detected — show format button
+                const card = document.createElement('div');
+                card.className = 'format-spool-card';
+                card.innerHTML = `
+                    <div class="format-label">Blank Tag Detected</div>
+                    <div class="format-uid">UID: ${currentSpoolData.id}</div>
+                    <button id="format-spool-btn">Format Spool</button>
+                `;
+                currentSpoolContainer.appendChild(card);
+                document.getElementById('format-spool-btn').addEventListener('click', handleFormatSpool);
+            } else if (currentSpoolData) {
+                currentSpoolContainer.appendChild(renderSpoolCard(currentSpoolData, true));
+            } else {
+                openActionsSpoolId = null;
+                currentSpoolContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#128451;</div>
+                        <p>No spool detected.<br>Place a tagged spool on the reader.</p>
+                    </div>
+                `;
+            }
+
+            // Render recent spools
+            recentSpoolsContainer.innerHTML = '';
+            if (recentSpoolsData.length > 0) {
+                recentSpoolsData.forEach(spool => {
+                    recentSpoolsContainer.appendChild(renderSpoolCard(spool, false));
+                });
+            } else {
+                recentSpoolsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <p>No recent spools.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Modal Functions
+        function openEditModal(spool) {
+            editSpoolId.value = spool.id;
+            editType.value = spool.type || 'PLA';
+            editColor.value = spool.color || '#888888';
+            editColorHex.value = spool.color || '#888888';
+            editManufacturer.value = spool.manufacturer || '';
+            editGrams.value = spool.grams_remaining || '';
+            consumeAmount.value = '';
+            modalFormat.disabled = false;
+            modalFormat.textContent = 'Format Spool';
+
+            editModal.classList.add('active');
+        }
+
+        function closeEditModal() {
+            editModal.classList.remove('active');
+        }
+
+        function openRawWriteModal(spoolId) {
+            rawWriteSpoolId.value = spoolId;
+            rawWriteFile.value = '';
+            rawWriteFileInfo.style.display = 'none';
+            rawWriteFileData = null;
+            rawWriteSubmit.disabled = true;
+            rawWriteSubmit.textContent = 'Write to Tag';
+            rawWriteModal.classList.add('active');
+        }
+
+        function closeRawWriteModal() {
+            rawWriteModal.classList.remove('active');
+        }
+
+        // Write from Spoolman Modal Functions
+        function openWriteSpoolmanModal(spoolId) {
+            writeSpoolmanSpoolId.value = spoolId;
+            spoolmanIdInput.value = '';
+            spoolmanPreviewData = null;
+
+            // Reset to form view
+            spoolmanFormView.style.display = 'block';
+            spoolmanPreviewView.style.display = 'none';
+            spoolmanProgressView.style.display = 'none';
+            spoolmanResultView.style.display = 'none';
+
+            writeSpoolmanAction.textContent = 'Preview';
+            writeSpoolmanAction.disabled = false;
+            writeSpoolmanCancel.textContent = 'Cancel';
+
+            // Pause automatic spool polling while modal is open
+            stopSpoolPolling();
+
+            writeSpoolmanModal.classList.add('active');
+        }
+
+        function closeWriteSpoolmanModal() {
+            writeSpoolmanModal.classList.remove('active');
+            spoolmanPreviewData = null;
+
+            // Resume automatic spool polling
+            startSpoolPolling();
+        }
+
+        writeSpoolmanClose.addEventListener('click', closeWriteSpoolmanModal);
+        writeSpoolmanCancel.addEventListener('click', closeWriteSpoolmanModal);
+        writeSpoolmanModal.addEventListener('click', (e) => {
+            if (e.target === writeSpoolmanModal) closeWriteSpoolmanModal();
+        });
+
+        async function handlePreviewSpoolman() {
+            const spoolmanId = parseInt(spoolmanIdInput.value, 10);
+
+            if (!spoolmanId || spoolmanId <= 0) {
+                alert('Please enter a valid Spoolman ID.');
+                return;
+            }
+
+            if (!configWriteCharacteristic || !configReadCharacteristic) {
+                alert('Not connected to device.');
+                return;
+            }
+
+            try {
+                writeSpoolmanAction.disabled = true;
+                writeSpoolmanAction.textContent = 'Loading...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({
+                            command: 'get_spoolman_spool',
+                            spoolman_id: spoolmanId
+                        }))
+                    );
+
+                    // Read response from write characteristic
+                    await new Promise(resolve => setTimeout(resolve, 120));
+                    const statusValue = await configWriteCharacteristic.readValue();
+                    const statusResponse = JSON.parse(textDecoder.decode(statusValue));
+
+                    if (statusResponse.error) {
+                        throw new Error(statusResponse.error);
+                    }
+
+                    // Read data from read characteristic
+                    const dataValue = await configReadCharacteristic.readValue();
+                    const dataJson = textDecoder.decode(dataValue);
+                    return JSON.parse(dataJson);
+                });
+
+                // Store preview data
+                spoolmanPreviewData = {
+                    spoolman_id: response.spoolman_id,
+                    material: response.material || '',
+                    color: response.color || '',
+                    manufacturer: response.vendor_name || '',
+                    initial_weight_g: response.initial_weight_g,
+                    remaining_weight_g: response.remaining_weight_g
+                };
+
+                // Populate preview fields
+                document.getElementById('preview-spoolman-id').textContent = response.spoolman_id;
+                document.getElementById('preview-material').textContent = response.material || '(not set)';
+                document.getElementById('preview-color').textContent = response.color || '(not set)';
+                document.getElementById('preview-manufacturer').textContent = response.vendor_name || '(not set)';
+                document.getElementById('preview-initial-weight').textContent = response.initial_weight_g;
+                document.getElementById('preview-remaining-weight').textContent = response.remaining_weight_g;
+
+                // Switch to preview view
+                spoolmanFormView.style.display = 'none';
+                spoolmanPreviewView.style.display = 'block';
+
+                writeSpoolmanAction.textContent = 'Write to Tag';
+                writeSpoolmanAction.disabled = false;
+
+            } catch (error) {
+                alert(`Failed to fetch spool: ${error.message}`);
+                writeSpoolmanAction.disabled = false;
+                writeSpoolmanAction.textContent = 'Preview';
+            }
+        }
+
+        async function handleWriteSpoolman() {
+            if (!spoolmanPreviewData) {
+                alert('No preview data available.');
+                return;
+            }
+
+            if (!configWriteCharacteristic || !configReadCharacteristic) {
+                alert('Not connected to device.');
+                return;
+            }
+
+            try {
+                // Disable action button while writing
+                writeSpoolmanAction.disabled = true;
+
+                // Switch to progress view
+                spoolmanPreviewView.style.display = 'none';
+                spoolmanProgressView.style.display = 'block';
+                writeSpoolmanCancel.disabled = true;
+
+                // Update progress message
+                const progressEl = spoolmanProgressView.querySelector('p:first-child');
+                progressEl.textContent = 'Sending write command...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({
+                            command: 'write_spoolman_spool',
+                            spoolman_id: spoolmanPreviewData.spoolman_id,
+                            type: spoolmanPreviewData.material,
+                            color: spoolmanPreviewData.color,
+                            manufacturer: spoolmanPreviewData.manufacturer,
+                            initial_weight: spoolmanPreviewData.initial_weight_g,
+                            grams_remaining: spoolmanPreviewData.remaining_weight_g
+                        }))
+                    );
+
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.error) {
+                    throw new Error(response.error);
+                }
+
+                // Command accepted - now poll for completion
+                progressEl.textContent = 'Writing to NFC tag...';
+
+                const expectedData = {
+                    type: spoolmanPreviewData.material,
+                    color: spoolmanPreviewData.color ? spoolmanPreviewData.color.toUpperCase() : '',
+                    manufacturer: spoolmanPreviewData.manufacturer,
+                    spoolman_id: spoolmanPreviewData.spoolman_id,
+                    grams_remaining: spoolmanPreviewData.remaining_weight_g
+                };
+
+                // Wait 10 seconds before first check
+                await new Promise(resolve => setTimeout(resolve, 10000));
+
+                // Poll up to 3 times (10s, 20s, 30s)
+                let writeComplete = false;
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    progressEl.textContent = `Writing to NFC tag... (${attempt * 10}s)`;
+
+                    const spoolsData = await enqueueCommand(async () => {
+                        await configWriteCharacteristic.writeValue(
+                            textEncoder.encode('{"command":"list_spools"}')
+                        );
+                        const value = await configReadCharacteristic.readValue();
+                        return JSON.parse(textDecoder.decode(value));
+                    });
+
+                    const current = spoolsData.current;
+                    if (current &&
+                        current.type === expectedData.type &&
+                        current.spoolman_id === expectedData.spoolman_id &&
+                        current.manufacturer === expectedData.manufacturer &&
+                        Math.abs((current.grams_remaining || 0) - expectedData.grams_remaining) < 5) {
+
+                        // Verify color if it was set
+                        const colorMatch = !expectedData.color ||
+                                         (current.color && current.color.toUpperCase() === expectedData.color);
+
+                        if (colorMatch) {
+                            writeComplete = true;
+                            break;
+                        }
+                    }
+
+                    // Wait 10 seconds before next check (unless this was the last attempt)
+                    if (attempt < 3) {
+                        await new Promise(resolve => setTimeout(resolve, 10000));
+                    }
+                }
+
+                // Switch to result view
+                spoolmanProgressView.style.display = 'none';
+                spoolmanResultView.style.display = 'block';
+
+                if (writeComplete) {
+                    document.getElementById('spoolman-result-message').innerHTML =
+                        `<strong style="color: var(--prusa-green);">✓ Success</strong><br>Spool ${spoolmanPreviewData.spoolman_id} written to NFC tag.`;
+                    document.getElementById('spoolman-result-message').style.backgroundColor = 'rgba(46, 204, 113, 0.1)';
+                    document.getElementById('spoolman-result-message').style.border = '1px solid var(--prusa-green)';
+
+                    // Refresh spools and close after 2 seconds
+                    setTimeout(() => {
+                        closeWriteSpoolmanModal();
+                        loadSpools();
+                    }, 2000);
+                } else {
+                    document.getElementById('spoolman-result-message').innerHTML =
+                        `<strong style="color: var(--prusa-orange);">⚠ Timeout</strong><br>Write command sent but verification timed out after 30s. The write may still be in progress - check the tag in a few moments.`;
+                    document.getElementById('spoolman-result-message').style.backgroundColor = 'rgba(250, 104, 49, 0.1)';
+                    document.getElementById('spoolman-result-message').style.border = '1px solid var(--prusa-orange)';
+                }
+
+                writeSpoolmanCancel.disabled = false;
+                writeSpoolmanCancel.textContent = 'Close';
+
+            } catch (error) {
+                spoolmanProgressView.style.display = 'none';
+                spoolmanResultView.style.display = 'block';
+
+                document.getElementById('spoolman-result-message').innerHTML =
+                    `<strong style="color: var(--prusa-red);">Write Failed</strong><br>${error.message}`;
+                document.getElementById('spoolman-result-message').style.backgroundColor = 'rgba(214, 48, 49, 0.1)';
+                document.getElementById('spoolman-result-message').style.border = '1px solid var(--prusa-red)';
+
+                writeSpoolmanCancel.disabled = false;
+                writeSpoolmanCancel.textContent = 'Close';
+            }
+        }
+
+        writeSpoolmanAction.addEventListener('click', () => {
+            if (writeSpoolmanAction.textContent === 'Preview') {
+                handlePreviewSpoolman();
+            } else if (writeSpoolmanAction.textContent === 'Write to Tag') {
+                handleWriteSpoolman();
+            }
+        });
+
+        rawWriteClose.addEventListener('click', closeRawWriteModal);
+        rawWriteCancel.addEventListener('click', closeRawWriteModal);
+        rawWriteModal.addEventListener('click', (e) => {
+            if (e.target === rawWriteModal) closeRawWriteModal();
+        });
+
+        rawWriteFile.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            rawWriteFileData = null;
+            rawWriteSubmit.disabled = true;
+
+            if (!file) {
+                rawWriteFileInfo.style.display = 'none';
+                return;
+            }
+
+            rawWriteFileInfo.style.display = 'block';
+            const data = new Uint8Array(await file.arrayBuffer());
+
+            if (data.length < 8 || data.length > 312) {
+                rawWriteFileInfo.innerHTML = `<span class="file-name">${file.name}</span> (${data.length} bytes)<br><span class="file-error">Invalid size: must be 8-312 bytes</span>`;
+                return;
+            }
+            if (data[0] !== 0xE1) {
+                rawWriteFileInfo.innerHTML = `<span class="file-name">${file.name}</span> (${data.length} bytes)<br><span class="file-error">Invalid data: first byte must be 0xE1 (CC magic)</span>`;
+                return;
+            }
+
+            rawWriteFileData = data;
+            rawWriteSubmit.disabled = false;
+            rawWriteFileInfo.innerHTML = `<span class="file-name">${file.name}</span> (${data.length} bytes)<br><span class="file-ok">Valid OpenPrintTag binary</span>`;
+        });
+
+        rawWriteSubmit.addEventListener('click', async () => {
+            if (!configWriteCharacteristic || !rawWriteFileData) return;
+
+            if (!window.confirm('This will overwrite ALL data on the NFC tag. Continue?')) return;
+
+            rawWriteSubmit.disabled = true;
+            rawWriteSubmit.textContent = 'Writing...';
+
+            try {
+                // Base64 encode the binary data
+                let binary = '';
+                for (let i = 0; i < rawWriteFileData.length; i++) {
+                    binary += String.fromCharCode(rawWriteFileData[i]);
+                }
+                const base64Data = btoa(binary);
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({
+                            command: 'write_raw_tag',
+                            id: rawWriteSpoolId.value,
+                            data: base64Data
+                        }))
+                    );
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.error) {
+                    alert('Write failed: ' + response.error);
+                    rawWriteSubmit.disabled = false;
+                    rawWriteSubmit.textContent = 'Write to Tag';
+                } else {
+                    rawWriteSubmit.textContent = 'Success!';
+                    setTimeout(() => {
+                        closeRawWriteModal();
+                        loadSpools();
+                    }, 1500);
+                }
+            } catch (err) {
+                alert('Write failed: ' + err.message);
+                rawWriteSubmit.disabled = false;
+                rawWriteSubmit.textContent = 'Write to Tag';
+            }
+        });
+
+        // Close any open actions dropdown when clicking outside
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.actions-dropdown.open').forEach(d => {
+                d.classList.remove('open');
+                const toggle = d.parentElement?.querySelector('.actions-toggle');
+                if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            });
+            openActionsSpoolId = null;
+        });
+
+        // Sync color inputs
+        editColor.addEventListener('input', () => {
+            editColorHex.value = editColor.value;
+        });
+
+        editColorHex.addEventListener('input', () => {
+            if (/^#[0-9A-Fa-f]{6}$/.test(editColorHex.value)) {
+                editColor.value = editColorHex.value;
+            }
+        });
+
+        adjustGramsButton.addEventListener('click', () => {
+            const gramsRemaining = parseInt(editGrams.value, 10);
+            const consumeValue = parseInt(consumeAmount.value, 10);
+            const safeGramsRemaining = Number.isNaN(gramsRemaining) ? 0 : gramsRemaining;
+            const safeConsumeValue = Number.isNaN(consumeValue) ? 0 : consumeValue;
+            const newGramsRemaining = Math.max(0, safeGramsRemaining - safeConsumeValue);
+
+            editGrams.value = newGramsRemaining;
+            consumeAmount.value = '';
+        });
+
+        // Modal event listeners
+        modalClose.addEventListener('click', closeEditModal);
+        modalCancel.addEventListener('click', closeEditModal);
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) closeEditModal();
+        });
+
+        // Save spool to NFC tag
+        modalSave.addEventListener('click', async () => {
+            if (!configWriteCharacteristic) {
+                alert('Not connected to device.');
+                return;
+            }
+
+            const updatePayload = {
+                command: 'update_spool',
+                id: editSpoolId.value,
+                type: editType.value,
+                color: editColor.value,
+                manufacturer: editManufacturer.value,
+                grams_remaining: parseInt(editGrams.value, 10) || 0
+            };
+
+            try {
+                modalSave.disabled = true;
+                modalSave.textContent = 'Saving...';
+
+                const response = await enqueueCommand(async () => {
+                    console.log('Sending update_spool:', updatePayload);
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify(updatePayload))
+                    );
+
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    const responseJson = textDecoder.decode(responseValue);
+                    console.log('update_spool response:', responseJson);
+                    return JSON.parse(responseJson);
+                });
+
+                if (response.status === 'ok') {
+                    // Update local data
+                    if (currentSpoolData && currentSpoolData.id === editSpoolId.value) {
+                        currentSpoolData.type = editType.value;
+                        currentSpoolData.color = editColor.value;
+                        currentSpoolData.manufacturer = editManufacturer.value;
+                        currentSpoolData.grams_remaining = parseInt(editGrams.value, 10) || 0;
+                    }
+                    renderSpools();
+                    closeEditModal();
+                } else {
+                    alert(response.error || 'Failed to save spool.');
+                }
+            } catch (error) {
+                alert(`Error saving spool: ${error}`);
+            } finally {
+                modalSave.disabled = false;
+                modalSave.textContent = 'Save to Tag';
+            }
+        });
+
+        modalFormat.addEventListener('click', async () => {
+            if (!configWriteCharacteristic) {
+                alert('Not connected to device.');
+                return;
+            }
+
+            const spoolId = editSpoolId.value;
+            const confirmed = window.confirm(
+                'Format this spool as new? This resets all tag data and will assign a new Spoolman ID.'
+            );
+            if (!confirmed) return;
+
+            try {
+                modalSave.disabled = true;
+                modalCancel.disabled = true;
+                modalFormat.disabled = true;
+                modalFormat.textContent = 'Formatting...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({ command: 'format_spool', id: spoolId }))
+                    );
+
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.status === 'ok') {
+                    closeEditModal();
+                    setTimeout(() => loadSpools(), 2000);
+                } else {
+                    alert(response.error || 'Failed to format spool.');
+                }
+            } catch (error) {
+                alert(`Error formatting spool: ${error}`);
+            } finally {
+                modalSave.disabled = false;
+                modalCancel.disabled = false;
+                modalFormat.disabled = false;
+                modalFormat.textContent = 'Format Spool';
+            }
+        });
+
+        // Format blank spool
+        async function handleFormatSpool() {
+            if (!configWriteCharacteristic || !currentSpoolData || !currentSpoolData.blank) return;
+
+            const btn = document.getElementById('format-spool-btn');
+            const uid = currentSpoolData.id;
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Formatting...';
+
+                const response = await enqueueCommand(async () => {
+                    const payload = { command: 'format_spool', id: uid };
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify(payload))
+                    );
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.status === 'ok') {
+                    // Wait briefly for NFC write to complete, then refresh
+                    setTimeout(() => loadSpools(), 2000);
+                } else {
+                    alert(response.error || 'Failed to format spool.');
+                    btn.disabled = false;
+                    btn.textContent = 'Format Spool';
+                }
+            } catch (error) {
+                alert(`Error formatting spool: ${error}`);
+                btn.disabled = false;
+                btn.textContent = 'Format Spool';
+            }
+        }
+
+        // BLE Connection
+        async function handleConnect() {
+            try {
+                log('Requesting Bluetooth device...');
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                log(`Connecting to ${bleDevice.name}...`);
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                const server = await bleDevice.gatt.connect();
+
+                log('Getting service...');
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                log('Getting characteristics...');
+                configWriteCharacteristic = await service.getCharacteristic(CONFIG_WRITE_UUID);
+                configReadCharacteristic = await service.getCharacteristic(CONFIG_READ_UUID);
+
+                log('Connection successful.', 'success');
+
+                // Show app UI
+                connectionUI.style.display = 'none';
+                appUI.style.display = 'block';
+
+                // Load data
+                await loadSpools();
+                await loadConfig();
+
+                // Start polling for spool updates
+                startSpoolPolling();
+
+            } catch (error) {
+                log(`Connection failed: ${error}`, 'error');
+            }
+        }
+
+        function startSpoolPolling() {
+            stopSpoolPolling();
+            spoolPollInterval = setInterval(loadSpools, SPOOL_POLL_INTERVAL_MS);
+        }
+
+        function stopSpoolPolling() {
+            if (spoolPollInterval) {
+                clearInterval(spoolPollInterval);
+                spoolPollInterval = null;
+            }
+        }
+
+        async function loadSpools() {
+            if (!configWriteCharacteristic || !configReadCharacteristic) return;
+
+            try {
+                await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode('{"command":"list_spools"}')
+                    );
+
+                    const value = await configReadCharacteristic.readValue();
+                    const responseJson = textDecoder.decode(value);
+                    const response = JSON.parse(responseJson);
+
+                    // D) Current spool should always be updated (show/remove as appropriate)
+                    currentSpoolData = response.current || null;
+
+                    // Handle recently seen spools with merge logic
+                    const incomingRecent = response.recent || [];
+
+                    if (incomingRecent.length > 0) {
+                        recentSpoolsData = incomingRecent;
+                    }
+                    // B) If client sends no spools for recently seen, keep current ones visible
+                    // (do nothing - recentSpoolsData stays unchanged)
+                });
+
+                renderSpools();
+            } catch (error) {
+                console.error('Failed to load spools:', error);
+                // On error, keep existing data stable instead of clearing
+                // Only clear currentSpoolData since we don't know if a spool is present
+            }
+        }
+
+        async function loadConfig() {
+            if (!configWriteCharacteristic || !configReadCharacteristic) return;
+
+            try {
+                const config = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode('{"command":"read_config"}')
+                    );
+
+                    const value = await configReadCharacteristic.readValue();
+                    const configJson = textDecoder.decode(value);
+                    return JSON.parse(configJson);
+                });
+
+                // Populate form
+                document.getElementById('ssid').value = config.ssid || '';
+                document.getElementById('prusa_link_url').value = config.prusa_link_url || '';
+                document.getElementById('prusa_link_api_key').value = config.prusa_link_api_key || '';
+                document.getElementById('spoolman_url').value = config.spoolman_url || '';
+                cachedSpoolmanUrl = config.spoolman_url || '';
+                document.getElementById('poll_interval_ms').value = config.poll_interval_ms || 10000;
+                const lcdTimeoutMs = config.lcd_timeout_ms ?? 120000;
+                document.getElementById('lcd_timeout_minutes').value = Math.round(lcdTimeoutMs / 60000);
+                document.getElementById('wifi_pass').value = '';
+                document.getElementById('device-version').textContent = config.device_version || 'Unknown';
+
+                // HA fields
+                document.getElementById('ha_enabled').value = config.ha_enabled ? 'true' : 'false';
+                document.getElementById('ha_mqtt_host').value = config.ha_mqtt_host || '';
+                document.getElementById('ha_mqtt_port').value = config.ha_mqtt_port || 1883;
+                document.getElementById('ha_mqtt_user').value = config.ha_mqtt_user || '';
+                document.getElementById('ha_mqtt_pass').value = '';
+                document.getElementById('automation_mode').value = (config.automation_mode || 0).toString();
+
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        async function handleSave(event) {
+            event.preventDefault();
+            if (!configWriteCharacteristic) {
+                log('Not connected.', 'error', settingsStatusArea);
+                return;
+            }
+
+            const ssid = document.getElementById('ssid').value;
+            const wifi_pass = document.getElementById('wifi_pass').value;
+            const prusa_link_url = document.getElementById('prusa_link_url').value;
+            const prusa_link_api_key = document.getElementById('prusa_link_api_key').value;
+            const spoolman_url = document.getElementById('spoolman_url').value;
+            const poll_interval_ms = parseInt(document.getElementById('poll_interval_ms').value, 10);
+            const lcd_timeout_minutes = parseInt(document.getElementById('lcd_timeout_minutes').value, 10);
+            const ha_enabled = document.getElementById('ha_enabled').value === 'true';
+            const ha_mqtt_host = document.getElementById('ha_mqtt_host').value;
+            const ha_mqtt_port = parseInt(document.getElementById('ha_mqtt_port').value, 10) || 1883;
+            const ha_mqtt_user = document.getElementById('ha_mqtt_user').value;
+            const ha_mqtt_pass = document.getElementById('ha_mqtt_pass').value;
+            const automation_mode = parseInt(document.getElementById('automation_mode').value, 10) || 0;
+
+            const configPayload = {
+                command: 'write_config',
+                ssid,
+                prusa_link_url,
+                prusa_link_api_key,
+                spoolman_url,
+                poll_interval_ms,
+                lcd_timeout_ms: Number.isFinite(lcd_timeout_minutes) ? Math.max(0, lcd_timeout_minutes) * 60000 : 120000,
+                ha_enabled,
+                ha_mqtt_host,
+                ha_mqtt_port,
+                ha_mqtt_user,
+                automation_mode
+            };
+
+            if (wifi_pass) {
+                configPayload.wifi_pass = wifi_pass;
+            }
+            if (ha_mqtt_pass) {
+                configPayload.ha_mqtt_pass = ha_mqtt_pass;
+            }
+
+            try {
+                log('Saving configuration...', '', settingsStatusArea);
+                saveButton.disabled = true;
+                saveButton.textContent = 'Saving...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify(configPayload))
+                    );
+
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    const responseJson = textDecoder.decode(responseValue);
+                    console.log('write_config response:', responseJson);
+                    return JSON.parse(responseJson);
+                });
+
+                if (response.status === 'ok') {
+                    log('Configuration saved successfully.', 'success', settingsStatusArea);
+                    document.getElementById('wifi_pass').value = '';
+                } else {
+                    throw new Error(response.error || 'Unknown error');
+                }
+
+            } catch (error) {
+                log(`Failed to save config: ${error}`, 'error', settingsStatusArea);
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save Configuration';
+            }
+        }
+
+        function onDisconnected() {
+            stopSpoolPolling();
+            log('Device disconnected.', 'error');
+            connectionUI.style.display = 'block';
+            appUI.style.display = 'none';
+            bleDevice = null;
+            configWriteCharacteristic = null;
+            configReadCharacteristic = null;
+            currentSpoolData = null;
+            recentSpoolsData = [];
+        }
+
+        // Test connection handlers
+        async function handleTestSpoolman() {
+            const btn = document.getElementById('test-spoolman-btn');
+            const result = document.getElementById('test-spoolman-result');
+            const url = document.getElementById('spoolman_url').value.trim();
+
+            if (!url) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Please enter a Spoolman URL first.';
+                return;
+            }
+
+            if (!configWriteCharacteristic) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Not connected to device.';
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+                result.style.display = 'block';
+                result.style.color = '#aaa';
+                result.textContent = 'Testing connection...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({ command: 'test_spoolman', url }))
+                    );
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.status === 'ok') {
+                    result.style.color = 'var(--prusa-green)';
+                    result.textContent = 'Connection successful!';
+                } else {
+                    result.style.color = 'var(--prusa-red)';
+                    result.innerHTML = `Error: ${response.message || 'Unknown error'}<br><small>Tips: Use "http" not "https". Remove trailing "/". Include port number. Example: http://192.168.45.12:7912</small>`;
+                }
+            } catch (error) {
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = `Error: ${error}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test';
+            }
+        }
+
+        async function handleTestPrusalink() {
+            const btn = document.getElementById('test-prusalink-btn');
+            const result = document.getElementById('test-prusalink-result');
+            const url = document.getElementById('prusa_link_url').value.trim();
+            const apiKey = document.getElementById('prusa_link_api_key').value.trim();
+
+            if (!url) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Please enter a PrusaLink URL first.';
+                return;
+            }
+
+            if (!configWriteCharacteristic) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Not connected to device.';
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+                result.style.display = 'block';
+                result.style.color = '#aaa';
+                result.textContent = 'Testing connection...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({ command: 'test_prusalink', url, api_key: apiKey }))
+                    );
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.status === 'ok') {
+                    result.style.color = 'var(--prusa-green)';
+                    result.textContent = 'Connection successful!';
+                } else {
+                    result.style.color = 'var(--prusa-red)';
+                    result.innerHTML = `Error: ${response.message || 'Unknown error'}<br><small>Tips: Use "http" not "https". Remove trailing "/". Include port number. API key and IP are on the printer and Prusa Connect.</small>`;
+                }
+            } catch (error) {
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = `Error: ${error}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test';
+            }
+        }
+
+        async function handleTestMqtt() {
+            const btn = document.getElementById('test-mqtt-btn');
+            const result = document.getElementById('test-mqtt-result');
+            const haEnabled = document.getElementById('ha_enabled').value === 'true';
+
+            if (!haEnabled) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Enable Home Assistant before running MQTT test.';
+                return;
+            }
+
+            if (!configWriteCharacteristic) {
+                result.style.display = 'block';
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = 'Not connected to device.';
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+                result.style.display = 'block';
+                result.style.color = '#aaa';
+                result.textContent = 'Testing MQTT connection (restart + connect)...';
+
+                const response = await enqueueCommand(async () => {
+                    await configWriteCharacteristic.writeValue(
+                        textEncoder.encode(JSON.stringify({ command: 'test_mqtt' }))
+                    );
+                    const responseValue = await configWriteCharacteristic.readValue();
+                    return JSON.parse(textDecoder.decode(responseValue));
+                });
+
+                if (response.status === 'ok') {
+                    result.style.color = 'var(--prusa-green)';
+                    result.textContent = 'MQTT connection successful!';
+                } else {
+                    result.style.color = 'var(--prusa-red)';
+                    result.textContent = `Error: ${response.message || 'Connection failed'}`;
+                }
+            } catch (error) {
+                result.style.color = 'var(--prusa-red)';
+                result.textContent = `Error: ${error}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test MQTT Connection';
+            }
+        }
+
+        // Event Listeners
+        connectButton.addEventListener('click', handleConnect);
+        configForm.addEventListener('submit', handleSave);
+        document.getElementById('test-spoolman-btn').addEventListener('click', handleTestSpoolman);
+        document.getElementById('test-prusalink-btn').addEventListener('click', handleTestPrusalink);
+        document.getElementById('test-mqtt-btn').addEventListener('click', handleTestMqtt);
+    </script>
+</body>
+</html>
