@@ -153,6 +153,21 @@ Connect the components to the ESP32 as follows:
 
 > **Note:** D35 and D34 are input-only pins on the ESP32 (no internal pull-up). D12 is a strapping pin and is skipped.
 
+## Credits
+
+This project is derived from and inspired by the original **openprinttag_scanner** project created by Ryan C.
+
+* Original project: https://github.com/ryanch/openprinttag_scanner
+
+SpoolSense Scanner builds on that foundation while adapting the firmware for the **SpoolSense ecosystem**, adding features such as:
+
+- Optional status LED support
+- Compile‑time device configuration
+- Expanded NFC tag support (planned)
+- Hardware profile support for multiple ESP32 variants
+
+Many thanks to the original author and contributors for the work that made this project possible.
+
 # Specs Referenced:
 *   OpenPrintTag tag generator: https://openprinttag.org/generator/ 
 *   Spoolman API: https://donkie.github.io/Spoolman/#tag/filament/operation/Find_filaments_filament_get 
