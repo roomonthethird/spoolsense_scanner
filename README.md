@@ -5,21 +5,34 @@ SpoolSense Scanner is an ESP32‑based NFC scanner designed for managing 3D prin
 
 The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows.
 
-Configuration is performed through a web interface delivered over Bluetooth Low Energy (BLE), allowing WiFi credentials and other device settings to be configured without recompiling firmware.
+Configuration is set at compile time by editing `include/UserConfig.h` before flashing.
 
 ## How to configure
-1.  On first boot, or when WiFi is not configured, the device will start a BLE service.
-2.  Connect to the device named "SpoolSenseScanner" from your computer or phone.
-3.  Once connected, you can access the configuration web interface to:
-    *   Configure WiFi SSID and password.
-    *   Set the IP address and API key for your PrusaLink-compatible printer.
+1. Copy the example config: `cp include/UserConfig.example.h include/UserConfig.h`
+2. Edit `include/UserConfig.h` and fill in your settings:
+   - WiFi SSID and password
+   - MQTT broker host, port, and credentials
+   - Spoolman URL (optional)
+   - LCD and status LED enable flags
+   - Automation mode (`0` = Self Directed, `1` = Controlled by HA)
+   - Board selection (`BOARD_ESP32_WROOM` or `BOARD_ESP32_S3`)
+3. Flash the firmware: `pio run -t upload`
+
+> **Note:** Do not commit `UserConfig.h` — it contains credentials and is excluded by `.gitignore`.
+
+## Supported Tag Formats
+
+**OpenPrintTag is the only supported tag format.** The scanner reads and writes NFC tags formatted according to the [OpenPrintTag specification](https://openprinttag.org/generator/). Tags must be written in OpenPrintTag format for the scanner to recognize and process them.
+
+Support for simple UID-only tags (e.g. NTAG215) is planned for a future release.
 
 ## Functionality
-* **NFC Tag Reading/Writing:** Reads and writes NFC tags formatted according to the OpenPrintTag specification.
-* **UID Tag Support (planned):** Future support for simple UID‑only NFC tags such as NTAG215 used with spool tracking systems like Spoolman.
+* **NFC Tag Reading/Writing:** Reads and writes OpenPrintTag-formatted NFC tags.
+* **Home Assistant Integration:** Publishes spool state via MQTT with full HA discovery support.
+* **Spoolman Sync (optional):** Syncs spool weight and metadata with a Spoolman instance.
+* **BLE Spool Operations:** Write tag data, set filament weight, and manage spools via the BLE web UI.
 * **LCD Display (optional):** Displays device status, NFC scan results, and system information.
-* **Bluetooth Configuration:** Provides a web‑based UI over BLE for easy device setup.
-* **Extensible Architecture:** The firmware is designed so additional tag formats and integrations can be added over time.
+* **Extensible Architecture:** The firmware is designed so additional tag formats can be added over time.
 
 # Hardware Setup
 
