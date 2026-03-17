@@ -79,7 +79,7 @@ Typical wiring for a single LED:
 
 | LED Pin | ESP32 Pin |
 |-------|-----------|
-| VCC | 5V |
+| VCC | 5V or 3.3V |
 | GND | GND |
 | DIN | GPIO4 |
 
