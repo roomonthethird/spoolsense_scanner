@@ -1,4 +1,5 @@
 #include "ApplicationManager.h"
+#include "UserConfig.h"
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"
@@ -8,7 +9,7 @@
   #include "ConfigurationManager.h"
   #include "HomeAssistantManager.h"
   #include <Arduino.h>
-  #if USE_STATUS_LED
+  #ifdef ENABLE_STATUS_LED
   #include "LEDManager.h"
   extern LEDManager ledManager;
   #endif
@@ -253,7 +254,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         msg.payload.spoolDetected.material_type,
         msg.payload.spoolDetected.kg_remaining);
     
-    #if USE_STATUS_LED
+    #ifdef ENABLE_STATUS_LED
     {
         // Set target first so task restores it after the flash
         float remaining_g = msg.payload.spoolDetected.kg_remaining * 1000.0f;
@@ -360,7 +361,7 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     bool spoolmanConfigured = false;
 #endif
 
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
     // Set target first, then flash — task restores target after flash completes
     if (state.tag_data_valid) {
         uint8_t color[4] = {0};
@@ -461,7 +462,7 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
 void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: BlankTagDetected - spool_id=%s\n",
         msg.payload.blankTag.spool_id);
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
     ledManager.showOff();          // target = OFF, restored after flash
     ledManager.flashParseFailed();
 #endif
@@ -492,7 +493,7 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
 void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: GenericTagDetected - uid=%s\n",
         msg.payload.genericTag.spool_id);
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
     ledManager.showOff();          // target = OFF, restored after flash
     ledManager.flashTagDetected();
 #endif

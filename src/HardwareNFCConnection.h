@@ -2,6 +2,7 @@
 #define HARDWARE_NFC_CONNECTION_H
 
 #include "NFCConnectionI.h"
+#include "BoardPins.h"
 #include <PN5180.h>
 #include <PN5180ISO15693.h>
 #include <PN5180ISO14443.h>
@@ -33,20 +34,6 @@ private:
     static constexpr uint8_t READ_CACHE_PAGES = 78;
     uint8_t readCache_[READ_CACHE_PAGES * 4];
     bool readCacheValid_ = false;
-
-    // PN5180 SPI pins (right side of ESP32, top to bottom)
-    static constexpr int PN5180_RST   = 13;  // Hardware reset (active low)
-    static constexpr int PN5180_NSS   = 14;  // SPI chip select (active low)
-    static constexpr int PN5180_MOSI  = 27;  // SPI master-out slave-in
-    static constexpr int PN5180_MISO  = 26;  // SPI master-in slave-out
-    static constexpr int PN5180_SCK   = 25;  // SPI clock
-    static constexpr int PN5180_BUSY  = 33;  // Busy signal (input)
-
-    // PN5180 additional pins (active in future software updates)
-    static constexpr int PN5180_GPIO  = 32;  // General purpose I/O (card detection)
-    static constexpr int PN5180_IRQ   = 35;  // Interrupt request (active HIGH, input-only pin)
-    static constexpr int PN5180_AUX   = 34;  // Auxiliary monitoring (input-only pin)
-    // REQ (DWL_REQ): Not connected. Only needed for PN5180 firmware updates.
 
     // Static HAL callbacks
     static opt_error_t halReadPage(void* ctx, uint8_t page, uint8_t* buffer);

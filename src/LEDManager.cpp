@@ -1,4 +1,5 @@
 #include "LEDManager.h"
+#include "UserConfig.h"
 
 #include <cstdlib>
 #include <cmath>
@@ -11,11 +12,20 @@
 #define M_PI 3.14159265f
 #endif
 
+#if defined(BOARD_ESP32_S3)
+LEDManager::LEDManager()
+    : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRB + NEO_KHZ800) {}
+#else
 LEDManager::LEDManager()
     : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRBW + NEO_KHZ800) {}
+#endif
 
 void LEDManager::begin(uint8_t pin) {
+#if defined(BOARD_ESP32_S3)
+    _pixel.updateType(NEO_GRB + NEO_KHZ800);
+#else
     _pixel.updateType(NEO_GRBW + NEO_KHZ800);
+#endif
     _pixel.setPin(pin);
     _pixel.begin();
     _pixel.setBrightness(64);
@@ -39,7 +49,11 @@ void LEDManager::startTask() {
 
 void LEDManager::showBooting() {
     if (!_initialized) return;
-    _pixel.setPixelColor(0, _pixel.Color(0, 0, 0, 255));  // pure white via W channel
+#if defined(BOARD_ESP32_S3)
+    _pixel.setPixelColor(0, _pixel.Color(255, 255, 255));  // RGB white
+#else
+    _pixel.setPixelColor(0, _pixel.Color(0, 0, 0, 255));   // RGBW white via W channel
+#endif
     _pixel.show();
 }
 

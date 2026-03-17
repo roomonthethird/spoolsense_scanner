@@ -1,0 +1,39 @@
+#pragma once
+
+#include "UserConfig.h"
+
+#if defined(BOARD_ESP32_S3)
+  // --- ESP32-S3-Zero pin mapping ---
+  // PN5180 SPI
+  #define PIN_PN5180_RST   4   // Hardware reset (active low)
+  #define PIN_PN5180_NSS   5   // SPI chip select (active low)
+  #define PIN_PN5180_MOSI  6   // SPI master-out slave-in
+  #define PIN_PN5180_MISO  7   // SPI master-in slave-out
+  #define PIN_PN5180_SCK   8   // SPI clock
+  #define PIN_PN5180_BUSY  9   // Busy signal (input)
+  #define PIN_PN5180_GPIO  10  // General purpose I/O (card detection)
+  #define PIN_PN5180_IRQ   11  // Interrupt request (active HIGH)
+  #define PIN_PN5180_AUX   12  // Auxiliary monitoring (future use)
+  // LCD I2C
+  #define PIN_LCD_SDA      1
+  #define PIN_LCD_SCL      2
+  // Status LED — onboard WS2812 RGB (always available, no external wiring)
+  #define PIN_STATUS_LED   21
+#else
+  // --- ESP32-WROOM-32 pin mapping (default) ---
+  // PN5180 SPI
+  #define PIN_PN5180_RST   13  // Hardware reset (active low)
+  #define PIN_PN5180_NSS   14  // SPI chip select (active low)
+  #define PIN_PN5180_MOSI  27  // SPI master-out slave-in
+  #define PIN_PN5180_MISO  26  // SPI master-in slave-out
+  #define PIN_PN5180_SCK   25  // SPI clock
+  #define PIN_PN5180_BUSY  33  // Busy signal (input)
+  #define PIN_PN5180_GPIO  32  // General purpose I/O (card detection)
+  #define PIN_PN5180_IRQ   35  // Interrupt request (active HIGH, input-only pin)
+  #define PIN_PN5180_AUX   34  // Auxiliary monitoring (input-only pin)
+  // LCD I2C
+  #define PIN_LCD_SDA      23
+  #define PIN_LCD_SCL      22
+  // Status LED — external SK6812 RGBW (optional, requires wiring)
+  #define PIN_STATUS_LED   4
+#endif

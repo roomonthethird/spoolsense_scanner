@@ -33,8 +33,9 @@
 
 /* Optional hardware features */
 #define ENABLE_LCD 0
-#define ENABLE_STATUS_LED 1
+#define ENABLE_STATUS_LED 1  // Always available on S3-Zero (onboard LED), optional on WROOM (external wiring)
 
-/* Board selection: uncomment ONE of the following */
+/* Board selection: uncomment ONE of the following.
+   Pin mapping is automatic via BoardPins.h — no need to configure pins manually. */
 #define BOARD_ESP32_WROOM
 // #define BOARD_ESP32_S3

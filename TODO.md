@@ -1,13 +1,10 @@
 # TODO
 
-## In Progress
-- **ESP32-S3 support** — board profile define exists, needs hardware testing and any S3-specific pin/peripheral adjustments
-
 ## Bugs
 
 - **Spoolman 400 on spool create** — `openprinttag_uuid` in the extra field is double-escaped (`"\"DAD4E374080104E0\""` instead of `"DAD4E374080104E0"`); every new spool create fails with HTTP 400
 - **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
-- **ENABLE_STATUS_LED is a no-op** — defined in `UserConfig.h` and stored in `DeviceConfig` but never wired into any `#if` guard; actual LED compilation is controlled by `USE_STATUS_LED` in `platformio.ini`, making the UserConfig define misleading
+
 - **Spoolman material mismatch** — serial log showed tag written as ABS but Spoolman matched it to TPU (filament id=3); likely a vendor/filament lookup bug or stale test data in Spoolman, needs investigation
 - **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, HTML title in `docs/index.html`, project name in `CMakeLists.txt`, and `.code-workspace` filename
 
@@ -39,7 +36,7 @@
 - **Installer script** — interactive setup script that walks the user through WiFi, MQTT, Spoolman, board selection, and optional hardware, then generates `UserConfig.h` and flashes the device
 
 ### Hardware / Build
-- **LED pin configurable via UserConfig.h** — currently `STATUS_LED_PIN` is set in `platformio.ini` build flags; move to `UserConfig.h` alongside `ENABLE_STATUS_LED`
+
 - **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
 
 ### Debugging / Logging
@@ -60,3 +57,6 @@
 - **Compile-time config** — all settings in `include/UserConfig.h`; BLE settings config removed
 - **LCD truly optional** — `#ifdef ENABLE_LCD` gates I2C init, `lcdManager.begin()`, `lcdManager.startTask()`, and all LCD calls in `main.cpp`; `nullptr` passed to `ApplicationManager` when disabled
 - **Built-in tag writer** — HTTP server on port 80, mDNS as `spoolsense.local`, REST API (`/api/status`, `/api/write-tag`, `/api/format-tag`), UI embedded in firmware via `TagWriterHTML.h`
+- **LED pin in BoardPins.h** — pin auto-selected per board; `STATUS_LED_PIN` build flag removed
+- **ENABLE_STATUS_LED unified** — `USE_STATUS_LED` build flag removed; `ENABLE_STATUS_LED` from `UserConfig.h` is now the single flag; `ApplicationManager.cpp` fixed to include `UserConfig.h` so LED calls compile in correctly
+- **ESP32-S3 support** — `BoardPins.h` auto-selects pins per board; `platformio.ini` has `esp32s3zero` env; `ARDUINO_USB_CDC_ON_BOOT` enabled; LED type `NEO_GRB` for S3 onboard WS2812; hardware validated on S3-Zero with PN5180

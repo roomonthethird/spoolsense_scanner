@@ -59,30 +59,33 @@ opt_error_t HardwareNFCConnection::halWritePage(void* ctx, uint8_t page, const u
 
 bool HardwareNFCConnection::begin() {
     // Configure additional input pins for future use
-    pinMode(PN5180_IRQ, INPUT);    // Interrupt (active HIGH)
-    pinMode(PN5180_GPIO, INPUT);   // Card detection
-    pinMode(PN5180_AUX, INPUT);    // Auxiliary/monitoring
+    pinMode(PIN_PN5180_IRQ, INPUT);    // Interrupt (active HIGH)
+    pinMode(PIN_PN5180_GPIO, INPUT);   // Card detection
+    pinMode(PIN_PN5180_AUX, INPUT);    // Auxiliary/monitoring
 
-    nfc_ = new PN5180ISO15693(PN5180_NSS, PN5180_BUSY, PN5180_RST,
-                               PN5180_SCK, PN5180_MISO, PN5180_MOSI);
-    iso14443a_ = new PN5180ISO14443(PN5180_NSS, PN5180_BUSY, PN5180_RST,
-                                    PN5180_SCK, PN5180_MISO, PN5180_MOSI);
+    nfc_ = new PN5180ISO15693(PIN_PN5180_NSS, PIN_PN5180_BUSY, PIN_PN5180_RST,
+                               PIN_PN5180_SCK, PIN_PN5180_MISO, PIN_PN5180_MOSI);
+    iso14443a_ = new PN5180ISO14443(PIN_PN5180_NSS, PIN_PN5180_BUSY, PIN_PN5180_RST,
+                                    PIN_PN5180_SCK, PIN_PN5180_MISO, PIN_PN5180_MOSI);
 
     Serial.println("HardwareNFCConnection: Starting PN5180...");
+    Serial.printf("HardwareNFCConnection: Pins — NSS=%d BUSY=%d RST=%d SCK=%d MISO=%d MOSI=%d\n",
+                  PIN_PN5180_NSS, PIN_PN5180_BUSY, PIN_PN5180_RST,
+                  PIN_PN5180_SCK, PIN_PN5180_MISO, PIN_PN5180_MOSI);
     nfc_->begin();
     iso14443a_->begin();
     Serial.println("HardwareNFCConnection: SPI begin done, resetting...");
-    Serial.printf("HardwareNFCConnection: BUSY pin=%d before reset\n", digitalRead(PN5180_BUSY));
+    Serial.printf("HardwareNFCConnection: BUSY pin=%d before reset\n", digitalRead(PIN_PN5180_BUSY));
 
     // Manual reset with debug (PN5180::reset() has no timeout)
-    digitalWrite(PN5180_RST, LOW);
+    digitalWrite(PIN_PN5180_RST, LOW);
     delay(10);
-    digitalWrite(PN5180_RST, HIGH);
+    digitalWrite(PIN_PN5180_RST, HIGH);
     Serial.println("HardwareNFCConnection: RST pin released, waiting for boot...");
 
     // Wait for BUSY to go LOW with timeout (chip boots with RF subsystem)
     unsigned long start = millis();
-    while (digitalRead(PN5180_BUSY) == HIGH) {
+    while (digitalRead(PIN_PN5180_BUSY) == HIGH) {
         if (millis() - start > 2000) {
             Serial.println("HardwareNFCConnection: TIMEOUT waiting for BUSY LOW after reset!");
             break;
@@ -140,13 +143,13 @@ bool HardwareNFCConnection::hardwareReset() {
     Serial.println("HardwareNFC: hardwareReset() - toggling RST pin");
 
     // Toggle RST pin to force full hardware reset
-    digitalWrite(PN5180_RST, LOW);
+    digitalWrite(PIN_PN5180_RST, LOW);
     delay(10);
-    digitalWrite(PN5180_RST, HIGH);
+    digitalWrite(PIN_PN5180_RST, HIGH);
 
     // Wait for BUSY to go LOW with timeout
     unsigned long start = millis();
-    while (digitalRead(PN5180_BUSY) == HIGH) {
+    while (digitalRead(PIN_PN5180_BUSY) == HIGH) {
         if (millis() - start > 2000) {
             Serial.println("HardwareNFC: hardwareReset TIMEOUT waiting for BUSY LOW");
             return false;

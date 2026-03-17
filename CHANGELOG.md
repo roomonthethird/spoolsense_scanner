@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] - 2026-03-17 — ESP32-S3-Zero Support
+
+### Added
+- ESP32-S3-Zero as a second supported board alongside ESP32-WROOM-32
+- `include/BoardPins.h` — centralized pin definitions for all boards, auto-selected at compile time
+- `[env:esp32s3zero]` PlatformIO build environment with USB CDC serial, 4MB flash, and S3-specific BLE init
+- S3-Zero onboard WS2812 RGB LED support (GPIO 21, no external wiring needed)
+- S3-Zero LCD support on GPIO 1 (SDA) / GPIO 2 (SCL)
+- S3-Zero wiring documentation in README with power sharing notes
+
+### Changed
+- Unified LED enable flag: `ENABLE_STATUS_LED` in `UserConfig.h` replaces `USE_STATUS_LED` build flag in `platformio.ini`
+- LED pin now defined in `BoardPins.h` (was `-DSTATUS_LED_PIN=4` build flag)
+- Serial baud rate changed from 9600 to 115200 on WROOM
+- `platformio.ini` refactored to use shared base `[env]` section — both board environments inherit common settings
+- BLE controller init on S3 handled by `BLEDevice::init()` (WROOM retains manual classic BT memory release)
+- LED pixel type auto-selected: NEO_GRB (S3 onboard WS2812) or NEO_GRBW (WROOM external SK6812)
+
 ## [1.1.0] - 2026-03-16 — Built-in Tag Writer (Early Beta)
 
 ### Added

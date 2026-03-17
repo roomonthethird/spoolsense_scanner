@@ -9,12 +9,13 @@
 #include "HomeAssistantManager.h"
 #include "LCDManager.h"
 #include "WebServerManager.h"
+#include "BoardPins.h"
 
 #ifdef ENABLE_LCD
 #include <Wire.h>
 #endif
 
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
 #include "LEDManager.h"
 LEDManager ledManager;
 #endif
@@ -23,9 +24,7 @@ LEDManager ledManager;
 SemaphoreHandle_t g_httpMutex = nullptr;
 
 #ifdef ENABLE_LCD
-// LCD I2C pins
-#define LCD_SDA 23
-#define LCD_SCL 22
+// LCD I2C pins from BoardPins.h
 LCDManager lcdManager(0x27, 16, 2);
 #endif
 
@@ -66,7 +65,7 @@ void initWiFi() {
     lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
 #endif
 
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
     ledManager.showWifiConnected();  // network up — not yet fully initialized
 #endif
 
@@ -91,7 +90,7 @@ void initWiFi() {
     lcdManager.updateScreen("WiFi FAILED", "");
 #endif
 
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
     ledManager.showWifiFailed();
 #endif
 
@@ -101,18 +100,18 @@ void initWiFi() {
 
 void setup() {
   delay(1000);
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(1000);
   Serial.println("=== Starting setup ===");
 
-#if USE_STATUS_LED
-  ledManager.begin(STATUS_LED_PIN);
+#ifdef ENABLE_STATUS_LED
+  ledManager.begin(PIN_STATUS_LED);
   ledManager.showBooting();
 #endif
 
 #ifdef ENABLE_LCD
   // Initialize I2C with custom pins for LCD
-  Wire.begin(LCD_SDA, LCD_SCL);
+  Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
   Serial.println("I2C initialized");
 
   // Initialize LCD and start its task on core 0
@@ -209,7 +208,7 @@ void setup() {
   ApplicationManager::getInstance().showStatusOnLCD();
 #endif
 
-#if USE_STATUS_LED
+#ifdef ENABLE_STATUS_LED
   ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
   ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
 #endif

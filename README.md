@@ -57,13 +57,15 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
 
 ## Hardware Needed
 *   NFC Reader/Writer: PN5180 NFC module (ISO 15693)
-*   ESP32: ESP32-WROOM-32 (primary supported board — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ)). ESP32-S3 support is actively being tested on the ESP32-S3-Zero, with plans to add full support for smaller form-factor boards.
+*   ESP32: One of the following supported boards:
+    - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ). Primary development board.
+    - **ESP32-S3-Zero** — Smaller form factor with onboard WS2812 RGB LED and USB-C (no external UART chip needed).
 *   USB Cable: USB-A to USB-C (1)
 *   Jumper wires: male-to-female Dupont wires (9)
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional)
-*   Status LED: SK6812 RGBW (WS2812-compatible addressable LED, 1 pixel) (optional)
+*   Status LED: SK6812 RGBW (WROOM, optional external) or onboard WS2812 RGB (S3-Zero, built in)
 
-## Wiring
+## Wiring — ESP32-WROOM-32
 
 **PN5180 NFC Module (SPI, right side of ESP32 top to bottom, skipping D12):**
 
@@ -102,7 +104,43 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
 |---------|-----------|
 | VCC | 5V or 3.3V |
 | GND | GND |
-| DIN | GPIO4 (default, configurable) |
+| DIN | GPIO 4 |
+
+## Wiring — ESP32-S3-Zero
+
+The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same 5V and GND pins — daisy-chain or splice the power wires to connect both devices. Total draw is ~140mA (PN5180 ~100mA during RF + LCD ~40mA backlight), well within the USB 500mA budget.
+
+**PN5180 NFC Module (SPI):**
+
+| PN5180 Pin | S3-Zero Pin | Direction | Notes |
+|------------|-------------|-----------|-------|
+| RST        | GPIO 4      | Output    | Hardware reset (active low) |
+| NSS        | GPIO 5      | Output    | SPI chip select (active low) |
+| MOSI       | GPIO 6      | Output    | SPI data to PN5180 |
+| MISO       | GPIO 7      | Input     | SPI data from PN5180 |
+| SCK        | GPIO 8      | Output    | SPI clock |
+| BUSY       | GPIO 9      | Input     | SPI flow control |
+| GPIO       | GPIO 10     | Input     | Card detection (future use) |
+| IRQ        | GPIO 11     | Input     | Interrupt, active HIGH |
+| AUX        | GPIO 12     | Input     | Auxiliary monitoring (future use) |
+| REQ        | —           | —         | **Not connected.** |
+| VIN        | 5V          | Power     | Shared with LCD (daisy-chain) |
+| GND        | GND         | Power     | Shared with LCD (daisy-chain) |
+
+**16x2 I2C LCD (optional):**
+
+| LCD Pin | S3-Zero Pin |
+|---------|-------------|
+| GND | GND (shared with PN5180) |
+| VCC | 5V (shared with PN5180) |
+| SDA | GPIO 1 |
+| SCL | GPIO 2 |
+
+> **Note:** The LCD module needs 5V on VCC for display contrast. The I2C SDA/SCL lines run at 3.3V logic, which the PCF8574 backpack accepts without a level shifter.
+
+**Status LED:** The S3-Zero has an onboard WS2812 RGB LED on GPIO 21 — no external LED or wiring needed. Enable it with `#define ENABLE_STATUS_LED 1` in `UserConfig.h`.
+
+**Serial:** The S3-Zero uses USB CDC — just plug in a USB-C cable, no external UART adapter needed.
 
 # Configuration
 
@@ -115,7 +153,9 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
    - Automation mode (`0` = Self Directed, `1` = Controlled by HA)
    - Board selection (`BOARD_ESP32_WROOM` or `BOARD_ESP32_S3`)
    - Optional hardware: LCD and status LED (see below)
-3. Flash the firmware: `pio run -t upload`
+3. Flash the firmware:
+   - **WROOM:** `pio run -e esp32dev -t upload`
+   - **S3-Zero:** `pio run -e esp32s3zero -t upload`
 
 ## Optional: LCD
 
@@ -129,26 +169,22 @@ When disabled, no I2C bus is initialized, no LCD task is started, and no LCD cod
 
 ## Optional: Status LED
 
-The status LED is optional and controlled via `platformio.ini`. To enable it, add:
+The status LED is optional. To enable or disable it, set in `UserConfig.h`:
 
-```
-build_flags =
-    -DUSE_STATUS_LED=1
-    -DSTATUS_LED_PIN=4
+```cpp
+#define ENABLE_STATUS_LED 1   // 1 = enabled, 0 = disabled
 ```
 
-* `USE_STATUS_LED` enables compilation of the LED feature.
-* `STATUS_LED_PIN` sets the GPIO pin for the LED data line. Change to any suitable GPIO on your board.
+- **ESP32-S3-Zero:** Uses the onboard WS2812 RGB LED on GPIO 21 — no external wiring needed.
+- **ESP32-WROOM-32:** Requires an external SK6812 RGBW LED wired to GPIO 4 (see wiring table above).
 
-Omitting `USE_STATUS_LED` entirely disables the LED — no code is compiled for it.
-
-The firmware uses **SK6812 RGBW timing and color order**: `NEO_GRBW + NEO_KHZ800`
+Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manually.
 
 ## Status LED Reference
 
 | Event | LED Behavior |
 |------|--------------|
-| Booting | White (W channel) |
+| Booting | White (RGBW W channel on WROOM, RGB white on S3) |
 | WiFi connected | Cyan |
 | Ready | Blue |
 | Tag detected | 3 white flashes |

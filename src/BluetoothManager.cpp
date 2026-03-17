@@ -1,4 +1,5 @@
 #include "BluetoothManager.h"
+#include "UserConfig.h"
 #include "ApplicationManager.h"
 #include "NFCManager.h"
 #include "LCDManager.h"
@@ -803,15 +804,15 @@ bool BluetoothManager::begin() {
     snprintf(device_name, sizeof(device_name), "SpoolSense-%02X%02X", mac[4], mac[5]);
     Serial.printf("%s: BLE device name: %s\n", TAG, device_name);
 
-    // Debug: Check controller state
+#if !defined(BOARD_ESP32_S3)
+    // ESP32-WROOM: release classic BT memory and manually init controller
+    // (S3 has no classic BT; BLEDevice::init() handles controller setup internally)
     esp_bt_controller_status_t status = esp_bt_controller_get_status();
     Serial.printf("%s: BT controller status: %d (0=IDLE, 1=INITED, 2=ENABLED)\n", TAG, status);
 
-    // Release classic BT memory first
     esp_err_t ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
     Serial.printf("%s: mem_release result: %d\n", TAG, ret);
 
-    // Initialize controller if not already
     if (status == ESP_BT_CONTROLLER_STATUS_IDLE) {
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
         ret = esp_bt_controller_init(&bt_cfg);
@@ -824,7 +825,6 @@ bool BluetoothManager::begin() {
     status = esp_bt_controller_get_status();
     Serial.printf("%s: BT controller status after init: %d\n", TAG, status);
 
-    // Enable controller
     if (status == ESP_BT_CONTROLLER_STATUS_INITED) {
         ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
         Serial.printf("%s: controller_enable result: %d\n", TAG, ret);
@@ -834,9 +834,14 @@ bool BluetoothManager::begin() {
     }
 
     Serial.printf("%s: BT controller enabled, initializing bluedroid\n", TAG);
+#endif
 
-    // Initialize BLE stack
+    // Initialize BLE stack (handles controller setup internally on S3)
     BLEDevice::init(device_name);
+
+    // Verify controller is running (catches silent init failures on S3)
+    Serial.printf("%s: BT controller status after init: %d (expected 2=ENABLED)\n",
+                  TAG, esp_bt_controller_get_status());
 
     // Create server
     s_server = BLEDevice::createServer();
