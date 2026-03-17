@@ -3,6 +3,23 @@
 #include <cstring>
 #include <Arduino.h>
 
+#ifndef NATIVE_TEST
+#include <Preferences.h>
+#endif
+
+// NVS namespace and key names — must match spoolsense-installer nvs_keys.csv
+static const char* NVS_NAMESPACE = "spoolsense";
+static const char* NVS_KEY_WIFI_SSID      = "wifi_ssid";
+static const char* NVS_KEY_WIFI_PASS      = "wifi_pass";
+static const char* NVS_KEY_MQTT_HOST      = "mqtt_host";
+static const char* NVS_KEY_MQTT_PORT      = "mqtt_port";
+static const char* NVS_KEY_MQTT_USER      = "mqtt_user";
+static const char* NVS_KEY_MQTT_PASS      = "mqtt_pass";
+static const char* NVS_KEY_MQTT_PREFIX    = "mqtt_prefix";
+static const char* NVS_KEY_SPOOLMAN_ON    = "spoolman_on";
+static const char* NVS_KEY_SPOOLMAN_URL   = "spoolman_url";
+static const char* NVS_KEY_AUTO_MODE      = "auto_mode";
+
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
     return instance;
@@ -13,6 +30,22 @@ bool ConfigurationManager::begin() {
         return true;
     }
 
+    // Load compile-time defaults first, then override with NVS where present
+    loadFromDeviceConfig();
+
+#ifndef NATIVE_TEST
+    if (loadFromNVS()) {
+        Serial.println("ConfigurationManager: NVS config found, overrides applied");
+    } else {
+        Serial.println("ConfigurationManager: No NVS config, using compile-time defaults");
+    }
+#endif
+
+    _initialized = true;
+    return true;
+}
+
+void ConfigurationManager::loadFromDeviceConfig() {
     const DeviceConfig& cfg = getDeviceConfig();
 
     strncpy(_ssid, cfg.wifi.ssid, sizeof(_ssid) - 1);
@@ -51,11 +84,66 @@ bool ConfigurationManager::begin() {
     _haMqttPass[sizeof(_haMqttPass) - 1] = '\0';
 
     _automationMode = cfg.automation_mode;
-
-    _initialized = true;
-    Serial.println("ConfigurationManager: Initialized from compile-time config");
-    return true;
 }
+
+#ifndef NATIVE_TEST
+bool ConfigurationManager::loadFromNVS() {
+    Preferences prefs;
+    if (!prefs.begin(NVS_NAMESPACE, true)) {  // read-only
+        return false;
+    }
+
+    // Check if NVS has any SpoolSense config at all
+    if (!prefs.isKey(NVS_KEY_WIFI_SSID)) {
+        prefs.end();
+        return false;
+    }
+
+    bool anyOverride = false;
+
+    // Per-key fallback: only override if the key exists in NVS
+    if (prefs.isKey(NVS_KEY_WIFI_SSID)) {
+        prefs.getString(NVS_KEY_WIFI_SSID, _ssid, sizeof(_ssid));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_WIFI_PASS)) {
+        prefs.getString(NVS_KEY_WIFI_PASS, _wifiPass, sizeof(_wifiPass));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_MQTT_HOST)) {
+        prefs.getString(NVS_KEY_MQTT_HOST, _haMqttHost, sizeof(_haMqttHost));
+        _haEnabled = (_haMqttHost[0] != '\0');
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_MQTT_PORT)) {
+        _haMqttPort = prefs.getUShort(NVS_KEY_MQTT_PORT, _haMqttPort);
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_MQTT_USER)) {
+        prefs.getString(NVS_KEY_MQTT_USER, _haMqttUser, sizeof(_haMqttUser));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_MQTT_PASS)) {
+        prefs.getString(NVS_KEY_MQTT_PASS, _haMqttPass, sizeof(_haMqttPass));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_SPOOLMAN_ON)) {
+        _spoolmanEnabled = prefs.getBool(NVS_KEY_SPOOLMAN_ON, _spoolmanEnabled);
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_SPOOLMAN_URL)) {
+        prefs.getString(NVS_KEY_SPOOLMAN_URL, _spoolmanUrl, sizeof(_spoolmanUrl));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_AUTO_MODE)) {
+        _automationMode = prefs.getUChar(NVS_KEY_AUTO_MODE, _automationMode);
+        anyOverride = true;
+    }
+
+    prefs.end();
+    return anyOverride;
+}
+#endif
 
 const char* ConfigurationManager::getWiFiSSID() const {
     return _ssid;
