@@ -1,4 +1,3 @@
-#include <Wire.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -11,6 +10,10 @@
 #include "LCDManager.h"
 #include "WebServerManager.h"
 
+#ifdef ENABLE_LCD
+#include <Wire.h>
+#endif
+
 #if USE_STATUS_LED
 #include "LEDManager.h"
 LEDManager ledManager;
@@ -19,19 +22,21 @@ LEDManager ledManager;
 // Global HTTP mutex for serializing WiFi HTTP requests
 SemaphoreHandle_t g_httpMutex = nullptr;
 
+#ifdef ENABLE_LCD
 // LCD I2C pins
 #define LCD_SDA 23
 #define LCD_SCL 22
-
-// LCD Manager
 LCDManager lcdManager(0x27, 16, 2);
+#endif
 
 void initWiFi() {
   auto& config = ConfigurationManager::getInstance();
 
   if (strlen(config.getWiFiSSID()) == 0) {
     Serial.println("WiFi SSID not configured - skipping WiFi");
+#ifdef ENABLE_LCD
     lcdManager.updateScreen("WiFi: no SSID", "Check UserConfig.h");
+#endif
     delay(2000);
     return;
   }
@@ -39,7 +44,9 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
+#ifdef ENABLE_LCD
   lcdManager.updateScreen("Connecting WiFi", "");
+#endif
 
   WiFi.begin(config.getWiFiSSID(), config.getWiFiPassword());
 
@@ -55,7 +62,9 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
+#ifdef ENABLE_LCD
     lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
+#endif
 
 #if USE_STATUS_LED
     ledManager.showWifiConnected();  // network up — not yet fully initialized
@@ -66,7 +75,9 @@ void initWiFi() {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
       Serial.println("Failed to obtain time");
+#ifdef ENABLE_LCD
       lcdManager.updateScreen("NTP FAILED", "");
+#endif
     } else {
       Serial.println("Time obtained");
     }
@@ -76,7 +87,9 @@ void initWiFi() {
     Serial.println("");
     Serial.println("WiFi connection failed!");
 
+#ifdef ENABLE_LCD
     lcdManager.updateScreen("WiFi FAILED", "");
+#endif
 
 #if USE_STATUS_LED
     ledManager.showWifiFailed();
@@ -97,6 +110,7 @@ void setup() {
   ledManager.showBooting();
 #endif
 
+#ifdef ENABLE_LCD
   // Initialize I2C with custom pins for LCD
   Wire.begin(LCD_SDA, LCD_SCL);
   Serial.println("I2C initialized");
@@ -106,24 +120,34 @@ void setup() {
   lcdManager.startTask();
   lcdManager.updateScreen("Initializing...", "");
   Serial.println("LCD initialized");
+#endif
 
   // Initialize ConfigurationManager FIRST (loads NVS)
   if (!ConfigurationManager::getInstance().begin()) {
     Serial.println("ConfigurationManager init failed - halting");
+#ifdef ENABLE_LCD
     lcdManager.updateScreen("Config FAILED", "");
+#endif
     while (1) { delay(1000); }
   }
+#ifdef ENABLE_LCD
   lcdManager.setScreenTimeoutMs(ConfigurationManager::getInstance().getLcdTimeoutMs());
+#endif
 
   // Initialize ApplicationManager (message queue) with LCD reference
+#ifdef ENABLE_LCD
   if (!ApplicationManager::getInstance().begin(&lcdManager)) {
+#else
+  if (!ApplicationManager::getInstance().begin(nullptr)) {
+#endif
     Serial.println("ApplicationManager init failed - halting");
-    lcdManager.updateScreen("AppMgr FAILED", "");
     while (1) { delay(1000); }
   }
 
   // Initialize BluetoothManager BEFORE WiFi (they share the radio)
+#ifdef ENABLE_LCD
   lcdManager.updateScreen("Starting BLE...", "");
+#endif
   if (!BluetoothManager::getInstance().begin()) {
     Serial.println("BluetoothManager init failed - continuing without BLE");
   }
@@ -135,7 +159,6 @@ void setup() {
   g_httpMutex = xSemaphoreCreateMutex();
   if (g_httpMutex == nullptr) {
     Serial.println("Failed to create HTTP mutex - halting");
-    lcdManager.updateScreen("Mutex FAILED", "");
     while (1) { delay(1000); }
   }
 
@@ -160,7 +183,9 @@ void setup() {
   // Initialize NFCManager
   if (!NFCManager::getInstance().begin()) {
     Serial.println("NFCManager init failed - halting");
+#ifdef ENABLE_LCD
     lcdManager.updateScreen("NFC FAILED", "");
+#endif
     while (1) { delay(1000); }
   }
 
@@ -180,7 +205,9 @@ void setup() {
                 strlen(config.getHAMqttUser()) > 0 ? "true" : "false");
   HomeAssistantManager::getInstance().startTask();
 
+#ifdef ENABLE_LCD
   ApplicationManager::getInstance().showStatusOnLCD();
+#endif
 
 #if USE_STATUS_LED
   ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
