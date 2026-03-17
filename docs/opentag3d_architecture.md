@@ -108,6 +108,23 @@ lib/opentag3d/
   opentag3d_lib.c
 ```
 
+### Version handling (required by spec)
+
+The spec mandates specific version compatibility behavior. The library must return a version status so the caller can act on it:
+
+```c
+typedef enum {
+    OT3D_OK = 0,
+    OT3D_VERSION_WARNING,   // Minor version ahead of reader — warn, parse anyway
+    OT3D_VERSION_ERROR,     // Major version ahead of reader — do not parse
+    OT3D_PARSE_ERROR,
+} opentag3d_result_t;
+
+#define OT3D_SUPPORTED_VERSION 1000  // v1.000
+```
+
+`opentag3d_decode()` returns `OT3D_VERSION_WARNING` if the tag's major version matches but minor is ahead, and `OT3D_VERSION_ERROR` if the major version is newer than the reader supports. `ApplicationManager` must surface both states — warning via LCD/MQTT, error as a rejected scan.
+
 ### Core data struct
 
 ```c
