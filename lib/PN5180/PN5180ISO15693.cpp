@@ -596,7 +596,7 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
       PN5180DEBUG(F("TIMEOUT waiting for RX_IRQ after SOF detected\n"));
       return ISO15693_EC_UNKNOWN_ERROR;
     }
-    delay(10);
+    delay(1);  // tueddy fork: reduced from 10ms — cuts per-block write overhead significantly
     status = getIRQStatus();
   }
 
