@@ -16,6 +16,12 @@
 ### Tag Format Support
 - **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
 
+### Performance
+- **Instrument the write path** — add timing logs for each phase: format duration, number of blocks written, total write time, verify duration; output something like `format=320ms blocks=11 write=1840ms verify=410ms`; needed before any optimization to know where time is actually spent
+- **Dirty-block write optimization** — investigate whether the current write path already skips unchanged blocks or writes all blocks every time; writing only dirty blocks is the biggest firmware-side win available without changing libraries
+- **Blank vs. existing tag write time** — format step adds writes before the payload even starts; profile separately to understand if slow writes are blank-tag-only or affect rewrites too
+- **Write Multiple Blocks investigation** — check whether the SLIX2 tags in use support ISO15693 Write Multiple Blocks (command 0x24); if so, batching block writes could reduce round-trips; note: many tags do not support this command so verify against tag datasheet first
+
 ### Firmware / Infrastructure
 - **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available
 - **MQTT reconnect robustness** — audit whether `HomeAssistantManager` cleanly handles broker drops and reconnects in long-running deployments; verify subscriptions are re-established after reconnect
