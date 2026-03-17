@@ -9,7 +9,7 @@ SpoolSense Scanner is an ESP32‑based NFC scanner designed for managing 3D prin
 
 **OpenPrintTag (ISO15693)** is the primary supported format, with full read and write support including filament metadata, weight tracking, and Spoolman sync. UID‑only tags such as NTAG215 (ISO14443A) are also supported — the scanner detects the tag and publishes the UID, allowing middleware to look up the spool by ID.
 
-The scanner is also exploring support for **OpenTag3D** as an additional tag format in a future release.
+I am also exploring support for **OpenTag3D** as an additional tag format in a future release.
 
 The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows. A built-in web interface — accessible at `http://spoolsense.local` after connecting to WiFi — lets you write OpenPrintTag data directly to a tag from any browser on your local network, with no app or external tools required.
 
