@@ -100,12 +100,22 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
    - WiFi SSID and password
    - MQTT broker host, port, and credentials
    - Spoolman URL (optional)
-   - LCD and status LED enable flags
    - Automation mode (`0` = Self Directed, `1` = Controlled by HA)
    - Board selection (`BOARD_ESP32_WROOM` or `BOARD_ESP32_S3`)
+   - Optional hardware: LCD and status LED (see below)
 3. Flash the firmware: `pio run -t upload`
 
-## Status LED Build Flags
+## Optional: LCD
+
+The 16x2 I2C LCD is fully optional. To disable it, set in `UserConfig.h`:
+
+```cpp
+#define ENABLE_LCD 0
+```
+
+When disabled, no I2C bus is initialized, no LCD task is started, and no LCD code is compiled into the binary. Set to `1` if you have the LCD connected.
+
+## Optional: Status LED
 
 The status LED is optional and controlled via `platformio.ini`. To enable it, add:
 

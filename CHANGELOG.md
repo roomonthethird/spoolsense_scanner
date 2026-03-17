@@ -17,6 +17,8 @@
 ### Changed
 - NFC scan loop now performs a full hardware reset when `setupRF()` fails with a tag present,
   recovering in one cycle instead of ~30 seconds
+- LCD is now truly optional — `ENABLE_LCD 0` in `UserConfig.h` fully gates I2C init, LCD task,
+  and all LCD calls; no Wire library or LCD code compiled when disabled
 
 ## [1.0.0] - 2026-03-14 — Initial Release
 
