@@ -11,7 +11,19 @@ SpoolSense Scanner is an ESP32‑based NFC scanner designed for managing 3D prin
 
 I am also exploring support for **OpenTag3D** as an additional tag format in a future release.
 
-The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows. A built-in web interface — accessible at `http://spoolsense.local` after connecting to WiFi — lets you write OpenPrintTag data directly to a tag from any browser on your local network, with no app or external tools required.
+The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows.
+
+## Built-in Tag Writer
+
+No app, no external tools. After the scanner connects to WiFi, open **`http://spoolsense.local`** from any browser on your local network and write OpenPrintTag data directly to a tag — fill in the form, tap the spool to the scanner, and the firmware handles the rest.
+
+<p align="center">
+  <a href="docs/writerwebui2.png"><img src="docs/writerwebui2.png" width="280" alt="Tag writer form"></a>
+  &nbsp;&nbsp;
+  <a href="docs/writerwebui1.png"><img src="docs/writerwebui1.png" width="280" alt="Tag writer write progress"></a>
+</p>
+
+> **Early beta** — core write flow works end-to-end. Additional polish and error handling are in progress.
 
 ## Contributing & Help Wanted
 
@@ -25,7 +37,7 @@ The scanner allows users to tap a filament spool to identify it, retrieve metada
 
 ## Functionality
 * **NFC Tag Reading/Writing:** Reads and writes OpenPrintTag-formatted NFC tags.
-* **Built-in Tag Writer UI *(early beta)*:** After connecting to WiFi, navigate to `http://spoolsense.local` from any browser on your local network to write OpenPrintTag data directly to a tag — no app required. Supports all fields including material type, manufacturer, weight, color, density, diameter, temperatures, and Spoolman ID.
+* **Built-in Tag Writer UI *(early beta)*:** Navigate to `http://spoolsense.local` from any browser on your local network — no app or external tools required. Supports all OpenPrintTag fields: material type, manufacturer, weight, color, density, diameter, temperatures, and Spoolman ID.
 * **Home Assistant Integration:** Publishes spool state via MQTT with full HA discovery support.
 * **Spoolman Sync (optional):** Syncs spool weight and metadata with a Spoolman instance.
 * **BLE Spool Operations:** Write tag data, set filament weight, and manage spools via the BLE web UI.
