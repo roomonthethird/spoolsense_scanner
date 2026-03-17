@@ -67,24 +67,6 @@ The firmware is configured for **SK6812 RGBW timing and color order** using:
 
 `NEO_GRBW + NEO_KHZ800`
 
-### Wiring
-
-Default LED data pin:
-
-`GPIO4`
-
-> **Note:** A single SK6812 RGBW LED module is recommended. Many small breakout boards include the necessary capacitor and resistor already. If using a bare LED, a ~330Ω resistor on the data line is recommended for signal stability.
-
-Typical wiring for a single LED:
-
-| LED Pin | ESP32 Pin |
-|-------|-----------|
-| VCC | 5V or 3.3V |
-| GND | GND |
-| DIN | GPIO4 |
-
-A common ground between the ESP32 and the LED is required.
-
 ### LED Status States
 
 | Event | LED Behavior |
@@ -137,16 +119,6 @@ build_flags =
 
 When the flag is not present, the LED code is **not compiled**, and the firmware behaves exactly like the original scanner firmware with no LED functionality.
 
-### BOM
-
-| Item | Qty | 
-|---|---:|---|
-| PN5180 NFC module | 1 | 
-| ESP32-WROOM-32 (40 pin) | 1 |
-| 16x2 I2C LCD module | 1 | 
-| USB-A to USB-C cable | 1 | 
-| Dupont jumper wires (M/F) | 9 | 
-
 ## Hardware Configuration
 Connect the components to the ESP32 as follows:
 
@@ -155,6 +127,18 @@ Connect the components to the ESP32 as follows:
 *   **VCC:** 5V
 *   **SDA:** GPIO 23
 *   **SCL:** GPIO 22
+
+**SK6812 RGBW Status LED:**
+
+> A single SK6812 RGBW LED module is recommended. Many small breakout boards include the necessary capacitor and resistor already. If using a bare LED, a ~330Ω resistor on the data line is recommended for signal stability.
+
+| LED Pin | ESP32 Pin |
+|-------|-----------|
+| VCC | 5V or 3.3V |
+| GND | GND |
+| DIN | GPIO4 (default, configurable) |
+
+A common ground between the ESP32 and the LED is required.
 
 **PN5180 NFC Module (SPI, right side of ESP32 top to bottom, skipping D12):**
 
