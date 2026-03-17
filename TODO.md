@@ -9,7 +9,6 @@
 - **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
 
 ### Hardware / Build
-- **LCD truly optional** — `ENABLE_LCD` define exists in `UserConfig.h` but `main.cpp` always initializes the LCD; gate I2C init, `lcdManager.begin()`, and `lcdManager.startTask()` behind the flag
 - **LED pin configurable via UserConfig.h** — currently `STATUS_LED_PIN` is set in `platformio.ini` build flags; move to `UserConfig.h` alongside `ENABLE_STATUS_LED`
 - **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
 
@@ -26,3 +25,5 @@
 - **SLIX2 WDT fix** — batched 16-block reads replace single 78-block transaction; eliminates cascading BUSY pin spin-wait timeouts
 - **Project rename** — `openprinttag_scanner` → `spoolsense_scanner` throughout MQTT topics, HA discovery, BLE name, source files
 - **Compile-time config** — all settings in `include/UserConfig.h`; BLE settings config removed
+- **LCD truly optional** — `#ifdef ENABLE_LCD` gates I2C init, `lcdManager.begin()`, `lcdManager.startTask()`, and all LCD calls in `main.cpp`; `nullptr` passed to `ApplicationManager` when disabled
+- **Built-in tag writer** — HTTP server on port 80, mDNS as `spoolsense.local`, REST API (`/api/status`, `/api/write-tag`, `/api/format-tag`), UI embedded in firmware via `TagWriterHTML.h`
