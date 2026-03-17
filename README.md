@@ -49,7 +49,7 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
 
 ## Hardware Needed
 *   NFC Reader/Writer: PN5180 NFC module (ISO 15693)
-*   ESP32: ESP32-WROOM-32 (primary supported board — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ)). ESP32-S3 support (e.g. ESP32-S3-Zero) is in progress.
+*   ESP32: ESP32-WROOM-32 (primary supported board — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ)). ESP32-S3 support is actively being tested on the ESP32-S3-Zero, with plans to add full support for smaller form-factor boards.
 *   USB Cable: USB-A to USB-C (1)
 *   Jumper wires: male-to-female Dupont wires (9)
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional — full optional support is in progress)
@@ -137,8 +137,7 @@ build_flags =
 
 When the flag is not present, the LED code is **not compiled**, and the firmware behaves exactly like the original scanner firmware with no LED functionality.
 
-### Printables BOM (non-printed parts)
-The model page lists this BOM:
+### BOM
 
 | Item | Qty | 
 |---|---:|---|
@@ -176,6 +175,16 @@ Connect the components to the ESP32 as follows:
 | GND        | GND       | Power     | |
 
 > **Note:** D35 and D34 are input-only pins on the ESP32 (no internal pull-up). D12 is a strapping pin and is skipped.
+
+## Contributing & Help Wanted
+
+> **This project is currently in Alpha.** Testing is being done by myself and one other person. There will be bugs — please help!
+
+**How you can help:**
+
+- **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/sjordan0228/spoolsense_scanner/issues) with any bugs or feedback you find.
+- **Case design** — I have zero CAD skills. If you're handy with Fusion 360, FreeCAD, or anything similar, I'd love a printable enclosure that fits the ESP32-WROOM-32 + PN5180 + optional LCD. Open an issue or reach out.
+- **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
 ## Credits
 
