@@ -8,6 +8,8 @@
 - **Spoolman 400 on spool create** — `openprinttag_uuid` in the extra field is double-escaped (`"\"DAD4E374080104E0\""` instead of `"DAD4E374080104E0"`); every new spool create fails with HTTP 400
 - **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
 - **ENABLE_STATUS_LED is a no-op** — defined in `UserConfig.h` and stored in `DeviceConfig` but never wired into any `#if` guard; actual LED compilation is controlled by `USE_STATUS_LED` in `platformio.ini`, making the UserConfig define misleading
+- **Spoolman material mismatch** — serial log showed tag written as ABS but Spoolman matched it to TPU (filament id=3); likely a vendor/filament lookup bug or stale test data in Spoolman, needs investigation
+- **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, HTML title in `docs/index.html`, project name in `CMakeLists.txt`, and `.code-workspace` filename
 
 ## Planned
 
@@ -17,6 +19,9 @@
 ### Hardware / Build
 - **LED pin configurable via UserConfig.h** — currently `STATUS_LED_PIN` is set in `platformio.ini` build flags; move to `UserConfig.h` alongside `ENABLE_STATUS_LED`
 - **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
+
+### Debugging / Logging
+- **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier
 
 ### Integration
 - **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI
