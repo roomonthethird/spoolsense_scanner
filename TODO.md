@@ -33,7 +33,7 @@
 ### Web / UI
 - **Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access
 - **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing
-- **Installer script** — interactive setup script that walks the user through WiFi, MQTT, Spoolman, board selection, and optional hardware, then generates `UserConfig.h` and flashes the device
+- **Unified installer** [P1] — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
 
 ### Hardware / Build
 
@@ -44,6 +44,9 @@
 
 ### Integration
 - **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI
+
+### Ecosystem
+- **Shared specs repo** — `spoolsense-specs` repo under the SpoolSense org documenting tag formats (OpenPrintTag, OpenTag3D, NTAG215 UID-only), MQTT payload schema, and REST API contract between scanner and middleware; becomes the source of truth both repos reference
 
 ### Architecture / Overlap to Resolve
 - **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
