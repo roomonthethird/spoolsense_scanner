@@ -31,7 +31,7 @@ No app, no external tools. After the scanner connects to WiFi, open **`http://sp
 
 **How you can help:**
 
-- **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/sjordan0228/spoolsense_scanner/issues) with any bugs or feedback you find.
+- **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/spoolsense/spoolsense_scanner/issues) with any bugs or feedback you find.
 - **Case design** — I have zero CAD skills. If you're handy with Fusion 360, FreeCAD, or anything similar, I'd love a printable enclosure that fits the ESP32-WROOM-32 + PN5180 + optional LCD. Open an issue or reach out.
 - **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
