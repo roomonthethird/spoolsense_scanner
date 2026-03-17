@@ -201,6 +201,10 @@ SpoolSense Scanner builds on that foundation while adapting the firmware for the
 
 Many thanks to the original author and contributors for the work that made this project possible.
 
+### Libraries Used
+
+* **PN5180 Library** by Andreas Trappmann — ISO15693 and ISO14443A NFC driver for the PN5180 module: https://github.com/ATrappmann/PN5180-Library/
+
 # Specs Referenced:
 *   OpenPrintTag tag generator: https://openprinttag.org/generator/ 
 *   Spoolman API: https://donkie.github.io/Spoolman/#tag/filament/operation/Find_filaments_filament_get 
