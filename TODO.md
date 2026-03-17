@@ -3,6 +3,12 @@
 ## In Progress
 - **ESP32-S3 support** — board profile define exists, needs hardware testing and any S3-specific pin/peripheral adjustments
 
+## Bugs
+
+- **Spoolman 400 on spool create** — `openprinttag_uuid` in the extra field is double-escaped (`"\"DAD4E374080104E0\""` instead of `"DAD4E374080104E0"`); every new spool create fails with HTTP 400
+- **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
+- **ENABLE_STATUS_LED is a no-op** — defined in `UserConfig.h` and stored in `DeviceConfig` but never wired into any `#if` guard; actual LED compilation is controlled by `USE_STATUS_LED` in `platformio.ini`, making the UserConfig define misleading
+
 ## Planned
 
 ### Tag Format Support
