@@ -4,7 +4,7 @@
 
 - **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
 - **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
-- **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, HTML title in `docs/index.html`, project name in `CMakeLists.txt`, and `.code-workspace` filename
+- **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, project name in `CMakeLists.txt`, and `.code-workspace` filename
 
 ## Planned
 
@@ -30,16 +30,17 @@
 - **Configurable log verbosity** — add `LOG_LEVEL` define to `UserConfig.h` (e.g. DEBUG/INFO/WARN) to reduce serial noise in production without losing full output for debugging
 
 ### Web / UI
-- **Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access
+- ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
 - **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing
 - **Unified installer** [P1] — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
 - **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
 ### Tag Writer Enhancements
-- **Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing
+- ~~**Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing~~
 - **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support
-- **TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support
+- ~~**TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support~~
 - **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
+- **TigerTag SpoolmanDB mapping** — investigate https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB for bridging TigerTag material/brand IDs to Spoolman filament profiles
 
 ### Hardware / Build
 
