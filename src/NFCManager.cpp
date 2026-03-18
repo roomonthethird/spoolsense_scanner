@@ -417,6 +417,13 @@ bool NFCManager::formatNewSpool() {
     Serial.println("NFCManager: Tag formatted, setting defaults...");
 
     // Set default values for new spool
+    // material_class is Required per OpenPrintTag spec
+    err = opt_set_material_class(&localTag, OPT_MATERIAL_CLASS_FFF);
+    if (err != OPT_OK) {
+        Serial.printf("NFCManager: Failed to set material class: %s\n", opt_error_str(err));
+        return false;
+    }
+
     err = opt_set_material_type(&localTag, OPT_MATERIAL_TYPE_PLA);
     if (err != OPT_OK) {
         Serial.printf("NFCManager: Failed to set material type: %s\n", opt_error_str(err));
