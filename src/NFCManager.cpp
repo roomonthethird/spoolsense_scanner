@@ -1385,6 +1385,16 @@ bool NFCManager::isDuplicateSpool(const uint8_t* uid, uint8_t uid_length) {
     // written by the scan task (same task calling this), so no torn reads. The BLE
     // thread's requestCurrentSpool() can clear lastSeenValid, but worst case we do
     // one extra NFC read — no correctness issue.
+
+    // Even if lastSeenValid is false (cleared by setupRF recovery), check if the
+    // current spool UID matches — avoids re-processing the same tag as GenericUid
+    // after a TigerTag or OpenPrintTag was already parsed successfully.
+    if (!lastSeenValid && currentSpool.present &&
+        uid_length == currentSpool.uid_length &&
+        memcmp(uid, currentSpool.uid, uid_length) == 0) {
+        return true;
+    }
+
     if (!lastSeenValid) {
         return false;
     }
