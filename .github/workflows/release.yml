@@ -1,0 +1,51 @@
+name: Build and Release Firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Copy example config for build
+        run: cp include/UserConfig.example.h include/UserConfig.h
+
+      - name: Build ESP32-WROOM firmware
+        run: pio run -e esp32dev
+
+      - name: Build ESP32-S3-Zero firmware
+        run: pio run -e esp32s3zero
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release
+          cp .pio/build/esp32dev/firmware.bin release/spoolsense_scanner_esp32dev.bin
+          cp .pio/build/esp32s3zero/firmware.bin release/spoolsense_scanner_esp32s3zero.bin
+          cp .pio/build/esp32dev/partitions.bin release/partitions_esp32dev.bin
+          cp .pio/build/esp32s3zero/partitions.bin release/partitions_esp32s3zero.bin
+          cp partitions.csv release/partitions.csv
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/spoolsense_scanner_esp32dev.bin
+            release/spoolsense_scanner_esp32s3zero.bin
+            release/partitions_esp32dev.bin
+            release/partitions_esp32s3zero.bin
+            release/partitions.csv
