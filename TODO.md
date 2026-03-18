@@ -35,6 +35,12 @@
 - **Unified installer** [P1] — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
 - **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
+### Tag Writer Enhancements
+- **Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing
+- **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support
+- **TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support
+- **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
+
 ### Hardware / Build
 
 - **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
