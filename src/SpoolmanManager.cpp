@@ -11,6 +11,7 @@
 
 static constexpr size_t JSON_SMALL_CAPACITY = 256;
 static constexpr size_t JSON_MEDIUM_CAPACITY = 768;
+static constexpr size_t JSON_LARGE_CAPACITY = 2048;
 
 using namespace io;
 using namespace json;
@@ -344,33 +345,22 @@ static int findOrCreateVendor(const char* name) {
 
 // Find the first array item whose "material" field exactly matches the target.
 // Spoolman's API does substring matching (ABS matches PC-ABS), so we filter client-side.
+// Uses ArduinoJson for reliable parsing of nested objects (vendor, etc.).
 static bool findExactMaterialId(const char* jsonText, const char* targetMaterial, int& outId) {
     outId = -1;
-    const_buffer_stream stm((const uint8_t*)jsonText, strlen(jsonText));
-    json_reader reader(stm);
+    StaticJsonDocument<JSON_LARGE_CAPACITY> doc;
+    DeserializationError err = deserializeJson(doc, jsonText);
+    if (err) {
+        Serial.printf("SpoolmanManager: findExactMaterialId parse error: %s\n", err.c_str());
+        return false;
+    }
 
-    while (reader.read()) {
-        if (reader.node_type() != json_node_type::object) continue;
-        const unsigned objectDepth = reader.depth();
-        int candidateId = -1;
-        char candidateMaterial[32] = {0};
-
-        while (reader.read()) {
-            if (reader.node_type() == json_node_type::end_object && reader.depth() == objectDepth) {
-                break;
-            }
-            if (reader.node_type() != json_node_type::field) continue;
-            const char* field = reader.value();
-            if (strcmp(field, "id") == 0) {
-                if (reader.read()) readIntValue(reader, candidateId);
-            } else if (strcmp(field, "material") == 0) {
-                if (reader.read()) readStringValue(reader, candidateMaterial, sizeof(candidateMaterial));
-            }
-        }
-
-        if (candidateId >= 0 && strcmp(candidateMaterial, targetMaterial) == 0) {
-            outId = candidateId;
-            return true;
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject obj : arr) {
+        const char* mat = obj["material"] | "";
+        if (strcmp(mat, targetMaterial) == 0) {
+            outId = obj["id"] | -1;
+            return (outId >= 0);
         }
     }
     return false;
