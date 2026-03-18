@@ -23,9 +23,12 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     </nav>
 
     <section class="card" id="createView">
-      <div class="card-head">
-        <h1 class="card-title">Create TigerTag</h1>
-        <p class="card-subtitle">Write filament data to an NTAG213/215 tag in TigerTag format.</p>
+      <div class="card-head" style="display:flex;align-items:center;gap:16px">
+        <img src="/img/tigertag.png" alt="TigerTag" style="height:48px;border-radius:8px" />
+        <div>
+          <h1 class="card-title">Create TigerTag</h1>
+          <p class="card-subtitle">Write filament data to an NTAG213/215 tag in TigerTag format.</p>
+        </div>
       </div>
 
       <div class="card-body">
@@ -438,42 +441,6 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     backBtn.addEventListener('click', showCreateView);
     anotherBtn.addEventListener('click', showCreateView);
 
-    // Try to populate dropdowns from TigerTag API
-    (function() {
-      function populateSelect(id, items, valueProp, labelProp) {
-        var el = document.getElementById(id);
-        if (!el || !items || !items.length) return;
-        var current = el.value;
-        el.innerHTML = '';
-        items.forEach(function(item) {
-          var opt = document.createElement('option');
-          opt.value = item[valueProp];
-          opt.textContent = item[labelProp];
-          el.appendChild(opt);
-        });
-        el.value = current;
-      }
-
-      fetch('https://api.tigertag.io/api:tigertag/material/get/all')
-        .then(function(r){ return r.json(); })
-        .then(function(data){
-          if (Array.isArray(data)) {
-            data.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-            populateSelect('material_id', data, 'id', 'name');
-          }
-        })
-        .catch(function(){});
-
-      fetch('https://api.tigertag.io/api:tigertag/brand/get/all')
-        .then(function(r){ return r.json(); })
-        .then(function(data){
-          if (Array.isArray(data)) {
-            data.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-            populateSelect('brand_id', data, 'id', 'name');
-          }
-        })
-        .catch(function(){});
-    })();
   </script>
 </body>
 </html>

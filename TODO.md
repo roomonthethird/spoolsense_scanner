@@ -2,65 +2,65 @@
 
 ## Bugs
 
-- **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
-- **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
-- **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, project name in `CMakeLists.txt`, and `.code-workspace` filename
+- [P0] **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
+- [P0] **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
+- [P2] **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, project name in `CMakeLists.txt`, and `.code-workspace` filename
+- [P2] **TigerTag dropdown API fetch creates invisible options** — fetching material/brand lists from `api.tigertag.io` and dynamically replacing `<option>` elements produces invisible text in the dropdown on some browsers; temporarily removed API fetch and using hardcoded options only; need to fix styling or merge API data into existing options without breaking visibility
 
 ## Planned
 
 ### Tag Format Support
-- **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
-- **TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide
+- [P3] **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
+- ~~**TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide~~
 
 ### PN5180 Library
-- **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
-- **`getInventoryMultiple()` research** — tueddy/hyutrn forks implement multi-tag inventory with 16-slot collision handling; investigate whether a scanner positioned between two spools could read both simultaneously; would need physical testing to determine if PN5180 RF field geometry supports it in practice
-- **`isCardPresent()` for ISO14443** — tueddy/hyutrn forks add a simple boolean card-presence check for Type A tags; could simplify and clean up the generic tag detection path
-- **Consider upgrading to hyutrn fork** — actively maintained (v2.3.7, Sept 2025), FreeRTOS-aware (reduced blocking delays), ~500 bytes smaller, fixes unknown manufacturer ID 0xFF; same API as tueddy so migration path is straightforward but requires constructor and call-site updates
+- [P2] **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
+- [P3] **`getInventoryMultiple()` research** — tueddy/hyutrn forks implement multi-tag inventory with 16-slot collision handling; investigate whether a scanner positioned between two spools could read both simultaneously; would need physical testing to determine if PN5180 RF field geometry supports it in practice
+- [P3] **`isCardPresent()` for ISO14443** — tueddy/hyutrn forks add a simple boolean card-presence check for Type A tags; could simplify and clean up the generic tag detection path
+- [P2] **Consider upgrading to hyutrn fork** — actively maintained (v2.3.7, Sept 2025), FreeRTOS-aware (reduced blocking delays), ~500 bytes smaller, fixes unknown manufacturer ID 0xFF; same API as tueddy so migration path is straightforward but requires constructor and call-site updates
 
 ### Performance
-- **Instrument the write path** — add timing logs for each phase: format duration, number of blocks written, total write time, verify duration; output something like `format=320ms blocks=11 write=1840ms verify=410ms`; needed before any optimization to know where time is actually spent
-- **Dirty-block write optimization** — investigate whether the current write path already skips unchanged blocks or writes all blocks every time; writing only dirty blocks is the biggest firmware-side win available without changing libraries
-- **Blank vs. existing tag write time** — format step adds writes before the payload even starts; profile separately to understand if slow writes are blank-tag-only or affect rewrites too
-- **Write Multiple Blocks investigation** — check whether the SLIX2 tags in use support ISO15693 Write Multiple Blocks (command 0x24); if so, batching block writes could reduce round-trips; note: many tags do not support this command so verify against tag datasheet first
+- [P2] **Instrument the write path** — add timing logs for each phase: format duration, number of blocks written, total write time, verify duration; output something like `format=320ms blocks=11 write=1840ms verify=410ms`; needed before any optimization to know where time is actually spent
+- [P3] **Dirty-block write optimization** — investigate whether the current write path already skips unchanged blocks or writes all blocks every time; writing only dirty blocks is the biggest firmware-side win available without changing libraries
+- [P3] **Blank vs. existing tag write time** — format step adds writes before the payload even starts; profile separately to understand if slow writes are blank-tag-only or affect rewrites too
+- [P3] **Write Multiple Blocks investigation** — check whether the SLIX2 tags in use support ISO15693 Write Multiple Blocks (command 0x24); if so, batching block writes could reduce round-trips; note: many tags do not support this command so verify against tag datasheet first
 
 ### Firmware / Infrastructure
-- **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available
-- **MQTT reconnect robustness** — audit whether `HomeAssistantManager` cleanly handles broker drops and reconnects in long-running deployments; verify subscriptions are re-established after reconnect
-- **Configurable log verbosity** — add `LOG_LEVEL` define to `UserConfig.h` (e.g. DEBUG/INFO/WARN) to reduce serial noise in production without losing full output for debugging
+- [P1] **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available
+- [P2] **MQTT reconnect robustness** — audit whether `HomeAssistantManager` cleanly handles broker drops and reconnects in long-running deployments; verify subscriptions are re-established after reconnect
+- [P3] **Configurable log verbosity** — add `LOG_LEVEL` define to `UserConfig.h` (e.g. DEBUG/INFO/WARN) to reduce serial noise in production without losing full output for debugging
 
 ### Web / UI
 - ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
-- **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing
-- **Unified installer** [P1] — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
-- **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
+- [P1] **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing
+- [P1] **Unified installer** — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
+- [P1] **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
 ### Tag Writer Enhancements
 - ~~**Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing~~
-- **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support
+- [P3] **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support
 - ~~**TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support~~
-- **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
-- **TigerTag SpoolmanDB mapping** — investigate https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB for bridging TigerTag material/brand IDs to Spoolman filament profiles
+- [P1] **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
+- [P2] **TigerTag SpoolmanDB mapping** — TigerTag maintains a Spoolman-compatible materials database at https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB; live API at `https://api.tigertag.io/api:tigertag/SpoolmanDB/materials` returns 100 materials with id/material/density/extruder_temp/bed_temp; the `id` field matches the `material_id` in the TigerTag binary format (e.g. 38219=PLA, density=1.24); simplest approach: document that users should import `materials.json` into Spoolman so filament matching from TigerTag scans just works; longer term: hardcode top ~20 material densities in firmware for offline use
 
 ### Hardware / Build
-
-- **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
+- [P2] **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
 
 ### Debugging / Logging
-- **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier
+- [P2] **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier
 
 ### Integration
-- **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI
+- [P2] **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI
 
 ### Ecosystem
-- **Shared specs repo** — `spoolsense-specs` repo under the SpoolSense org documenting tag formats (OpenPrintTag, OpenTag3D, NTAG215 UID-only), MQTT payload schema, and REST API contract between scanner and middleware; becomes the source of truth both repos reference
+- [P3] **Shared specs repo** — `spoolsense-specs` repo under the SpoolSense org documenting tag formats (OpenPrintTag, OpenTag3D, NTAG215 UID-only), MQTT payload schema, and REST API contract between scanner and middleware; becomes the source of truth both repos reference
 
 ### Spoolman Integration
-- **OpenPrintTag extra fields** — register additional Spoolman extra fields to surface OpenPrintTag data in the Spoolman UI: `material_name`, `min_print_temp`, `max_print_temp`, `preheat_temp`, `min_bed_temp`, `max_bed_temp`, `openprinttag_version`; installer should auto-register these; scanner writes them during sync
-- **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
+- [P1] **OpenPrintTag extra fields** — register additional Spoolman extra fields to surface OpenPrintTag data in the Spoolman UI: `material_name`, `min_print_temp`, `max_print_temp`, `preheat_temp`, `min_bed_temp`, `max_bed_temp`, `openprinttag_version`; installer should auto-register these; scanner writes them during sync
+- [P1] **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
 
 ### Architecture / Overlap to Resolve
-- **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
+- [P2] **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
 
 ## Completed
 - **NTAG215 / UID-only tags** — ISO14443A detection via PN5180ISO14443, UID published as `GENERIC_TAG_DETECTED`, LCD shows "Generic Tag / UID scan only"

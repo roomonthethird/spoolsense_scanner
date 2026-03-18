@@ -12,6 +12,8 @@
 #include "TigerTagWriterHTML.h"
 #include "SharedCSS.h"
 #include "SharedJS.h"
+#include "OpenPrintTagLogo.h"
+#include "TigerTagLogo.h"
 #include "NFCManager.h"
 #include "NFCTypes.h"
 #include "NFCWriteTypes.h"
@@ -58,6 +60,8 @@ bool WebServerManager::begin(uint16_t port) {
     // Static assets
     _server.on("/css/shared.css",      HTTP_GET, [this]() { handleSharedCSS(); });
     _server.on("/js/shared.js",        HTTP_GET, [this]() { handleSharedJS(); });
+    _server.on("/img/openprinttag.png", HTTP_GET, [this]() { handleOpenPrintTagLogo(); });
+    _server.on("/img/tigertag.png",    HTTP_GET, [this]() { handleTigerTagLogo(); });
 
     // API
     _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
@@ -124,6 +128,16 @@ void WebServerManager::handleSharedJS() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.sendHeader("Cache-Control", "public, max-age=86400");
     _server.send_P(200, "application/javascript", SHARED_JS);
+}
+
+void WebServerManager::handleOpenPrintTagLogo() {
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "image/png", reinterpret_cast<const char*>(OPENPRINTTAG_LOGO_PNG), OPENPRINTTAG_LOGO_PNG_LEN);
+}
+
+void WebServerManager::handleTigerTagLogo() {
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "image/png", reinterpret_cast<const char*>(TIGERTAG_LOGO_PNG), TIGERTAG_LOGO_PNG_LEN);
 }
 
 // ---------------------------------------------------------------------------

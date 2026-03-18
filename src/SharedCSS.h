@@ -165,6 +165,11 @@ form{
   border-color:var(--blue);
 }
 
+.field select option{
+  background:#0f1115;
+  color:var(--text);
+}
+
 .field input[type="color"]{
   min-height:46px;
   padding:6px;

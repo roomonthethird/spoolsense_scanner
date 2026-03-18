@@ -41,7 +41,11 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       </div>
     </section>
 
-    <div class="footer-note">Auto-refreshes every second.</div>
+    <div class="actions" style="margin-top:16px;justify-content:center">
+      <button type="button" class="btn-primary hidden" id="scanBtn">Scan Again</button>
+    </div>
+
+    <div class="footer-note">Stops polling once a tag is detected.</div>
   </div>
 
   <script src="/js/shared.js"></script>
@@ -50,6 +54,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
     var tagView = document.getElementById('tagView');
     var tagFields = document.getElementById('tagFields');
     var lastJson = '';
+    var pollTimer = null;
+    var tagFound = false;
 
     function row(label, value) {
       return '<div class="tag-row"><span class="label">' + label + '</span><span class="value">' + value + '</span></div>';
@@ -127,20 +133,38 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       tagFields.innerHTML = html;
     }
 
-    function poll() {
-      api('/api/status').then(function(s){
-        var json = JSON.stringify(s);
-        if (json !== lastJson) {
-          lastJson = json;
-          render(s);
-        }
-      }).catch(function(){
-        // silently retry
-      });
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
-    poll();
-    setInterval(poll, 1000);
+    function startPolling() {
+      stopPolling();
+      tagFound = false;
+      lastJson = '';
+      noTag.classList.remove('hidden');
+      tagView.classList.add('hidden');
+      scanBtn.classList.add('hidden');
+      pollTimer = setInterval(poll, 1000);
+      poll();
+    }
+
+    function poll() {
+      api('/api/status').then(function(s){
+        if (s.present && !tagFound) {
+          tagFound = true;
+          stopPolling();
+          render(s);
+          scanBtn.classList.remove('hidden');
+        } else if (!tagFound) {
+          render(s);
+        }
+      }).catch(function(){});
+    }
+
+    var scanBtn = document.getElementById('scanBtn');
+    scanBtn.addEventListener('click', startPolling);
+
+    startPolling();
   </script>
 </body>
 </html>

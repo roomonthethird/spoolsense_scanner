@@ -520,6 +520,71 @@ static int findSpoolByUuidGlobal(const char* uuid) {
     return -1;
 }
 
+static bool archiveSpool(int spoolId) {
+    StaticJsonDocument<JSON_SMALL_CAPACITY> doc;
+    doc["archived"] = true;
+
+    String body;
+    serializeJson(doc, body);
+
+    char path[64];
+    snprintf(path, sizeof(path), "/api/v1/spool/%d", spoolId);
+
+    String response;
+    int code = httpPatch(path, body.c_str(), response);
+    if (code == 200) {
+        Serial.printf("SpoolmanManager: Archived spool id=%d\n", spoolId);
+        return true;
+    }
+
+    Serial.printf("SpoolmanManager: Failed to archive spool id=%d, code=%d\n", spoolId, code);
+    return false;
+}
+
+// Check if the tag data represents a different spool than what Spoolman has.
+// Returns true if the old spool should be archived and a new one created.
+// Triggers on: different filament, OR same filament but weight jumped up
+// significantly while the old spool was nearly empty (≤100g).
+static bool shouldArchiveAndReplace(int existingSpoolId, int newFilamentId,
+                                     const SpoolmanSyncRequest& req) {
+    // Fetch the existing spool's data from Spoolman
+    char path[64];
+    snprintf(path, sizeof(path), "/api/v1/spool/%d", existingSpoolId);
+    String response;
+    int code = httpGet(path, response);
+    if (code != 200) return false;
+
+    // Parse with enough capacity for the nested filament object
+    StaticJsonDocument<1024> doc;
+    DeserializationError err = deserializeJson(doc, response);
+    if (err) return false;
+
+    // Check filament change
+    int oldFilamentId = doc["filament"]["id"] | -1;
+    if (oldFilamentId >= 0 && newFilamentId >= 0 && oldFilamentId != newFilamentId) {
+        Serial.printf("SpoolmanManager: Filament changed (%d -> %d), will archive spool %d\n",
+                      oldFilamentId, newFilamentId, existingSpoolId);
+        return true;
+    }
+
+    // Same filament — check for weight jump on a nearly empty spool.
+    // This catches: pull tag off spent spool, put on fresh spool of same type.
+    static constexpr float LOW_SPOOL_THRESHOLD_G = 100.0f;
+    static constexpr float WEIGHT_JUMP_THRESHOLD_G = 500.0f;
+
+    float oldRemaining = doc["remaining_weight"] | -1.0f;
+    if (oldRemaining < 0.0f) return false;
+
+    if (oldRemaining <= LOW_SPOOL_THRESHOLD_G &&
+        req.remaining_weight_g > (oldRemaining + WEIGHT_JUMP_THRESHOLD_G)) {
+        Serial.printf("SpoolmanManager: Weight jump detected (%.0fg -> %.0fg, old was low), will archive spool %d\n",
+                      oldRemaining, req.remaining_weight_g, existingSpoolId);
+        return true;
+    }
+
+    return false;
+}
+
 static bool updateSpool(int spoolId, int filamentId, float remainingWeight) {
     StaticJsonDocument<JSON_SMALL_CAPACITY> doc;
     doc["remaining_weight"] = remainingWeight;
@@ -854,25 +919,30 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     if (preferredSpoolmanId > 0) {
         Serial.printf("SpoolmanManager: Fast path - looking up spool %d\n", preferredSpoolmanId);
         if (lookupSpoolById(preferredSpoolmanId, req.spool_id)) {
-            // UUID matches - just update remaining weight
-            // We still need a filament_id for updateSpool; get it from the spool response
-            // But updateSpool only needs it for the PATCH body, and the spool already has it.
-            // Simplify: use findOrCreateVendor/Filament to get filament_id for the update.
+            // UUID matches — resolve the new filament to check for re-tagging
             int vendorId = findOrCreateVendor(req.manufacturer);
             int filamentId = (vendorId >= 0) ? findOrCreateFilament(vendorId, req) : -1;
-            if (filamentId >= 0) {
-                success = updateSpool(preferredSpoolmanId, filamentId, req.remaining_weight_g);
+
+            // Check if this tag was re-used on a different spool
+            if (filamentId >= 0 &&
+                shouldArchiveAndReplace(preferredSpoolmanId, filamentId, req)) {
+                archiveSpool(preferredSpoolmanId);
+                invalidateCachedSpoolmanId(req.spool_id);
+                // Fall through to slow path to create a new spool
             } else {
-                // Filament lookup failed but spool exists - update without changing filament_id
-                // Use a minimal PATCH with just remaining_weight
-                success = updateSpool(preferredSpoolmanId, -1, req.remaining_weight_g);
+                // Normal update
+                if (filamentId >= 0) {
+                    success = updateSpool(preferredSpoolmanId, filamentId, req.remaining_weight_g);
+                } else {
+                    success = updateSpool(preferredSpoolmanId, -1, req.remaining_weight_g);
+                }
+                resolvedSpoolmanId = preferredSpoolmanId;
+                if (success) {
+                    storeCachedSpoolmanId(req.spool_id, resolvedSpoolmanId);
+                }
+                xSemaphoreGive(httpMutex_);
+                return success;
             }
-            resolvedSpoolmanId = preferredSpoolmanId;
-            if (success) {
-                storeCachedSpoolmanId(req.spool_id, resolvedSpoolmanId);
-            }
-            xSemaphoreGive(httpMutex_);
-            return success;
         }
 
         // Stale/mismatched spoolman_id on tag (common right after tag swaps/writeback):
@@ -881,16 +951,25 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
         if (existingSpoolId > 0) {
             int vendorId = findOrCreateVendor(req.manufacturer);
             int filamentId = (vendorId >= 0) ? findOrCreateFilament(vendorId, req) : -1;
-            if (filamentId >= 0) {
-                success = updateSpool(existingSpoolId, filamentId, req.remaining_weight_g);
+
+            // Check for re-tagging
+            if (filamentId >= 0 &&
+                shouldArchiveAndReplace(existingSpoolId, filamentId, req)) {
+                archiveSpool(existingSpoolId);
+                invalidateCachedSpoolmanId(req.spool_id);
+                // Fall through to slow path to create a new spool
             } else {
-                success = updateSpool(existingSpoolId, -1, req.remaining_weight_g);
-            }
-            if (success) {
-                resolvedSpoolmanId = existingSpoolId;
-                storeCachedSpoolmanId(req.spool_id, resolvedSpoolmanId);
-                xSemaphoreGive(httpMutex_);
-                return true;
+                if (filamentId >= 0) {
+                    success = updateSpool(existingSpoolId, filamentId, req.remaining_weight_g);
+                } else {
+                    success = updateSpool(existingSpoolId, -1, req.remaining_weight_g);
+                }
+                if (success) {
+                    resolvedSpoolmanId = existingSpoolId;
+                    storeCachedSpoolmanId(req.spool_id, resolvedSpoolmanId);
+                    xSemaphoreGive(httpMutex_);
+                    return true;
+                }
             }
         }
 
@@ -915,10 +994,27 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     int spoolId = findSpoolByUuid(filamentId, req.spool_id);
 
     if (spoolId < 0) {
+        // No spool with this nfc_id under the new filament.
+        // Check if another spool (different filament) has this nfc_id — archive it.
+        int oldSpoolId = findSpoolByUuidGlobal(req.spool_id);
+        if (oldSpoolId > 0) {
+            if (shouldArchiveAndReplace(oldSpoolId, filamentId, req)) {
+                archiveSpool(oldSpoolId);
+                invalidateCachedSpoolmanId(req.spool_id);
+            }
+        }
         spoolId = createSpool(filamentId, req);
         success = (spoolId >= 0);
     } else {
-        success = updateSpool(spoolId, filamentId, req.remaining_weight_g);
+        // Same filament + same nfc_id — check for weight jump (same type, fresh spool)
+        if (shouldArchiveAndReplace(spoolId, filamentId, req)) {
+            archiveSpool(spoolId);
+            invalidateCachedSpoolmanId(req.spool_id);
+            spoolId = createSpool(filamentId, req);
+            success = (spoolId >= 0);
+        } else {
+            success = updateSpool(spoolId, filamentId, req.remaining_weight_g);
+        }
     }
 
     if (success && spoolId > 0) {

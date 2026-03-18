@@ -32,6 +32,8 @@ private:
     void handleTigerTagWriter();
     void handleSharedCSS();
     void handleSharedJS();
+    void handleOpenPrintTagLogo();
+    void handleTigerTagLogo();
 
     // API handlers
     void handleApiStatus();

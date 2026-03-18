@@ -27,9 +27,12 @@ const char TAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     </nav>
 
     <section class="card" id="createView">
-      <div class="card-head">
-        <h1 class="card-title">Create OpenPrintTag</h1>
-        <p class="card-subtitle">Fill in the spool details, then write them to the tag.</p>
+      <div class="card-head" style="display:flex;align-items:center;gap:16px">
+        <img src="/img/openprinttag.png" alt="OpenPrintTag" style="height:48px;border-radius:8px" />
+        <div>
+          <h1 class="card-title">Create OpenPrintTag</h1>
+          <p class="card-subtitle">Fill in the spool details, then write them to the tag.</p>
+        </div>
       </div>
 
       <div class="card-body">
