@@ -11,7 +11,7 @@
 // POST /api/write-tag JSON body (all fields optional except core ones):
 //   {
 //     "uid":             "DAD4E374080104E0",  // must match tag present (empty = skip check)
-//     "material_type":   0,                   // OPT_MATERIAL_TYPE_* integer (0=PLA 1=PETG 2=ABS 3=ASA 4=TPU 5=PC 6=Nylon 7=PVA 8=HIPS 9=Other)
+//     "material_type":   0,                   // OPT_MATERIAL_TYPE_* integer (0=PLA 1=PETG 2=TPU 3=ABS 4=ASA 5=PC ...)
 //     "material_name":   "Royal Blue PLA",    // custom display name (optional)
 //     "color":           "#FF0000",           // hex color string
 //     "manufacturer":    "Prusament",
@@ -381,21 +381,27 @@ const char TAG_WRITER_HTML[] PROGMEM = R"rawliteral(
                 <select id="material_type" name="material_type" required>
                   <option value="0">PLA</option>
                   <option value="1">PETG</option>
-                  <option value="2">ABS</option>
-                  <option value="3">ASA</option>
-                  <option value="4">TPU</option>
+                  <option value="2">TPU</option>
+                  <option value="3">ABS</option>
+                  <option value="4">ASA</option>
                   <option value="5">PC</option>
-                  <option value="6">Nylon</option>
-                  <option value="7">PVA</option>
-                  <option value="8">HIPS</option>
-                  <option value="9">Other</option>
-
-                  <option value="5">PC-CF</option>
-                  <option value="5">PC-GF</option>
-                  <option value="3">ASA-GF</option>
-                  <option value="1">PET-CF</option>
-                  <option value="1">PET-GF</option>
-                  <option value="9">PEEK</option>
+                  <option value="6">PCTG</option>
+                  <option value="7">PP</option>
+                  <option value="8">PA6 (Nylon 6)</option>
+                  <option value="9">PA11 (Nylon 11)</option>
+                  <option value="10">PA12 (Nylon 12)</option>
+                  <option value="11">PA66 (Nylon 66)</option>
+                  <option value="12">CPE</option>
+                  <option value="13">TPE</option>
+                  <option value="14">HIPS</option>
+                  <option value="15">PHA</option>
+                  <option value="16">PET</option>
+                  <option value="17">PEI</option>
+                  <option value="18">PBT</option>
+                  <option value="19">PVB</option>
+                  <option value="20">PVA</option>
+                  <option value="21">PEKK</option>
+                  <option value="22">PEEK</option>
                   <option value="9">PEBA</option>
                   <option value="9">PPA</option>
                   <option value="9">PP-CF</option>

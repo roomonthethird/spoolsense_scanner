@@ -426,10 +426,7 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     doc["remaining_weight"] = req.remaining_weight_g;
     doc["initial_weight"] = req.initial_weight_g;
 
-    // add extra quotes arround value, since spoolman expects extra values to be valid json.
-    char uuidEscaped[32];
-    snprintf(uuidEscaped, sizeof(uuidEscaped), "\"%s\"", req.spool_id);
-    doc["extra"]["openprinttag_uuid"] = uuidEscaped;
+    doc["extra"]["openprinttag_uuid"] = req.spool_id;
 
     String body;
     serializeJson(doc, body);
