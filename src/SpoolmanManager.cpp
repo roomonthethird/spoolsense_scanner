@@ -462,7 +462,10 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     doc["remaining_weight"] = req.remaining_weight_g;
     doc["initial_weight"] = req.initial_weight_g;
 
-    doc["extra"]["nfc_id"] = req.spool_id;
+    // Spoolman expects extra field values to be valid JSON — wrap the string in quotes
+    char nfcIdJson[34];
+    snprintf(nfcIdJson, sizeof(nfcIdJson), "\"%s\"", req.spool_id);
+    doc["extra"]["nfc_id"] = nfcIdJson;
 
     String body;
     serializeJson(doc, body);
