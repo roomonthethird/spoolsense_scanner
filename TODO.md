@@ -32,6 +32,7 @@
 - **Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access
 - **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing
 - **Unified installer** [P1] — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
+- **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
 ### Hardware / Build
 
