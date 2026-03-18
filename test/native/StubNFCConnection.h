@@ -42,6 +42,19 @@ public:
 
     opt_nfc_hal_t* getHal() override { return &hal_; }
 
+    uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount,
+                                uint8_t* buffer, uint16_t bufferSize) override {
+        if (!tagPresent_ || readError_) return 0;
+        uint16_t totalBytes = pageCount * 4;
+        if (totalBytes > bufferSize) return 0;
+        // Return data from tagData_ starting at startPage * 4
+        size_t offset = startPage * 4;
+        uint16_t available = (offset < tagDataSize_) ? (tagDataSize_ - offset) : 0;
+        uint16_t toCopy = (totalBytes < available) ? totalBytes : available;
+        if (toCopy > 0) memcpy(buffer, tagData_ + offset, toCopy);
+        return toCopy;
+    }
+
     // Test control methods
     void setTagPresent(bool present) { tagPresent_ = present; }
 

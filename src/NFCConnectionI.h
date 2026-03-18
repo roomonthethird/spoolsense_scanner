@@ -26,6 +26,10 @@ public:
 
     // Get HAL for openprinttag library operations
     virtual opt_nfc_hal_t* getHal() = 0;
+
+    // Read ISO14443A tag pages (NTAG213/215/216). Reactivates tag if needed.
+    // Returns number of bytes read, or 0 on failure.
+    virtual uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) = 0;
 };
 
 #endif // NFC_CONNECTION_I_H

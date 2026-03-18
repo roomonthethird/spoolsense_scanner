@@ -16,6 +16,7 @@ enum class TagKind : uint8_t {
     OpenPrintTag,   // ordinal 0 — memset to zero produces safe default
     GenericUidTag,  // UID-only tag (e.g. NTAG215) — ISO14443A
     OpenTag3D,      // OpenTag3D format — ISO14443A
+    TigerTag,       // TigerTag format — ISO14443A (NTAG213/215/216)
     BlankTag,
     Unsupported
 };

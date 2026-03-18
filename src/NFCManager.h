@@ -11,6 +11,7 @@
 #endif
 #include "NFCTypes.h"
 #include "NFCConnectionI.h"
+#include "TigerTagParser.h"
 
 class NFCManager {
 public:
@@ -61,6 +62,7 @@ private:
     void sendSpoolDetectedMessage(bool suppress_spoolman_sync = false);
     void sendBlankTagMessage();
     void sendGenericTagMessage();
+    void sendTigerTagMessage(const TigerTagData& tt);
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);

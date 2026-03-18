@@ -233,6 +233,48 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
     return false;
 }
 
+uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pageCount,
+                                                    uint8_t* buffer, uint16_t bufferSize) {
+    if (!iso14443a_ || pageCount == 0 || buffer == nullptr) return 0;
+
+    uint16_t totalBytes = pageCount * 4;
+    if (totalBytes > bufferSize) return 0;
+
+    // Reactivate the tag — use activateTypeA directly (readCardSerial halts the tag)
+    iso14443a_->setupRF();
+    uint8_t response[10] = {0};
+    uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
+    if (uidLen < 4) {
+        Serial.println("HardwareNFC: readISO14443Pages - tag reactivation failed");
+        return 0;
+    }
+
+    // mifareBlockRead returns 16 bytes (4 pages) per call
+    // Read in 4-page chunks starting from startPage
+    uint16_t bytesRead = 0;
+    for (uint8_t page = startPage; page < startPage + pageCount; page += 4) {
+        uint8_t block[16] = {0};
+        if (!iso14443a_->mifareBlockRead(page, block)) {
+            Serial.printf("HardwareNFC: readISO14443Pages - read failed at page %d\n", page);
+            iso14443a_->mifareHalt();
+            return bytesRead;  // Return what we got so far
+        }
+
+        // Copy the pages we need from this 16-byte block
+        uint8_t pagesInBlock = 4;
+        uint8_t remaining = (startPage + pageCount) - page;
+        if (remaining < 4) pagesInBlock = remaining;
+
+        uint16_t copyBytes = pagesInBlock * 4;
+        if (bytesRead + copyBytes > bufferSize) copyBytes = bufferSize - bytesRead;
+        memcpy(buffer + bytesRead, block, copyBytes);
+        bytesRead += copyBytes;
+    }
+
+    iso14443a_->mifareHalt();
+    return bytesRead;
+}
+
 void HardwareNFCConnection::setCurrentUid(const uint8_t* uid, uint8_t length) {
     memcpy(currentUid_, uid, length < 8 ? length : 8);
     readCacheValid_ = false;

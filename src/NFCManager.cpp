@@ -1,5 +1,6 @@
 #include "NFCManager.h"
 #include "ConversionUtils.h"
+#include "TigerTagParser.h"
 #ifndef NATIVE_TEST
   #include "ApplicationManager.h"
   #include "HardwareNFCConnection.h"
@@ -227,23 +228,53 @@ void NFCManager::scanLoop() {
                 TagScanResult scan = classifyTag(uid, uidLength);
 
                 if (scan.kind == TagKind::GenericUidTag) {
-                    // ISO14443A tag (e.g. NTAG215) — UID only, no OpenPrintTag parse
+                    // ISO14443A tag — try TigerTag detection first, fall back to UID-only
+                    bool isTigerTag = false;
+                    TigerTagData tigerData;
+                    memset(&tigerData, 0, sizeof(tigerData));
+
+                    // Read pages 4-13 (40 bytes) — enough for TigerTag magic check + full parse
+                    uint8_t pageData[40] = {0};
+                    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData));
+                    if (bytesRead >= 14 && tigerTagCheckMagic(pageData, bytesRead)) {
+                        if (bytesRead >= 38) {
+                            tigerData = tigerTagParse(pageData, bytesRead);
+                            isTigerTag = tigerData.valid;
+                        } else {
+                            Serial.printf("NFCManager: TigerTag magic matched but only got %d bytes (need 38)\n", bytesRead);
+                        }
+                    }
+
                     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                         memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
                         memcpy(currentSpool.uid, uid, uidLength);
                         currentSpool.uid_length = uidLength;
                         currentSpool.present = true;
-                        currentSpool.tag_data_valid = false;
                         currentSpool.blank_tag_present = false;
-                        currentSpool.kind = TagKind::GenericUidTag;
                         memcpy(lastSeenUid, uid, uidLength);
                         lastSeenUidLength = uidLength;
                         lastSeenValid = true;
+
+                        if (isTigerTag) {
+                            currentSpool.kind = TagKind::TigerTag;
+                            currentSpool.tag_data_valid = false;  // No opt_tag_t for TigerTag
+                            Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
+                                          tigerData.brand_name, tigerData.material_name,
+                                          tigerData.aspect1_name);
+                        } else {
+                            currentSpool.kind = TagKind::GenericUidTag;
+                            currentSpool.tag_data_valid = false;
+                        }
                         xSemaphoreGive(tagMutex);
                     } else {
                         Serial.println("NFCManager: Could not acquire tagMutex");
                     }
-                    sendGenericTagMessage();
+
+                    if (isTigerTag) {
+                        sendTigerTagMessage(tigerData);
+                    } else {
+                        sendGenericTagMessage();
+                    }
                 } else {
 
                 // ISO15693 — attempt OpenPrintTag parse
@@ -662,6 +693,71 @@ void NFCManager::sendGenericTagMessage() {
     strncpy(msg.payload.genericTag.spool_id, currentSpool.spool_id,
             sizeof(msg.payload.genericTag.spool_id) - 1);
     msg.payload.genericTag.spool_id[sizeof(msg.payload.genericTag.spool_id) - 1] = '\0';
+    ApplicationManager::getInstance().sendMessage(msg);
+}
+
+void NFCManager::sendTigerTagMessage(const TigerTagData& tt) {
+    AppMessage msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = AppMessageType::SPOOL_DETECTED;
+
+    auto& s = msg.payload.spoolDetected;
+
+    strncpy(s.spool_id, currentSpool.spool_id, sizeof(s.spool_id) - 1);
+    strncpy(s.manufacturer, tt.brand_name, sizeof(s.manufacturer) - 1);
+    strncpy(s.material_name, tt.material_name, sizeof(s.material_name) - 1);
+
+    // Map TigerTag material to closest OpenPrintTag type for Spoolman compat
+    s.material_type = 0;  // Default PLA
+    // Common mappings — TigerTag uses string names, we need the OPT enum
+    if (strcmp(tt.material_name, "PLA") == 0 || strcmp(tt.material_name, "PLA+") == 0 ||
+        strcmp(tt.material_name, "PLA-HS") == 0)       s.material_type = OPT_MATERIAL_TYPE_PLA;
+    else if (strcmp(tt.material_name, "PETG") == 0 ||
+             strcmp(tt.material_name, "PETG-HS") == 0)  s.material_type = OPT_MATERIAL_TYPE_PETG;
+    else if (strcmp(tt.material_name, "TPU") == 0 ||
+             strcmp(tt.material_name, "TPU-HS") == 0)   s.material_type = OPT_MATERIAL_TYPE_TPU;
+    else if (strcmp(tt.material_name, "ABS") == 0)      s.material_type = OPT_MATERIAL_TYPE_ABS;
+    else if (strcmp(tt.material_name, "ASA") == 0 ||
+             strcmp(tt.material_name, "ASA+") == 0)     s.material_type = OPT_MATERIAL_TYPE_ASA;
+    else if (strcmp(tt.material_name, "PC") == 0)       s.material_type = OPT_MATERIAL_TYPE_PC;
+    else if (strcmp(tt.material_name, "PCTG") == 0)     s.material_type = OPT_MATERIAL_TYPE_PCTG;
+    else if (strcmp(tt.material_name, "PP") == 0)       s.material_type = OPT_MATERIAL_TYPE_PP;
+    else if (strcmp(tt.material_name, "PA6") == 0)      s.material_type = OPT_MATERIAL_TYPE_PA6;
+    else if (strcmp(tt.material_name, "PA12") == 0)     s.material_type = OPT_MATERIAL_TYPE_PA12;
+    else if (strcmp(tt.material_name, "HIPS") == 0)     s.material_type = OPT_MATERIAL_TYPE_HIPS;
+    else if (strcmp(tt.material_name, "PVA") == 0)      s.material_type = OPT_MATERIAL_TYPE_PVA;
+    else if (strcmp(tt.material_name, "PEEK") == 0)     s.material_type = OPT_MATERIAL_TYPE_PEEK;
+    else if (strcmp(tt.material_name, "PEI") == 0)      s.material_type = OPT_MATERIAL_TYPE_PEI;
+    else if (strcmp(tt.material_name, "TPE") == 0)      s.material_type = OPT_MATERIAL_TYPE_TPE;
+
+    s.has_color = 1;
+    s.primary_color[0] = tt.color_r;
+    s.primary_color[1] = tt.color_g;
+    s.primary_color[2] = tt.color_b;
+
+    s.initial_weight_g = tt.weight_g;
+    s.kg_remaining = tt.weight_g / 1000.0f;  // TigerTag has no consumed_weight, so remaining = initial
+
+    s.density = getDefaultDensity(s.material_type);
+    s.diameter = tt.diameter_mm > 0 ? tt.diameter_mm : 1.75f;
+
+    s.spoolman_id = -1;
+    s.suppress_spoolman_sync = 0;
+
+    // Payload dump
+    Serial.println("--- TigerTag SpoolDetected payload ---");
+    Serial.printf("  uid:          %s\n", s.spool_id);
+    Serial.printf("  brand:        %s\n", s.manufacturer);
+    Serial.printf("  material:     %s (type=%d)\n", s.material_name, s.material_type);
+    Serial.printf("  aspect:       %s\n", tt.aspect1_name);
+    Serial.printf("  color:        #%02X%02X%02X (A=%d)\n", tt.color_r, tt.color_g, tt.color_b, tt.color_a);
+    Serial.printf("  weight:       %dg\n", tt.weight_g);
+    Serial.printf("  diameter:     %.2fmm\n", s.diameter);
+    Serial.printf("  nozzle:       %d-%d°C\n", tt.nozzle_temp_min, tt.nozzle_temp_max);
+    Serial.printf("  bed:          %d-%d°C\n", tt.bed_temp_min, tt.bed_temp_max);
+    Serial.printf("  dry:          %d°C / %dh\n", tt.dry_temp, tt.dry_time_hours);
+    Serial.println("--------------------------------------");
+
     ApplicationManager::getInstance().sendMessage(msg);
 }
 
