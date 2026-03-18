@@ -2,10 +2,8 @@
 
 ## Bugs
 
-- **Spoolman 400 on spool create** — `openprinttag_uuid` in the extra field is double-escaped (`"\"DAD4E374080104E0\""` instead of `"DAD4E374080104E0"`); every new spool create fails with HTTP 400
 - **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
-
-- **Spoolman material mismatch** — serial log showed tag written as ABS but Spoolman matched it to TPU (filament id=3); likely a vendor/filament lookup bug or stale test data in Spoolman, needs investigation
+- **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
 - **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, HTML title in `docs/index.html`, project name in `CMakeLists.txt`, and `.code-workspace` filename
 
 ## Planned
@@ -48,6 +46,10 @@
 ### Ecosystem
 - **Shared specs repo** — `spoolsense-specs` repo under the SpoolSense org documenting tag formats (OpenPrintTag, OpenTag3D, NTAG215 UID-only), MQTT payload schema, and REST API contract between scanner and middleware; becomes the source of truth both repos reference
 
+### Spoolman Integration
+- **OpenPrintTag extra fields** — register additional Spoolman extra fields to surface OpenPrintTag data in the Spoolman UI: `material_name`, `min_print_temp`, `max_print_temp`, `preheat_temp`, `min_bed_temp`, `max_bed_temp`, `openprinttag_version`; installer should auto-register these; scanner writes them during sync
+- **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
+
 ### Architecture / Overlap to Resolve
 - **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
 
@@ -62,4 +64,12 @@
 - **Built-in tag writer** — HTTP server on port 80, mDNS as `spoolsense.local`, REST API (`/api/status`, `/api/write-tag`, `/api/format-tag`), UI embedded in firmware via `TagWriterHTML.h`
 - **LED pin in BoardPins.h** — pin auto-selected per board; `STATUS_LED_PIN` build flag removed
 - **ENABLE_STATUS_LED unified** — `USE_STATUS_LED` build flag removed; `ENABLE_STATUS_LED` from `UserConfig.h` is now the single flag; `ApplicationManager.cpp` fixed to include `UserConfig.h` so LED calls compile in correctly
-- **ESP32-S3 support** — `BoardPins.h` auto-selects pins per board; `platformio.ini` has `esp32s3zero` env; `ARDUINO_USB_CDC_ON_BOOT` enabled; LED type `NEO_GRB` for S3 onboard WS2812; hardware validated on S3-Zero with PN5180
+- **ESP32-S3 support** — `BoardPins.h` auto-selects pins per board; `platformio.ini` has `esp32s3zero` env; `ARDUINO_USB_CDC_ON_BOOT` enabled; LED type `NEO_RGB` for S3 onboard WS2812; hardware validated on S3-Zero with PN5180
+- **Spoolman 400 on spool create** — fixed double-escaped UUID, switched to `nfc_id` extra field, wrapped value as JSON string
+- **Material type dropdown** — fixed tag writer dropdown order to match OpenPrintTag enum (TPU=2, ABS=3, ASA=4); was writing wrong type codes
+- **S3-Zero LED color order** — changed from `NEO_GRB` to `NEO_RGB`; red and green were swapped
+- **Spoolman filament exact match** — switched to ArduinoJson for filament lookup; streaming parser couldn't handle nested vendor objects, was creating duplicate filaments
+- **NVS config support** — `ConfigurationManager` reads from NVS partition first, per-key fallback to compile-time defaults; enables pre-built binary flashing via installer
+- **GitHub Actions release workflow** — auto-builds ESP32-WROOM and ESP32-S3-Zero firmware on tag push, attaches bootloader + partitions + firmware to release
+- **SpoolSense Installer** — interactive CLI (`spoolsense-installer` repo) that downloads firmware, generates NVS config, verifies chip/flash, and flashes via esptool; also installs middleware with systemd service
+- **SpoolSense GitHub org** — both repos transferred to `github.com/SpoolSense`, org landing page created
