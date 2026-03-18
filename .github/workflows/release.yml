@@ -38,6 +38,8 @@ jobs:
           mkdir -p release
           cp .pio/build/esp32dev/firmware.bin release/spoolsense_scanner_esp32dev.bin
           cp .pio/build/esp32s3zero/firmware.bin release/spoolsense_scanner_esp32s3zero.bin
+          cp .pio/build/esp32dev/bootloader.bin release/bootloader_esp32dev.bin
+          cp .pio/build/esp32s3zero/bootloader.bin release/bootloader_esp32s3zero.bin
           cp .pio/build/esp32dev/partitions.bin release/partitions_esp32dev.bin
           cp .pio/build/esp32s3zero/partitions.bin release/partitions_esp32s3zero.bin
           cp partitions.csv release/partitions.csv
@@ -49,6 +51,8 @@ jobs:
           files: |
             release/spoolsense_scanner_esp32dev.bin
             release/spoolsense_scanner_esp32s3zero.bin
+            release/bootloader_esp32dev.bin
+            release/bootloader_esp32s3zero.bin
             release/partitions_esp32dev.bin
             release/partitions_esp32s3zero.bin
             release/partitions.csv
