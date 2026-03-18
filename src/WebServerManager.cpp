@@ -6,15 +6,33 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 
+#include "LandingHTML.h"
 #include "TagWriterHTML.h"
+#include "ReaderHTML.h"
+#include "TigerTagWriterHTML.h"
+#include "SharedCSS.h"
+#include "SharedJS.h"
 #include "NFCManager.h"
 #include "NFCTypes.h"
 #include "NFCWriteTypes.h"
 #include "ApplicationManager.h"
 #include "ConversionUtils.h"
+#include "TigerTagParser.h"
 
 extern "C" {
 #include "openprinttag_lib.h"
+}
+
+// Tag kind enum to string for API responses
+static const char* tagKindToString(TagKind kind) {
+    switch (kind) {
+        case TagKind::OpenPrintTag: return "OpenPrintTag";
+        case TagKind::GenericUidTag: return "GenericUidTag";
+        case TagKind::TigerTag:     return "TigerTag";
+        case TagKind::OpenTag3D:    return "OpenTag3D";
+        case TagKind::BlankTag:     return "BlankTag";
+        default:                    return "Unsupported";
+    }
 }
 
 WebServerManager& WebServerManager::getInstance() {
@@ -31,10 +49,21 @@ bool WebServerManager::begin(uint16_t port) {
         Serial.println("WebServerManager: mDNS failed — reachable by IP only");
     }
 
-    _server.on("/", HTTP_GET, [this]() { handleRoot(); });
-    _server.on("/api/status",     HTTP_GET,  [this]() { handleApiStatus(); });
-    _server.on("/api/write-tag",  HTTP_POST, [this]() { handleApiWriteTag(); });
-    _server.on("/api/format-tag", HTTP_POST, [this]() { handleApiFormatTag(); });
+    // Pages
+    _server.on("/",                    HTTP_GET, [this]() { handleLanding(); });
+    _server.on("/reader",              HTTP_GET, [this]() { handleReader(); });
+    _server.on("/writer/openprinttag", HTTP_GET, [this]() { handleOpenPrintTagWriter(); });
+    _server.on("/writer/tigertag",     HTTP_GET, [this]() { handleTigerTagWriter(); });
+
+    // Static assets
+    _server.on("/css/shared.css",      HTTP_GET, [this]() { handleSharedCSS(); });
+    _server.on("/js/shared.js",        HTTP_GET, [this]() { handleSharedJS(); });
+
+    // API
+    _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
+    _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
+    _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
+    _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
 
     // Allow browser preflight requests (CORS) so the page can be tested
     // from a local file during development.
@@ -62,26 +91,85 @@ void WebServerManager::handleClient() {
 }
 
 // ---------------------------------------------------------------------------
-// Route handlers
+// Page handlers
 // ---------------------------------------------------------------------------
 
-void WebServerManager::handleRoot() {
+void WebServerManager::handleLanding() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", LANDING_HTML);
+}
+
+void WebServerManager::handleReader() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", READER_HTML);
+}
+
+void WebServerManager::handleOpenPrintTagWriter() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", TAG_WRITER_HTML);
 }
+
+void WebServerManager::handleTigerTagWriter() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", TIGERTAG_WRITER_HTML);
+}
+
+void WebServerManager::handleSharedCSS() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "text/css", SHARED_CSS);
+}
+
+void WebServerManager::handleSharedJS() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "application/javascript", SHARED_JS);
+}
+
+// ---------------------------------------------------------------------------
+// API: Status
+// ---------------------------------------------------------------------------
 
 void WebServerManager::handleApiStatus() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     CurrentSpoolState state;
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<1024> doc;
 
     if (NFCManager::getInstance().getCurrentSpoolState(state) && state.present) {
         doc["present"] = true;
         doc["uid"] = state.spool_id;
         doc["tag_data_valid"] = state.tag_data_valid;
+        doc["tag_kind"] = tagKindToString(state.kind);
 
-        if (state.tag_data_valid) {
+        if (state.kind == TagKind::TigerTag) {
+            // TigerTag — include parsed TigerTag data
+            TigerTagData tt;
+            if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
+                JsonObject ttObj = doc.createNestedObject("tigertag");
+                ttObj["material_id"] = tt.material_id;
+                ttObj["material_name"] = tt.material_name;
+                ttObj["brand_id"] = tt.brand_id;
+                ttObj["brand_name"] = tt.brand_name;
+                ttObj["weight_g"] = tt.weight_g;
+                ttObj["diameter_mm"] = tt.diameter_mm;
+                ttObj["aspect1_name"] = tt.aspect1_name;
+                ttObj["aspect2_name"] = tt.aspect2_name;
+
+                char colorHex[8];
+                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+                         tt.color_r, tt.color_g, tt.color_b);
+                ttObj["color_hex"] = colorHex;
+
+                if (tt.nozzle_temp_min > 0) ttObj["nozzle_temp_min"] = tt.nozzle_temp_min;
+                if (tt.nozzle_temp_max > 0) ttObj["nozzle_temp_max"] = tt.nozzle_temp_max;
+                if (tt.bed_temp_min > 0) ttObj["bed_temp_min"] = tt.bed_temp_min;
+                if (tt.bed_temp_max > 0) ttObj["bed_temp_max"] = tt.bed_temp_max;
+                if (tt.dry_temp > 0) ttObj["dry_temp"] = tt.dry_temp;
+                if (tt.dry_time_hours > 0) ttObj["dry_time_hours"] = tt.dry_time_hours;
+            }
+        } else if (state.tag_data_valid) {
+            // OpenPrintTag — include OPT fields
             uint8_t mat_type = 0;
             opt_get_material_type(&state.tag_data, &mat_type);
             doc["material_type"] = mat_type;
@@ -140,6 +228,10 @@ void WebServerManager::handleApiStatus() {
     serializeJson(doc, body);
     _server.send(200, "application/json", body);
 }
+
+// ---------------------------------------------------------------------------
+// API: Write OpenPrintTag
+// ---------------------------------------------------------------------------
 
 void WebServerManager::handleApiWriteTag() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -267,6 +359,10 @@ void WebServerManager::handleApiWriteTag() {
     _server.send(200, "application/json", "{\"success\":true}");
 }
 
+// ---------------------------------------------------------------------------
+// API: Format Tag
+// ---------------------------------------------------------------------------
+
 void WebServerManager::handleApiFormatTag() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
@@ -285,6 +381,95 @@ void WebServerManager::handleApiFormatTag() {
     req.request_id = millis();
     req.type = NFCWriteType::FORMAT_NEW;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
+    NFCManager::getInstance().enqueueWrite(req);
+
+    _server.send(200, "application/json", "{\"success\":true}");
+}
+
+// ---------------------------------------------------------------------------
+// API: Write TigerTag
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiWriteTigerTag() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    const char* uid = doc["uid"] | "";
+
+    // Assemble 40-byte TigerTag binary layout (32 bytes data + 8 bytes padding)
+    uint8_t payload[40];
+    memset(payload, 0, sizeof(payload));
+
+    // Version ID — V1.0 Maker (bytes 0-3)
+    payload[0] = 0x5B; payload[1] = 0xF5; payload[2] = 0x92; payload[3] = 0x64;
+
+    // Product ID — Maker/Offline (bytes 4-7)
+    payload[4] = 0xFF; payload[5] = 0xFF; payload[6] = 0xFF; payload[7] = 0xFF;
+
+    // Material ID (big-endian uint16, bytes 8-9)
+    uint16_t materialId = doc["material_id"] | (uint16_t)38219;
+    payload[8] = (materialId >> 8) & 0xFF;
+    payload[9] = materialId & 0xFF;
+
+    // Aspect IDs (bytes 10-11)
+    payload[10] = doc["aspect1_id"] | (uint8_t)255;
+    payload[11] = doc["aspect2_id"] | (uint8_t)255;
+
+    // Type ID (byte 12) — 0x8E = Filament
+    payload[12] = 0x8E;
+
+    // Diameter ID (byte 13) — 56 = 1.75mm
+    payload[13] = doc["diameter_id"] | (uint8_t)56;
+
+    // Brand ID (big-endian uint16, bytes 14-15)
+    uint16_t brandId = doc["brand_id"] | (uint16_t)65535;
+    payload[14] = (brandId >> 8) & 0xFF;
+    payload[15] = brandId & 0xFF;
+
+    // Color RGBA (bytes 16-19)
+    payload[16] = doc["color_r"] | (uint8_t)255;
+    payload[17] = doc["color_g"] | (uint8_t)255;
+    payload[18] = doc["color_b"] | (uint8_t)255;
+    payload[19] = doc["color_a"] | (uint8_t)255;
+
+    // Weight (big-endian 3 bytes, bytes 20-22)
+    uint32_t weightG = doc["weight_g"] | (uint32_t)1000;
+    payload[20] = (weightG >> 16) & 0xFF;
+    payload[21] = (weightG >> 8) & 0xFF;
+    payload[22] = weightG & 0xFF;
+
+    // Unit ID (byte 23) — 21 = grams
+    payload[23] = 21;
+
+    // Nozzle temps (big-endian uint16, bytes 24-27)
+    uint16_t nozzleMin = doc["nozzle_min"] | (uint16_t)0;
+    uint16_t nozzleMax = doc["nozzle_max"] | (uint16_t)0;
+    payload[24] = (nozzleMin >> 8) & 0xFF;
+    payload[25] = nozzleMin & 0xFF;
+    payload[26] = (nozzleMax >> 8) & 0xFF;
+    payload[27] = nozzleMax & 0xFF;
+
+    // Dry temp/time (bytes 28-29)
+    payload[28] = doc["dry_temp"] | (uint8_t)0;
+    payload[29] = doc["dry_time"] | (uint8_t)0;
+
+    // Bed temps (bytes 30-31)
+    payload[30] = doc["bed_min"] | (uint8_t)0;
+    payload[31] = doc["bed_max"] | (uint8_t)0;
+
+    // Enqueue write request
+    NFCWriteRequest req;
+    memset(&req, 0, sizeof(req));
+    req.request_id = millis();
+    req.type = NFCWriteType::WRITE_TIGERTAG;
+    strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
+    memcpy(req.data.tigertag_data, payload, 40);
     NFCManager::getInstance().enqueueWrite(req);
 
     _server.send(200, "application/json", "{\"success\":true}");

@@ -275,6 +275,37 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
     return bytesRead;
 }
 
+bool HardwareNFCConnection::writeISO14443Pages(uint8_t startPage, uint8_t pageCount,
+                                                 const uint8_t* data, uint16_t dataLen) {
+    if (!iso14443a_ || pageCount == 0 || data == nullptr) return false;
+
+    uint16_t totalBytes = pageCount * 4;
+    if (dataLen < totalBytes) return false;
+
+    // Reactivate the tag
+    iso14443a_->setupRF();
+    uint8_t response[10] = {0};
+    uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
+    if (uidLen < 4) {
+        Serial.println("HardwareNFC: writeISO14443Pages - tag reactivation failed");
+        return false;
+    }
+
+    // Write one page (4 bytes) at a time
+    for (uint8_t i = 0; i < pageCount; i++) {
+        uint8_t page = startPage + i;
+        if (!iso14443a_->mifareBlockWrite4(page, data + (i * 4))) {
+            Serial.printf("HardwareNFC: writeISO14443Pages - write failed at page %d\n", page);
+            iso14443a_->mifareHalt();
+            return false;
+        }
+    }
+
+    iso14443a_->mifareHalt();
+    Serial.printf("HardwareNFC: writeISO14443Pages - wrote %d pages starting at page %d\n", pageCount, startPage);
+    return true;
+}
+
 void HardwareNFCConnection::setCurrentUid(const uint8_t* uid, uint8_t length) {
     memcpy(currentUid_, uid, length < 8 ? length : 8);
     readCacheValid_ = false;

@@ -207,6 +207,36 @@ uint8_t PN5180ISO14443::mifareBlockWrite16(uint8_t blockno, uint8_t *buffer) {
 	return cmd[0];
 }
 
+bool PN5180ISO14443::mifareBlockWrite4(uint8_t pageno, const uint8_t *data) {
+	// NTAG WRITE command (0xA2) — writes exactly 4 bytes to one page
+	uint8_t cmd[6];
+	cmd[0] = 0xA2;
+	cmd[1] = pageno;
+	cmd[2] = data[0];
+	cmd[3] = data[1];
+	cmd[4] = data[2];
+	cmd[5] = data[3];
+
+	// Clear RX CRC (ACK is only 4 bits, no CRC)
+	writeRegisterWithAndMask(CRC_RX_CONFIG, 0xFFFFFFFE);
+
+	if (!sendData(cmd, 6, 0x00)) {
+		writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
+		return false;
+	}
+
+	delay(5);
+
+	// Read ACK/NAK (1 byte: 0x0A = ACK)
+	uint8_t ack = 0;
+	readData(1, &ack);
+
+	// Re-enable RX CRC
+	writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
+
+	return (ack == 0x0A);
+}
+
 bool PN5180ISO14443::mifareHalt() {
 	uint8_t cmd[2];
 	//mifare Halt

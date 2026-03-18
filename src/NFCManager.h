@@ -25,6 +25,7 @@ public:
     void requestCurrentSpool();                      // Clear dedup to resend current spool
     bool scanOnce();                                 // Single scan cycle (for testing)
     bool getCurrentSpoolState(CurrentSpoolState& out);
+    bool getLastTigerTagData(TigerTagData& out);
 
     // Dependency injection for testing
     void setConnection(NFCConnectionI* conn) { connection_ = conn; }
@@ -83,6 +84,10 @@ private:
     RecentSpoolEntry recentSpools[MAX_RECENT_SPOOLS];
     size_t recentSpoolsCount = 0;
     void addToRecentSpools();
+
+    // Last parsed TigerTag data (retained for /api/status)
+    TigerTagData lastTigerTag_;
+    bool lastTigerTagValid_ = false;
 
     // Raw tag write sidecar buffer (filled by BLE context, consumed by scan task)
     static constexpr size_t RAW_WRITE_BUFFER_SIZE = 320;

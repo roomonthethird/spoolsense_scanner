@@ -94,6 +94,15 @@ bool NFCManager::getCurrentSpoolState(CurrentSpoolState& out) {
     return true;
 }
 
+bool NFCManager::getLastTigerTagData(TigerTagData& out) {
+    if (tagMutex == nullptr) return false;
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool valid = lastTigerTagValid_;
+    if (valid) out = lastTigerTag_;
+    xSemaphoreGive(tagMutex);
+    return valid;
+}
+
 void NFCManager::startScanTask() {
     xTaskCreatePinnedToCore(
         scanTaskFunc,
@@ -258,12 +267,15 @@ void NFCManager::scanLoop() {
                         if (isTigerTag) {
                             currentSpool.kind = TagKind::TigerTag;
                             currentSpool.tag_data_valid = false;  // No opt_tag_t for TigerTag
+                            lastTigerTag_ = tigerData;
+                            lastTigerTagValid_ = true;
                             Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
                                           tigerData.brand_name, tigerData.material_name,
                                           tigerData.aspect1_name);
                         } else {
                             currentSpool.kind = TagKind::GenericUidTag;
                             currentSpool.tag_data_valid = false;
+                            lastTigerTagValid_ = false;
                         }
                         xSemaphoreGive(tagMutex);
                     } else {
@@ -342,6 +354,7 @@ if (!readOk) {
                 currentSpool.present = false;
                 currentSpool.blank_tag_present = false;
                 lastSeenValid = false;
+                lastTigerTagValid_ = false;
 
                 // Clear suppression if tag removed
                 suppressReDetection_ = false;
@@ -1167,6 +1180,35 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         xSemaphoreGive(tagMutex);
 
         return writeRawTag();
+    }
+
+    // Handle WRITE_TIGERTAG — write 40-byte binary to NTAG pages 4-13
+    if (request.type == NFCWriteType::WRITE_TIGERTAG) {
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("NFCManager: WRITE_TIGERTAG - could not acquire tagMutex");
+            return false;
+        }
+        if (request.expected_spool_id[0] != '\0' &&
+            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+            xSemaphoreGive(tagMutex);
+            Serial.println("NFCManager: WRITE_TIGERTAG rejected - UID mismatch");
+            return false;
+        }
+        xSemaphoreGive(tagMutex);
+
+        // Write 40 bytes = 10 pages starting at page 4
+        bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
+        if (ok) {
+            Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
+            // Force re-scan to pick up the new TigerTag data
+            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                currentSpool.present = false;
+                xSemaphoreGive(tagMutex);
+            }
+        } else {
+            Serial.println("NFCManager: WRITE_TIGERTAG failed");
+        }
+        return ok;
     }
 
     // For non-FORMAT writes: take mutex to validate + modify in-memory data, then release for NFC I/O

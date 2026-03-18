@@ -25,10 +25,20 @@ private:
     WebServer _server{80};
     bool _initialized = false;
 
-    void handleRoot();
+    // Page handlers
+    void handleLanding();
+    void handleReader();
+    void handleOpenPrintTagWriter();
+    void handleTigerTagWriter();
+    void handleSharedCSS();
+    void handleSharedJS();
+
+    // API handlers
     void handleApiStatus();
     void handleApiWriteTag();
     void handleApiFormatTag();
+    void handleApiWriteTigerTag();
+
     void sendError(int code, const char* msg);
 #endif
 };

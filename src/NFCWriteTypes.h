@@ -24,6 +24,7 @@ enum class NFCWriteType : uint8_t {
     SET_PREHEAT_TEMP,     // Set preheat temperature (°C)
     SET_MIN_BED_TEMP,     // Set minimum bed temperature (°C)
     SET_MAX_BED_TEMP,     // Set maximum bed temperature (°C)
+    WRITE_TIGERTAG,       // Write 40-byte TigerTag binary to NTAG pages 4-13
 };
 
 struct NFCWriteRequest {
@@ -41,6 +42,7 @@ struct NFCWriteRequest {
         char brand_name[33];        // Manufacturer name
         char material_name[33];     // Custom material name string
         int32_t spoolman_id;        // Spoolman spool ID for tag write-back
+        uint8_t tigertag_data[40];  // TigerTag binary payload (pages 4-13)
     } data;
 };
 

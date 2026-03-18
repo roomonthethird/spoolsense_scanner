@@ -14,7 +14,7 @@
 
 #if defined(BOARD_ESP32_S3)
 LEDManager::LEDManager()
-    : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRB + NEO_KHZ800) {}
+    : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_RGB + NEO_KHZ800) {}
 #else
 LEDManager::LEDManager()
     : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRBW + NEO_KHZ800) {}
@@ -22,7 +22,7 @@ LEDManager::LEDManager()
 
 void LEDManager::begin(uint8_t pin) {
 #if defined(BOARD_ESP32_S3)
-    _pixel.updateType(NEO_GRB + NEO_KHZ800);
+    _pixel.updateType(NEO_RGB + NEO_KHZ800);
 #else
     _pixel.updateType(NEO_GRBW + NEO_KHZ800);
 #endif

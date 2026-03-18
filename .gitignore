@@ -12,3 +12,4 @@ test/native/test_runner_asan.dSYM/
 test/native/test_*_runner
 test/native/test_bgcode_parser
 esp32-planning.md
+docs/*-preview.html

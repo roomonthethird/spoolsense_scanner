@@ -1,0 +1,70 @@
+#pragma once
+
+// Landing page served at GET /
+// Shows SpoolSense logo and links to all tools.
+
+const char LANDING_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SpoolSense Scanner</title>
+  <link rel="stylesheet" href="/css/shared.css" />
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <span class="nav-brand">SpoolSense</span>
+      <a href="/" class="active">Home</a>
+      <a href="/reader">Reader</a>
+      <a href="/writer/openprinttag">OpenPrintTag</a>
+      <a href="/writer/tigertag">TigerTag</a>
+    </nav>
+
+    <div style="text-align:center;margin:32px 0 28px">
+      <svg width="280" height="64" viewBox="0 0 280 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpoolSense Scanner logo">
+        <defs>
+          <linearGradient id="gRed" x1="0" x2="1">
+            <stop offset="0" stop-color="#EF4444"/>
+            <stop offset="1" stop-color="#DC2626"/>
+          </linearGradient>
+        </defs>
+        <circle cx="30" cy="30" r="20" fill="#111318" stroke="#2A2E36" stroke-width="2.5"/>
+        <circle cx="30" cy="30" r="7" fill="#0B0B0D" stroke="#52525B" stroke-width="2.5"/>
+        <path d="M16 19C19.5 15.5 25 13 30 13C40 13 48 21 48 31" stroke="url(#gRed)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M13 29C13 39 21 47 31 47C36 47 41 45 45 42" stroke="url(#gRed)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M60 16C67 16 73 21 73 30" stroke="url(#gRed)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M65 11C74 11 82 19 82 30" stroke="url(#gRed)" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>
+        <text x="96" y="33" fill="#F4F4F5" font-size="26" font-weight="800" font-family="Inter, Arial, sans-serif">SpoolSense</text>
+        <text x="96" y="52" fill="#EF4444" font-size="13" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="2">SCANNER</text>
+      </svg>
+    </div>
+
+    <div class="tool-grid">
+      <a href="/reader" class="tool-card">
+        <div class="tool-icon">&#128270;</div>
+        <div class="tool-name">Tag Reader</div>
+        <div class="tool-desc">Auto-detect and display tag data. Supports OpenPrintTag, TigerTag, and generic UID tags.</div>
+      </a>
+
+      <a href="/writer/openprinttag" class="tool-card">
+        <div class="tool-icon">&#9997;</div>
+        <div class="tool-name">OpenPrintTag Writer</div>
+        <div class="tool-desc">Write filament data to ISO15693 tags using the OpenPrintTag format.</div>
+      </a>
+
+      <a href="/writer/tigertag" class="tool-card">
+        <div class="tool-icon">&#128047;</div>
+        <div class="tool-name">TigerTag Writer</div>
+        <div class="tool-desc">Write filament data to NTAG213/215 tags using the TigerTag binary format.</div>
+      </a>
+    </div>
+
+    <div class="footer-note" style="margin-top:28px">SpoolSense Scanner &mdash; spoolsense.local</div>
+  </div>
+
+  <script src="/js/shared.js"></script>
+</body>
+</html>
+)rawliteral";

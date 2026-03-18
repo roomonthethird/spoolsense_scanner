@@ -37,6 +37,7 @@ public:
   uint8_t activateTypeA(uint8_t *buffer, uint8_t kind);
   bool mifareBlockRead(uint8_t blockno,uint8_t *buffer);
   uint8_t mifareBlockWrite16(uint8_t blockno, uint8_t *buffer);
+  bool mifareBlockWrite4(uint8_t pageno, const uint8_t *data);
   bool mifareHalt();
   /*
    * Helper functions

@@ -55,6 +55,26 @@ public:
         return toCopy;
     }
 
+    bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount,
+                             const uint8_t* data, uint16_t dataLen) override {
+        if (!tagPresent_ || writeError_) return false;
+        uint16_t totalBytes = pageCount * 4;
+        if (dataLen < totalBytes) return false;
+        // Track individual page writes and update tag data
+        for (uint8_t i = 0; i < pageCount; i++) {
+            PageWrite pw;
+            pw.page = startPage + i;
+            memcpy(pw.data, data + (i * 4), 4);
+            pageWrites_.push_back(pw);
+            size_t offset = pw.page * 4;
+            if (offset + 4 <= sizeof(tagData_)) {
+                memcpy(tagData_ + offset, pw.data, 4);
+                if (offset + 4 > tagDataSize_) tagDataSize_ = offset + 4;
+            }
+        }
+        return true;
+    }
+
     // Test control methods
     void setTagPresent(bool present) { tagPresent_ = present; }
 

@@ -21,6 +21,7 @@ public:
     void setCurrentUid(const uint8_t* uid, uint8_t length) override;
     opt_nfc_hal_t* getHal() override;
     uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) override;
+    bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount, const uint8_t* data, uint16_t dataLen) override;
     // Diagnostics: log RF_STATUS, IRQ_STATUS, SYSTEM_STATUS registers
     void logDiagnostics();
 
