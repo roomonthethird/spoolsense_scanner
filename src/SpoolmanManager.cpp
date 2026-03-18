@@ -190,7 +190,7 @@ static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outI
                         break;
                     }
                     if (reader.node_type() != json_node_type::field) continue;
-                    if (strcmp(reader.value(), "openprinttag_uuid") != 0) continue;
+                    if (strcmp(reader.value(), "nfc_id") != 0) continue;
                     if (reader.read()) {
                         readStringValue(reader, tagUuid, sizeof(tagUuid));
                     }
@@ -209,7 +209,7 @@ static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSi
 
     while (reader.read()) {
         if (reader.node_type() != json_node_type::field) continue;
-        if (strcmp(reader.value(), "openprinttag_uuid") != 0) continue;
+        if (strcmp(reader.value(), "nfc_id") != 0) continue;
         if (!reader.read()) return false;
         return readStringValue(reader, outUuid, outUuidSize);
     }
@@ -342,20 +342,56 @@ static int findOrCreateVendor(const char* name) {
     return -1;
 }
 
+// Find the first array item whose "material" field exactly matches the target.
+// Spoolman's API does substring matching (ABS matches PC-ABS), so we filter client-side.
+static bool findExactMaterialId(const char* jsonText, const char* targetMaterial, int& outId) {
+    outId = -1;
+    const_buffer_stream stm((const uint8_t*)jsonText, strlen(jsonText));
+    json_reader reader(stm);
+
+    while (reader.read()) {
+        if (reader.node_type() != json_node_type::object) continue;
+        const unsigned objectDepth = reader.depth();
+        int candidateId = -1;
+        char candidateMaterial[32] = {0};
+
+        while (reader.read()) {
+            if (reader.node_type() == json_node_type::end_object && reader.depth() == objectDepth) {
+                break;
+            }
+            if (reader.node_type() != json_node_type::field) continue;
+            const char* field = reader.value();
+            if (strcmp(field, "id") == 0) {
+                if (reader.read()) readIntValue(reader, candidateId);
+            } else if (strcmp(field, "material") == 0) {
+                if (reader.read()) readStringValue(reader, candidateMaterial, sizeof(candidateMaterial));
+            }
+        }
+
+        if (candidateId >= 0 && strcmp(candidateMaterial, targetMaterial) == 0) {
+            outId = candidateId;
+            return true;
+        }
+    }
+    return false;
+}
+
 static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     const char* material = materialTypeToSpoolmanStr(req.material_type);
 
-    // Search for existing filament
+    // Search for existing filament — Spoolman does substring matching,
+    // so we filter client-side for an exact material match
     char path[256];
     snprintf(path, sizeof(path), "/api/v1/filament?vendor_id=%d&material=%s", vendorId, material);
     String response;
     int code = httpGet(path, response);
     if (code == 200) {
         int id = -1;
-        if (parseFirstArrayItemId(response.c_str(), id)) {
+        if (findExactMaterialId(response.c_str(), material, id)) {
             Serial.printf("SpoolmanManager: Found filament material=%s id=%d\n", material, id);
             return id;
         }
+        Serial.printf("SpoolmanManager: No exact match for material=%s, will create\n", material);
     }
 
     // Create new filament
@@ -426,7 +462,7 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     doc["remaining_weight"] = req.remaining_weight_g;
     doc["initial_weight"] = req.initial_weight_g;
 
-    doc["extra"]["openprinttag_uuid"] = req.spool_id;
+    doc["extra"]["nfc_id"] = req.spool_id;
 
     String body;
     serializeJson(doc, body);
@@ -445,7 +481,8 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     }
 
     Serial.printf("SpoolmanManager: Failed to create spool, code=%d\n", code);
-    Serial.print(body);
+    Serial.printf("  Request:  %s\n", body.c_str());
+    Serial.printf("  Response: %s\n", response.c_str());
     return -1;
 }
 
