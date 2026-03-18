@@ -10,6 +10,7 @@
 
 ### Tag Format Support
 - **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
+- **TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide
 
 ### PN5180 Library
 - **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
