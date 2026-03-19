@@ -426,6 +426,37 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
                             hasUpdate = true;
                         }
 
+                        // Fill blank extra fields (aspect, dry temps)
+                        JsonObject existingExtra = filDoc["extra"].as<JsonObject>();
+                        bool extraChanged = false;
+                        JsonObject patchExtra = patchDoc.createNestedObject("extra");
+
+                        // Preserve existing extras
+                        if (!existingExtra.isNull()) {
+                            for (JsonPair kv : existingExtra) {
+                                patchExtra[kv.key()] = kv.value();
+                            }
+                        }
+
+                        const char* existingAspect = existingExtra["aspect"] | "";
+                        if (existingAspect[0] == '\0' && req.aspect[0] != '\0') {
+                            patchExtra["aspect"] = req.aspect;
+                            extraChanged = true;
+                        }
+                        const char* existingDryTemp = existingExtra["dry_temp"] | "";
+                        if (existingDryTemp[0] == '\0' && req.dry_temp > 0) {
+                            patchExtra["dry_temp"] = String(req.dry_temp);
+                            extraChanged = true;
+                        }
+                        const char* existingDryTime = existingExtra["dry_time_hours"] | "";
+                        if (existingDryTime[0] == '\0' && req.dry_time_hours > 0) {
+                            patchExtra["dry_time_hours"] = String(req.dry_time_hours);
+                            extraChanged = true;
+                        }
+
+                        if (!extraChanged) patchDoc.remove("extra");
+                        if (extraChanged) hasUpdate = true;
+
                         if (hasUpdate) {
                             String patchBody;
                             serializeJson(patchDoc, patchBody);
@@ -465,6 +496,12 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     if (extruderAvg > 0) createDoc["settings_extruder_temp"] = extruderAvg;
     int16_t bedAvg = avgTemp(req.min_bed_temp, req.max_bed_temp);
     if (bedAvg > 0) createDoc["settings_bed_temp"] = bedAvg;
+
+    // Extra fields (opportunistic — Spoolman ignores unknown fields in extra object)
+    JsonObject filExtra = createDoc.createNestedObject("extra");
+    if (req.aspect[0] != '\0') filExtra["aspect"] = req.aspect;
+    if (req.dry_temp > 0) filExtra["dry_temp"] = String(req.dry_temp);
+    if (req.dry_time_hours > 0) filExtra["dry_time_hours"] = String(req.dry_time_hours);
 
     String body;
     serializeJson(createDoc, body);
@@ -524,7 +561,9 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     // Spoolman expects extra field values to be valid JSON — wrap the string in quotes
     char nfcIdJson[34];
     snprintf(nfcIdJson, sizeof(nfcIdJson), "\"%s\"", req.spool_id);
-    doc["extra"]["nfc_id"] = nfcIdJson;
+    JsonObject spoolExtra = doc.createNestedObject("extra");
+    spoolExtra["nfc_id"] = nfcIdJson;
+    if (req.tag_format[0] != '\0') spoolExtra["tag_format"] = req.tag_format;
 
     String body;
     serializeJson(doc, body);

@@ -48,6 +48,10 @@ struct SpoolDetectedPayload {
     int16_t max_print_temp;      // Max extruder temp C (0 = not set)
     int16_t min_bed_temp;        // Min bed temp C (0 = not set)
     int16_t max_bed_temp;        // Max bed temp C (0 = not set)
+    char aspect[16];             // TigerTag aspect: "Silk", "Wood", "Matt" etc.
+    uint8_t dry_temp;            // Drying temp C (0 = not set)
+    uint8_t dry_time_hours;      // Drying time hours (0 = not set)
+    char tag_format[16];         // "OpenPrintTag", "TigerTag"
     uint8_t suppress_spoolman_sync; // 1 = don't trigger Spoolman sync (e.g., after write_spoolman_spool batch)
 };
 

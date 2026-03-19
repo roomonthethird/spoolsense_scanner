@@ -677,6 +677,12 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
     msg.payload.spoolDetected.min_bed_temp = (opt_get_min_bed_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
     msg.payload.spoolDetected.max_bed_temp = (opt_get_max_bed_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
 
+    // OpenPrintTag doesn't have aspect or dry fields
+    msg.payload.spoolDetected.aspect[0] = '\0';
+    msg.payload.spoolDetected.dry_temp = 0;
+    msg.payload.spoolDetected.dry_time_hours = 0;
+    strncpy(msg.payload.spoolDetected.tag_format, "OpenPrintTag", sizeof(msg.payload.spoolDetected.tag_format) - 1);
+
     // Set suppress_spoolman_sync flag
     msg.payload.spoolDetected.suppress_spoolman_sync = suppress_spoolman_sync ? 1 : 0;
 
@@ -783,6 +789,16 @@ void NFCManager::sendTigerTagMessage(const TigerTagData& tt) {
     s.max_print_temp = tt.nozzle_temp_max;
     s.min_bed_temp = tt.bed_temp_min;
     s.max_bed_temp = tt.bed_temp_max;
+    s.dry_temp = tt.dry_temp;
+    s.dry_time_hours = tt.dry_time_hours;
+
+    // Aspect from TigerTag
+    if (tt.aspect1_name && strcmp(tt.aspect1_name, "None") != 0 &&
+        strcmp(tt.aspect1_name, "-") != 0 && strcmp(tt.aspect1_name, "Unknown") != 0) {
+        strncpy(s.aspect, tt.aspect1_name, sizeof(s.aspect) - 1);
+    }
+
+    strncpy(s.tag_format, "TigerTag", sizeof(s.tag_format) - 1);
 
     s.spoolman_id = -1;
     s.suppress_spoolman_sync = 0;

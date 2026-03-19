@@ -770,6 +770,11 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
     req.min_bed_temp = spool.min_bed_temp;
     req.max_bed_temp = spool.max_bed_temp;
 
+    strncpy(req.aspect, spool.aspect, sizeof(req.aspect) - 1);
+    req.dry_temp = spool.dry_temp;
+    req.dry_time_hours = spool.dry_time_hours;
+    strncpy(req.tag_format, spool.tag_format, sizeof(req.tag_format) - 1);
+
     SpoolmanManager::getInstance().enqueueSync(req);
 }
 #endif
