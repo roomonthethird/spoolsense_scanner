@@ -190,17 +190,17 @@ The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same
 
 ## Optional: LCD
 
-The 16x2 I2C LCD is fully optional. To disable it, set in `UserConfig.h`:
+The 16x2 I2C LCD is fully optional. If compiling from source, set in `UserConfig.h`:
 
 ```cpp
 #define ENABLE_LCD 0
 ```
 
-When disabled, no I2C bus is initialized, no LCD task is started, and no LCD code is compiled into the binary. Set to `1` if you have the LCD connected.
+When disabled, no I2C bus is initialized, no LCD task is started, and no LCD code is compiled into the binary. Set to `1` if you have the LCD connected. The installer disables it by default.
 
 ## Optional: Status LED
 
-The status LED is optional. To enable or disable it, set in `UserConfig.h`:
+The status LED is optional. If compiling from source, set in `UserConfig.h`:
 
 ```cpp
 #define ENABLE_STATUS_LED 1   // 1 = enabled, 0 = disabled
