@@ -116,10 +116,6 @@
   per-command block limits
 
 ### Changed
-- MQTT base topic changed from `openprinttag/` to `spoolsense/`
-- HA discovery entity IDs changed from `openprinttag_*` to `spoolsense_*`
-  (old entities are auto-removed on first connection)
-- BLE device name changed from `OpenPrintTag-XXXX` to `SpoolSense-XXXX`
 - `ConfigurationManager` loads from compile-time config instead of NVS
 - LED persists last filament color after tag removal — no longer clears on
   `TAG_REMOVED`; color stays until the next scan
