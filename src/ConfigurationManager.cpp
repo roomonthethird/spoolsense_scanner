@@ -207,12 +207,12 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.spoolman_on = _spoolmanEnabled ? 1 : 0;
     strncpy(out.spoolman_url, _spoolmanUrl, sizeof(out.spoolman_url) - 1);
     out.auto_mode = _automationMode;
-#ifdef ENABLE_LCD
+#if defined(ENABLE_LCD) && ENABLE_LCD
     out.lcd_enabled = 1;
 #else
     out.lcd_enabled = 0;
 #endif
-#ifdef ENABLE_STATUS_LED
+#if defined(ENABLE_STATUS_LED) && ENABLE_STATUS_LED
     out.led_enabled = 1;
 #else
     out.led_enabled = 0;
