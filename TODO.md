@@ -4,7 +4,7 @@
 
 - [P0] **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
 - [P0] **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
-- [P2] **Remaining legacy `openprinttag` naming** — several files still reference the old identity: BLE device name in `BluetoothManager.cpp`, project name in `CMakeLists.txt`, and `.code-workspace` filename
+- [P2] **Remaining legacy `openprinttag` naming** — project name in `CMakeLists.txt` and `.code-workspace` filename
 - [P2] **TigerTag dropdown API fetch creates invisible options** — fetching material/brand lists from `api.tigertag.io` and dynamically replacing `<option>` elements produces invisible text in the dropdown on some browsers; temporarily removed API fetch and using hardcoded options only; need to fix styling or merge API data into existing options without breaking visibility
 
 ## Planned
@@ -48,7 +48,7 @@
 - [P2] **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
 
 ### Debugging / Logging
-- [P2] **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier
+- ~~[P2] **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier~~
 
 ### Integration
 - [P2] **Spoolman write support** — write spool data fetched from Spoolman directly to a tag via BLE UI

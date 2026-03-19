@@ -468,6 +468,7 @@ void WebServerManager::handleApiStatus() {
 // ---------------------------------------------------------------------------
 
 void WebServerManager::handleApiWriteTag() {
+    Serial.println("WebServerManager: POST /api/write-tag received");
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     StaticJsonDocument<512> doc;
@@ -598,6 +599,7 @@ void WebServerManager::handleApiWriteTag() {
 // ---------------------------------------------------------------------------
 
 void WebServerManager::handleApiFormatTag() {
+    Serial.println("WebServerManager: POST /api/format-tag received");
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     // Optional body: {"uid": "..."} to validate tag before formatting
@@ -625,6 +627,7 @@ void WebServerManager::handleApiFormatTag() {
 // ---------------------------------------------------------------------------
 
 void WebServerManager::handleApiWriteTigerTag() {
+    Serial.println("WebServerManager: POST /api/write-tigertag received");
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     StaticJsonDocument<256> doc;

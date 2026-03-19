@@ -91,7 +91,7 @@ private:
     TigerTagData lastTigerTag_;
     bool lastTigerTagValid_ = false;
 
-    // Raw tag write sidecar buffer (filled by BLE context, consumed by scan task)
+    // Raw tag write sidecar buffer (filled by HTTP context, consumed by scan task)
     static constexpr size_t RAW_WRITE_BUFFER_SIZE = 320;
     uint8_t rawWriteBuffer_[RAW_WRITE_BUFFER_SIZE];
     size_t rawWriteBufferSize_ = 0;

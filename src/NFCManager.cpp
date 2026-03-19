@@ -1438,8 +1438,8 @@ void NFCManager::markRequestCompleted(uint32_t request_id) {
 
 bool NFCManager::isDuplicateSpool(const uint8_t* uid, uint8_t uid_length) {
     // Benign race: reads lastSeenValid/lastSeenUid without mutex. These are only
-    // written by the scan task (same task calling this), so no torn reads. The BLE
-    // thread's requestCurrentSpool() can clear lastSeenValid, but worst case we do
+    // written by the scan task (same task calling this), so no torn reads.
+    // requestCurrentSpool() can clear lastSeenValid, but worst case we do
     // one extra NFC read — no correctness issue.
 
     // Even if lastSeenValid is false (cleared by setupRF recovery), check if the
