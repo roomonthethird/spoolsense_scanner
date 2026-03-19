@@ -66,6 +66,11 @@ Configuration is stored in NVS (non-volatile storage) and survives OTA firmware 
 4. Flash:
    - **WROOM:** `pio run -e esp32dev -t upload`
    - **S3-Zero:** `pio run -e esp32s3zero -t upload`
+5. **Important for OTA updates:** Run the installer in "Config only" mode to write your settings to NVS. Without this, OTA updates will overwrite your compiled-in settings with defaults.
+   ```bash
+   curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh | bash
+   ```
+   Select **"Config only (source builds)"** when prompted.
 
 ## OTA Firmware Updates
 
