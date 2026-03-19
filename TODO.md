@@ -4,6 +4,7 @@
 
 - [P0] **setupRF() stuck after ISO15693 read** — after a successful multi-block read, `setupRF()` fails on the next scan loop iteration; currently patched with `lastSeenValid` clear to force a hardware reset, but the root cause (PN5180 RF state not cleanly restored after batched reads) is unresolved — side effect is repeated SpoolDetected events and Spoolman spam each cycle
 - [P0] **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one
+- [P1] **ledManager references not gated behind ENABLE_STATUS_LED** — `ApplicationManager.cpp` calls `ledManager.showFilamentColor()`, `ledManager.showOff()`, `ledManager.flashTagDetected()` etc. without `#ifdef ENABLE_STATUS_LED` guards. Compiles on device (extern resolves) but breaks native tests where LEDManager isn't available. Need to wrap all ledManager calls in `#ifdef ENABLE_STATUS_LED` blocks
 - [P2] **Remaining legacy `openprinttag` naming** — project name in `CMakeLists.txt` and `.code-workspace` filename
 - [P2] **TigerTag dropdown API fetch creates invisible options** — fetching material/brand lists from `api.tigertag.io` and dynamically replacing `<option>` elements produces invisible text in the dropdown on some browsers; temporarily removed API fetch and using hardcoded options only; need to fix styling or merge API data into existing options without breaking visibility
 
@@ -62,7 +63,9 @@
 - [P1] **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
 
 ### Architecture / Overlap to Resolve
+- [P1] **Skip redundant Spoolman syncs** — every tag placement triggers a PATCH even if nothing changed. Add local cache: if UID + weight + material match last sync, skip the API call. Cache invalidated by middleware MQTT write commands or 2-hour TTL. See `docs/deep-thoughts.md` for design questions around cache invalidation and source-of-truth ownership.
 - [P2] **Dual weight-sync ownership** — both `SpoolmanManager` (scanner) and the SpoolSense middleware `tag_sync` module can write updated remaining weight back to a tag. They go through the same write queue so there's no hardware conflict, but long-term one side should own this responsibility. Candidate: let the middleware be the single owner and disable/remove weight writeback from `SpoolmanManager`.
+- [P2] **Scanner vs middleware sync architecture review** — deep dive needed into who owns what. Scanner creates spools, middleware updates weight, both can PATCH Spoolman. Risk of duplicate work, race conditions, and conflicting sources of truth. See `docs/deep-thoughts.md` for full analysis.
 
 ## Completed
 - **NTAG215 / UID-only tags** — ISO14443A detection via PN5180ISO14443, UID published as `GENERIC_TAG_DETECTED`, LCD shows "Generic Tag / UID scan only"

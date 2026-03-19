@@ -161,46 +161,41 @@ static bool parseFirstArrayItemId(const char* jsonText, int& outId) {
 
 static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outId) {
     outId = -1;
-    const_buffer_stream stm((const uint8_t*)jsonText, strlen(jsonText));
-    json_reader reader(stm);
 
-    while (reader.read()) {
-        if (reader.node_type() != json_node_type::object) continue;
-        const unsigned spoolDepth = reader.depth();
-        int spoolId = -1;
-        char tagUuid[80] = {0};
-        while (reader.read()) {
-            if (reader.node_type() == json_node_type::end_object && reader.depth() == spoolDepth) {
-                if (spoolId >= 0 && matchesUuid(tagUuid, uuid)) {
-                    outId = spoolId;
-                    return true;
-                }
-                break;
-            }
-            if (reader.node_type() != json_node_type::field) continue;
-            // Only process fields at the spool object level — skip nested
-            // objects (filament, vendor) which also have 'id' fields that
-            // would overwrite spoolId with the wrong value.
-            if (reader.depth() != spoolDepth + 1) continue;
-            const char* field = reader.value();
-            if (strcmp(field, "id") == 0) {
-                if (reader.read()) readIntValue(reader, spoolId);
-            } else if (strcmp(field, "extra") == 0) {
-                if (!reader.read() || reader.node_type() != json_node_type::object) {
-                    continue;
-                }
-                const unsigned extraDepth = reader.depth();
-                while (reader.read()) {
-                    if (reader.node_type() == json_node_type::end_object && reader.depth() == extraDepth) {
-                        break;
-                    }
-                    if (reader.node_type() != json_node_type::field) continue;
-                    if (strcmp(reader.value(), "nfc_id") != 0) continue;
-                    if (reader.read()) {
-                        readStringValue(reader, tagUuid, sizeof(tagUuid));
-                    }
-                }
-            }
+    // Use ArduinoJson — the streaming parser (htcw_json) can't reliably
+    // handle Spoolman's nested filament/vendor objects with their own 'id' fields.
+    // The response is small enough for heap parsing (~1-2KB per spool).
+    DynamicJsonDocument doc(16384);
+    DeserializationError err = deserializeJson(doc, jsonText);
+    if (err) {
+        Serial.printf("SpoolmanManager: parseSpoolIdByUuid JSON parse failed: %s\n", err.c_str());
+        return false;
+    }
+
+    // Handle both array (list endpoint) and single object (by-id endpoint)
+    JsonArray spools;
+    if (doc.is<JsonArray>()) {
+        spools = doc.as<JsonArray>();
+    } else if (doc.is<JsonObject>()) {
+        // Single spool response — check it directly
+        JsonObject spool = doc.as<JsonObject>();
+        int id = spool["id"] | -1;
+        const char* nfcId = spool["extra"]["nfc_id"] | "";
+        if (id >= 0 && matchesUuid(nfcId, uuid)) {
+            outId = id;
+            return true;
+        }
+        return false;
+    } else {
+        return false;
+    }
+
+    for (JsonObject spool : spools) {
+        int id = spool["id"] | -1;
+        const char* nfcId = spool["extra"]["nfc_id"] | "";
+        if (id >= 0 && matchesUuid(nfcId, uuid)) {
+            outId = id;
+            return true;
         }
     }
     return false;
