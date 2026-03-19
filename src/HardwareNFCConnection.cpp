@@ -177,17 +177,22 @@ bool HardwareNFCConnection::hardwareReset() {
 bool HardwareNFCConnection::setupRF() {
     if (!nfc_) return false;
 
+    // 1. Turn off RF field to cleanly tear down any previous config
+    //    (handles switch between ISO15693 and ISO14443A configs)
+    nfc_->setRF_off();
+
+    // 2. Put state machine into Idle before loading new RF config
+    nfc_->writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom
+
+    // 3. Clear any pending IRQs from previous operations
+    nfc_->clearIRQStatus(0xffffffff);
+
+    // 4. Load ISO15693 RF config and turn on field
     if (!nfc_->loadRFConfig(0x0d, 0x8d)) return false;
     if (!nfc_->setRF_on()) return false;
 
-    // not sure this is true, taking out:
-    // This sequence is critical. After turning the RF field on, the PN5180
-    // must be explicitly put into the Idle state and then the Transceive
-    // state. This prepares the chip's internal state machine to handle
-    // subsequent data transmission commands reliably. Omitting this leads
-    // to intermittent failures on subsequent tag reads.
-    //nfc_->writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom
-    //nfc_->writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);   // Transceive
+    // 5. Transition to Transceive state for tag communication
+    nfc_->writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);
 
     return true;
 }
