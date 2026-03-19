@@ -31,7 +31,7 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 * **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
 * **OTA Firmware Updates:** Check for updates from GitHub releases with release notes, one-click download and flash, or manual .bin upload. Dual partition layout with automatic rollback on failed update.
 * **Home Assistant Integration:** Publishes spool state via MQTT with full HA discovery support.
-* **Spoolman Sync:** Syncs spool weight and metadata with a Spoolman instance. Automatically archives old spools when tags are re-written with different filament.
+* **Automatic Spoolman Registration:** When a tagged spool is scanned, the scanner automatically creates or updates the spool entry in Spoolman — no manual data entry needed. If a tag is re-written with different filament, the old spool is automatically archived and a new one created. Requires the `nfc_id` extra field in Spoolman (the installer can create this for you).
 * **LCD Display (optional):** Displays device status, NFC scan results, and system information.
 * **Status LED:** Visual feedback for boot, WiFi, tag detection, write progress, and filament color display.
 
