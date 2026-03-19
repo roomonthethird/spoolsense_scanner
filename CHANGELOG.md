@@ -116,7 +116,6 @@
   per-command block limits
 
 ### Changed
-- Project renamed from `openprinttag_scanner` to `spoolsense_scanner`
 - MQTT base topic changed from `openprinttag/` to `spoolsense/`
 - HA discovery entity IDs changed from `openprinttag_*` to `spoolsense_*`
   (old entities are auto-removed on first connection)
