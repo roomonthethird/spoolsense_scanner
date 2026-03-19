@@ -12,6 +12,7 @@
 ### Tag Format Support
 - [P3] **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
 - ~~**TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide~~
+- [P2] **Bambu Lab spool tags** — MIFARE Ultralight AES (MF0AES) with AES-128 encrypted data pages. PN5180 can activate via ISO14443A (same anticollision as NTAG). **Phase 1:** detect Bambu tag via ATQA/SAK or GET_VERSION chip response, classify as `TagKind::BambuTag`, extract UID, treat as UID-only for Spoolman registration. Public pages (0-1) are readable without auth. **Phase 2:** best-effort metadata decode from unencrypted public pages — community reverse engineering suggests some material/color bytes may be in the clear area. Fragile and undocumented but worth investigating.
 
 ### PN5180 Library
 - [P2] **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
@@ -26,7 +27,7 @@
 - [P3] **Write Multiple Blocks investigation** — check whether the SLIX2 tags in use support ISO15693 Write Multiple Blocks (command 0x24); if so, batching block writes could reduce round-trips; note: many tags do not support this command so verify against tag datasheet first
 
 ### Firmware / Infrastructure
-- [P1] **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available
+- ~~[P1] **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available~~
 - [P2] **MQTT reconnect robustness** — audit whether `HomeAssistantManager` cleanly handles broker drops and reconnects in long-running deployments; verify subscriptions are re-established after reconnect
 - [P3] **Configurable log verbosity** — add `LOG_LEVEL` define to `UserConfig.h` (e.g. DEBUG/INFO/WARN) to reduce serial noise in production without losing full output for debugging
 

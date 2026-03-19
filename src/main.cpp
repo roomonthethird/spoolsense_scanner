@@ -2,7 +2,6 @@
 #include <time.h>
 
 #include "ConfigurationManager.h"
-#include "BluetoothManager.h"
 #include "ApplicationManager.h"
 #include "NFCManager.h"
 #include "SpoolmanManager.h"
@@ -141,14 +140,6 @@ void setup() {
 #endif
     Serial.println("ApplicationManager init failed - halting");
     while (1) { delay(1000); }
-  }
-
-  // Initialize BluetoothManager BEFORE WiFi (they share the radio)
-#ifdef ENABLE_LCD
-  lcdManager.updateScreen("Starting BLE...", "");
-#endif
-  if (!BluetoothManager::getInstance().begin()) {
-    Serial.println("BluetoothManager init failed - continuing without BLE");
   }
 
   // Connect to WiFi

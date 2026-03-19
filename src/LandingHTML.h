@@ -20,6 +20,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <a href="/reader">Reader</a>
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
+      <a href="/update">Update</a>
     </nav>
 
     <div style="text-align:center;margin:32px 0 28px">
@@ -58,6 +59,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-icon">&#128047;</div>
         <div class="tool-name">TigerTag Writer</div>
         <div class="tool-desc">Write filament data to NTAG213/215 tags using the TigerTag binary format.</div>
+      </a>
+
+      <a href="/update" class="tool-card">
+        <div class="tool-icon">&#9889;</div>
+        <div class="tool-name">Firmware Update</div>
+        <div class="tool-desc">Check for new firmware versions and update over WiFi.</div>
       </a>
     </div>
 

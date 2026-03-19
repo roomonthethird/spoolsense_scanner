@@ -34,12 +34,16 @@ private:
     void handleSharedJS();
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
+    void handleUpdatePage();
 
     // API handlers
     void handleApiStatus();
     void handleApiWriteTag();
     void handleApiFormatTag();
     void handleApiWriteTigerTag();
+    void handleApiVersion();
+    void handleApiUploadFirmwareComplete();
+    void handleApiUploadFirmwareChunk();
 
     void sendError(int code, const char* msg);
 #endif

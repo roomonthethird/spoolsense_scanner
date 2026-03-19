@@ -4,7 +4,6 @@
   #include "NFCTypes.h"
   #include "NFCManager.h"
   #include "LCDManager.h"
-  #include "BluetoothManager.h"
   #include "SpoolmanManager.h"
   #include "ConfigurationManager.h"
   #include "HomeAssistantManager.h"
@@ -107,8 +106,6 @@ void ApplicationManager::showStatusOnLCD() {
 #ifndef NATIVE_TEST
     auto& config = ConfigurationManager::getInstance();
 
-    char bleInd = BluetoothManager::getInstance().isAdvertising() ? '+' : '!';
-
     char wifiInd;
     if (strlen(config.getWiFiSSID()) == 0) {
         wifiInd = '?';
@@ -132,8 +129,7 @@ void ApplicationManager::showStatusOnLCD() {
         haInd = HomeAssistantManager::getInstance().isConnected() ? '+' : '!';
     }
 #else
-    // Native tests do not initialize network/BLE integrations.
-    char bleInd = '?';
+    // Native tests do not initialize network integrations.
     char wifiInd = '?';
     char smInd = '?';
     char haInd = '?';
@@ -141,8 +137,8 @@ void ApplicationManager::showStatusOnLCD() {
 
     char line1[17];
     char line2[17];
-    snprintf(line1, sizeof(line1), "NFC+ BLE%c Wifi%c", bleInd, wifiInd);
-    snprintf(line2, sizeof(line2), "SM%c HA%c", smInd, haInd);
+    snprintf(line1, sizeof(line1), "NFC+ Wifi%c", wifiInd);
+    snprintf(line2, sizeof(line2), "SM%c MQTT%c", smInd, haInd);
     lcdManager->updateScreen(line1, line2);
 }
 

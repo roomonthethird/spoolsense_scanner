@@ -5,7 +5,7 @@
 
 /**
  * Shared data format conversion utilities
- * Used by BluetoothManager, NFCManager, HomeAssistantManager, SpoolmanManager
+ * Used by NFCManager, HomeAssistantManager, SpoolmanManager, WebServerManager
  */
 
 /**

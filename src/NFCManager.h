@@ -26,6 +26,8 @@ public:
     bool scanOnce();                                 // Single scan cycle (for testing)
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
+    void pauseScanTask();
+    void resumeScanTask();
 
     // Dependency injection for testing
     void setConnection(NFCConnectionI* conn) { connection_ = conn; }

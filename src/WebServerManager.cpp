@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
+#include <Update.h>
 
 #include "LandingHTML.h"
 #include "TagWriterHTML.h"
@@ -14,6 +15,8 @@
 #include "SharedJS.h"
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
+#include "UpdateHTML.h"
+#include "ConfigurationManager.h"
 #include "NFCManager.h"
 #include "NFCTypes.h"
 #include "NFCWriteTypes.h"
@@ -63,7 +66,14 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/img/openprinttag.png", HTTP_GET, [this]() { handleOpenPrintTagLogo(); });
     _server.on("/img/tigertag.png",    HTTP_GET, [this]() { handleTigerTagLogo(); });
 
+    // Update page
+    _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
+
     // API
+    _server.on("/api/version",         HTTP_GET, [this]() { handleApiVersion(); });
+    _server.on("/api/upload-firmware",  HTTP_POST,
+        [this]() { handleApiUploadFirmwareComplete(); },
+        [this]() { handleApiUploadFirmwareChunk(); });
     _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
     _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
@@ -138,6 +148,73 @@ void WebServerManager::handleOpenPrintTagLogo() {
 void WebServerManager::handleTigerTagLogo() {
     _server.sendHeader("Cache-Control", "public, max-age=86400");
     _server.send_P(200, "image/png", reinterpret_cast<const char*>(TIGERTAG_LOGO_PNG), TIGERTAG_LOGO_PNG_LEN);
+}
+
+void WebServerManager::handleUpdatePage() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", UPDATE_HTML);
+}
+
+// ---------------------------------------------------------------------------
+// API: Version
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiVersion() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    StaticJsonDocument<128> doc;
+    doc["version"] = FIRMWARE_VERSION;
+#ifdef BOARD_ESP32_S3
+    doc["board"] = "esp32s3zero";
+#else
+    doc["board"] = "esp32dev";
+#endif
+    String body;
+    serializeJson(doc, body);
+    _server.send(200, "application/json", body);
+}
+
+// ---------------------------------------------------------------------------
+// API: Firmware Upload (OTA)
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiUploadFirmwareChunk() {
+    HTTPUpload& upload = _server.upload();
+
+    if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("OTA: Upload start: %s\n", upload.filename.c_str());
+        // Pause NFC scan task during upload to prevent interference
+        NFCManager::getInstance().pauseScanTask();
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+            Serial.printf("OTA: Success, %u bytes written\n", upload.totalSize);
+        } else {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Serial.println("OTA: Upload aborted");
+        Update.end();
+        NFCManager::getInstance().resumeScanTask();
+    }
+}
+
+void WebServerManager::handleApiUploadFirmwareComplete() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    if (Update.hasError()) {
+        NFCManager::getInstance().resumeScanTask();
+        _server.send(500, "application/json", "{\"success\":false,\"error\":\"Update failed\"}");
+    } else {
+        _server.send(200, "application/json", "{\"success\":true}");
+        Serial.println("OTA: Rebooting...");
+        delay(1000);
+        ESP.restart();
+    }
 }
 
 // ---------------------------------------------------------------------------

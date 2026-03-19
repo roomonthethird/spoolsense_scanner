@@ -3,7 +3,10 @@
 
 #include <cstdint>
 
-#define DEVICE_VERSION "0.76 BETA"
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "0.0.0-dev"
+#endif
+#define DEVICE_VERSION FIRMWARE_VERSION
 
 class ConfigurationManager {
 public:
