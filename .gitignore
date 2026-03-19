@@ -14,4 +14,6 @@ test/native/test_bgcode_parser
 esp32-planning.md
 docs/*-preview.html
 docs/installer-plan.md
+docs/opentag3d_architecture.md
+docs/tigertag-architecture.md
 CODE-CLEANUP.md
