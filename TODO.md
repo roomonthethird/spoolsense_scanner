@@ -46,6 +46,7 @@
 
 ### Hardware / Build
 - [P2] **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
+- [P2] **TFT display support (ST7789)** — explore replacing the 16x2 I2C LCD with an ST7789 TFT module; color display could show filament color swatch, spool info, and scanner status in a richer format; would need SPI (shared bus with PN5180 or separate), new display driver library, and a display task refactor
 
 ### Debugging / Logging
 - ~~[P2] **No serial output on tag write** — when the web UI triggers a write, nothing is logged to serial; add a write-dispatched log line to make debugging easier~~
