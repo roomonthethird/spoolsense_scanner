@@ -5,17 +5,18 @@
 # SpoolSense Scanner
 
 ## Overview
-SpoolSense Scanner is an ESP32‑based NFC scanner designed for managing 3D printer filament spools using NFC tags. It is designed to integrate with the SpoolSense ecosystem and supports multiple NFC tag formats.
+SpoolSense Scanner is an ESP32-based NFC scanner designed for managing 3D printer filament spools using NFC tags. It integrates with the SpoolSense ecosystem and supports multiple NFC tag formats including OpenPrintTag and TigerTag.
 
-**OpenPrintTag (ISO15693)** is the primary supported format, with full read and write support including filament metadata, weight tracking, and Spoolman sync. UID‑only tags such as NTAG215 (ISO14443A) are also supported — the scanner detects the tag and publishes the UID, allowing middleware to look up the spool by ID.
+The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows. A built-in web UI at `spoolsense.local` provides tag reading, writing, and over-the-air firmware updates — no apps or external tools required.
 
-I am also exploring support for **OpenTag3D** as an additional tag format in a future release.
+## Web UI
 
-The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows.
+After connecting to WiFi, open **`http://spoolsense.local`** from any browser on your local network. The landing page provides access to all tools:
 
-## Built-in Tag Writer
-
-No app, no external tools. After the scanner connects to WiFi, open **`http://spoolsense.local`** from any browser on your local network and write OpenPrintTag data directly to a tag — fill in the form, tap the spool to the scanner, and the firmware handles the rest.
+- **Tag Reader** — Auto-detects tag format (OpenPrintTag, TigerTag, generic UID) and displays all data read-only
+- **OpenPrintTag Writer** — Write filament data to ISO15693 tags using the OpenPrintTag format
+- **TigerTag Writer** — Write filament data to NTAG213/215 tags using the TigerTag binary format
+- **Firmware Update** — Check for new firmware versions from GitHub, view release notes, and update over WiFi with one click
 
 <p align="center">
   <a href="docs/writerwebui2.png"><img src="docs/writerwebui2.png" width="280" alt="Tag writer form"></a>
@@ -23,40 +24,63 @@ No app, no external tools. After the scanner connects to WiFi, open **`http://sp
   <a href="docs/writerwebui1.png"><img src="docs/writerwebui1.png" width="280" alt="Tag writer write progress"></a>
 </p>
 
-> **Early beta** — core write flow works end-to-end. Additional polish and error handling are in progress.
+## Features
 
-## Contributing & Help Wanted
-
-> **This project is currently in Alpha.** Testing is being done by myself and one other person. There will be bugs — please help!
-
-**How you can help:**
-
-- **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/spoolsense/spoolsense_scanner/issues) with any bugs or feedback you find.
-- **Case design** — I have zero CAD skills. If you're handy with Fusion 360, FreeCAD, or anything similar, I'd love a printable enclosure that fits the ESP32-WROOM-32 + PN5180 + optional LCD. Open an issue or reach out.
-- **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
-
-## Functionality
-* **NFC Tag Reading/Writing:** Reads and writes OpenPrintTag-formatted NFC tags.
-* **Built-in Tag Writer UI *(early beta)*:** Navigate to `http://spoolsense.local` from any browser on your local network — no app or external tools required. Supports all OpenPrintTag fields: material type, manufacturer, weight, color, density, diameter, temperatures, and Spoolman ID.
+* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693) and TigerTag (ISO14443A NTAG213/215) tags. UID-only tags are also detected for Spoolman registration.
+* **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and Spoolman ID.
+* **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
+* **OTA Firmware Updates:** Check for updates from GitHub releases with release notes, one-click download and flash, or manual .bin upload. Dual partition layout with automatic rollback on failed update.
 * **Home Assistant Integration:** Publishes spool state via MQTT with full HA discovery support.
-* **Spoolman Sync (optional):** Syncs spool weight and metadata with a Spoolman instance.
-* **BLE Spool Operations:** Write tag data, set filament weight, and manage spools via the BLE web UI.
+* **Spoolman Sync:** Syncs spool weight and metadata with a Spoolman instance. Automatically archives old spools when tags are re-written with different filament.
 * **LCD Display (optional):** Displays device status, NFC scan results, and system information.
-* **Extensible Architecture:** The firmware is designed so additional tag formats can be added over time.
+* **Status LED:** Visual feedback for boot, WiFi, tag detection, write progress, and filament color display.
 
 ## Supported Tag Formats
 
 | Format | Protocol | Support |
 |--------|----------|---------|
 | OpenPrintTag | ISO15693 | Full read/write — CBOR/NDEF filament data, weight tracking, Spoolman sync |
-| UID-only (NTAG215, etc.) | ISO14443A | UID detected and published as `GENERIC_TAG_DETECTED`; middleware looks up spool by UID |
+| TigerTag | ISO14443A (NTAG213/215) | Full read/write — binary format with material, brand, color, weight, temperatures |
+| UID-only (NTAG215, etc.) | ISO14443A | UID detected and published; middleware looks up spool by UID |
 
-OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag specification](https://openprinttag.org/generator/).
+- OpenPrintTag spec: [openprinttag.org](https://openprinttag.org/generator/)
+- TigerTag spec: [TigerTag RFID Guide](https://github.com/TigerTag-Project/TigerTag-RFID-Guide)
+
+## Installation
+
+### Option 1: SpoolSense Installer (recommended)
+
+The installer handles everything — firmware download, WiFi/MQTT/Spoolman configuration, and flashing:
+
+```bash
+curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh | bash
+```
+
+Configuration is stored in NVS (non-volatile storage) and survives OTA firmware updates.
+
+### Option 2: Build from Source
+
+1. Install [PlatformIO](https://platformio.org/)
+2. Copy the example config: `cp include/UserConfig.example.h include/UserConfig.h`
+3. Edit `include/UserConfig.h` with your settings (WiFi, MQTT, Spoolman, etc.)
+4. Flash:
+   - **WROOM:** `pio run -e esp32dev -t upload`
+   - **S3-Zero:** `pio run -e esp32s3zero -t upload`
+
+## OTA Firmware Updates
+
+Once the scanner is running, navigate to `spoolsense.local/update` to:
+
+1. **Check for Updates** — Fetches the latest release from GitHub, displays version and release notes
+2. **Update Now** — Downloads and flashes the new firmware automatically. Progress is tracked in real-time
+3. **Manual Upload** — Upload a `.bin` file directly for offline updates or beta testing
+
+The device uses dual OTA partitions — if an update fails, the bootloader automatically rolls back to the previous working firmware. NVS configuration (WiFi, MQTT, Spoolman) is preserved across updates.
 
 # Hardware Setup
 
 ## Hardware Needed
-*   NFC Reader/Writer: PN5180 NFC module (ISO 15693)
+*   NFC Reader/Writer: PN5180 NFC module (ISO 15693 + ISO 14443A)
 *   ESP32: One of the following supported boards:
     - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ). Primary development board.
     - **ESP32-S3-Zero** — Smaller form factor with onboard WS2812 RGB LED and USB-C (no external UART chip needed).
@@ -98,7 +122,7 @@ OpenPrintTag tags must be written in OpenPrintTag format per the [OpenPrintTag s
 
 **SK6812 RGBW Status LED (optional):**
 
-> A single SK6812 RGBW LED module is recommended. Many small breakout boards include the necessary capacitor and resistor already. If using a bare LED, a ~330Ω resistor on the data line is recommended for signal stability. A common ground between the ESP32 and the LED is required.
+> A single SK6812 RGBW LED module is recommended. Many small breakout boards include the necessary capacitor and resistor already. If using a bare LED, a ~330 resistor on the data line is recommended for signal stability. A common ground between the ESP32 and the LED is required.
 
 | LED Pin | ESP32 Pin |
 |---------|-----------|
@@ -144,7 +168,7 @@ The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same
 
 # Configuration
 
-## UserConfig.h
+## UserConfig.h (source builds only)
 1. Copy the example config: `cp include/UserConfig.example.h include/UserConfig.h`
 2. Edit `include/UserConfig.h` and fill in your settings:
    - WiFi SSID and password
@@ -156,6 +180,8 @@ The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same
 3. Flash the firmware:
    - **WROOM:** `pio run -e esp32dev -t upload`
    - **S3-Zero:** `pio run -e esp32s3zero -t upload`
+
+> **Note:** If you used the SpoolSense Installer, configuration is stored in NVS and you don't need `UserConfig.h`.
 
 ## Optional: LCD
 
@@ -188,12 +214,22 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 | WiFi connected | Cyan |
 | Ready | Blue |
 | Tag detected | 3 white flashes |
-| Valid OpenPrintTag spool | Filament color (solid); breathing if ≤100g remaining |
+| Valid spool tag | Filament color (solid); breathing if ≤100g remaining |
 | Generic/UID-only tag | 3 white flashes, then off |
 | Blank/invalid tag | Red flash, then off |
 | Tag removed | Color persists — stays at last scanned filament color |
 | Write success | Green flash, then restores filament color |
 | Write failure | Red flash, then restores filament color |
+
+## Contributing & Help Wanted
+
+> **This project is currently in Alpha.** Testing is being done by myself and one other person. There will be bugs — please help!
+
+**How you can help:**
+
+- **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with any bugs or feedback you find.
+- **Case design** — I have zero CAD skills. If you're handy with Fusion 360, FreeCAD, or anything similar, I'd love a printable enclosure that fits the ESP32 + PN5180 + optional LCD. Open an issue or reach out.
+- **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
 ## Credits
 
@@ -201,12 +237,7 @@ This project is derived from and inspired by the original **openprinttag_scanner
 
 * Original project: https://github.com/ryanch/openprinttag_scanner
 
-SpoolSense Scanner builds on that foundation while adapting the firmware for the **SpoolSense ecosystem**, adding features such as:
-
-- Optional status LED support
-- Compile‑time device configuration
-- Expanded NFC tag support (planned)
-- Hardware profile support for multiple ESP32 variants
+SpoolSense Scanner builds on that foundation while adapting the firmware for the **SpoolSense ecosystem**, adding features such as multi-format NFC support, a web-based tag writer and reader, TigerTag support, OTA firmware updates, and hardware profile support for multiple ESP32 variants.
 
 Many thanks to the original author and contributors for the work that made this project possible.
 
@@ -215,5 +246,7 @@ Many thanks to the original author and contributors for the work that made this 
 * **PN5180 Library** by Andreas Trappmann — ISO15693 and ISO14443A NFC driver for the PN5180 module: https://github.com/ATrappmann/PN5180-Library/
 
 ## Specs Referenced
-*   OpenPrintTag tag generator: https://openprinttag.org/generator/
+*   OpenPrintTag: https://openprinttag.org/generator/
+*   TigerTag RFID Guide: https://github.com/TigerTag-Project/TigerTag-RFID-Guide
+*   TigerTag SpoolmanDB: https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB
 *   Spoolman API: https://donkie.github.io/Spoolman/#tag/filament/operation/Find_filaments_filament_get
