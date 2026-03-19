@@ -345,19 +345,21 @@ static int findOrCreateVendor(const char* name) {
 // Find the first array item whose "material" field exactly matches the target.
 // Spoolman's API does substring matching (ABS matches PC-ABS), so we filter client-side.
 // Uses ArduinoJson for reliable parsing of nested objects (vendor, etc.).
-static bool findExactMaterialId(const char* jsonText, const char* targetMaterial, int& outId) {
+static bool findExactFilament(const char* jsonText, const char* targetMaterial,
+                               const char* targetColorHex, int& outId) {
     outId = -1;
     StaticJsonDocument<JSON_LARGE_CAPACITY> doc;
     DeserializationError err = deserializeJson(doc, jsonText);
     if (err) {
-        Serial.printf("SpoolmanManager: findExactMaterialId parse error: %s\n", err.c_str());
+        Serial.printf("SpoolmanManager: findExactFilament parse error: %s\n", err.c_str());
         return false;
     }
 
     JsonArray arr = doc.as<JsonArray>();
     for (JsonObject obj : arr) {
         const char* mat = obj["material"] | "";
-        if (strcmp(mat, targetMaterial) == 0) {
+        const char* color = obj["color_hex"] | "";
+        if (strcmp(mat, targetMaterial) == 0 && strcasecmp(color, targetColorHex) == 0) {
             outId = obj["id"] | -1;
             return (outId >= 0);
         }
@@ -376,16 +378,18 @@ static int16_t avgTemp(int16_t minT, int16_t maxT) {
 static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     const char* material = materialTypeToSpoolmanStr(req.material_type);
 
-    // Search for existing filament — Spoolman does substring matching,
-    // so we filter client-side for an exact material match
+    char colorHex[7];
+    snprintf(colorHex, sizeof(colorHex), "%02X%02X%02X", req.color[0], req.color[1], req.color[2]);
+
+    // Search for existing filament by vendor + material + color
     char path[256];
     snprintf(path, sizeof(path), "/api/v1/filament?vendor_id=%d&material=%s", vendorId, material);
     String response;
     int code = httpGet(path, response);
     if (code == 200) {
         int id = -1;
-        if (findExactMaterialId(response.c_str(), material, id)) {
-            Serial.printf("SpoolmanManager: Found filament material=%s id=%d\n", material, id);
+        if (findExactFilament(response.c_str(), material, colorHex, id)) {
+            Serial.printf("SpoolmanManager: Found filament material=%s color=#%s id=%d\n", material, colorHex, id);
 
             // Fill in blank fields on existing filament — Spoolman is source of truth,
             // so only write values that are currently unset (null/0/empty).
@@ -437,12 +441,10 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
 
             return id;
         }
-        Serial.printf("SpoolmanManager: No exact match for material=%s, will create\n", material);
+        Serial.printf("SpoolmanManager: No exact match for material=%s color=#%s, will create\n", material, colorHex);
     }
 
     // Create new filament
-    char colorHex[7];
-    snprintf(colorHex, sizeof(colorHex), "%02X%02X%02X", req.color[0], req.color[1], req.color[2]);
 
     StaticJsonDocument<JSON_MEDIUM_CAPACITY> createDoc;
     // Use custom material name if available (e.g. "Blood Red PLA"), otherwise material type
