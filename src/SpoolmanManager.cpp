@@ -365,6 +365,14 @@ static bool findExactMaterialId(const char* jsonText, const char* targetMaterial
     return false;
 }
 
+// Average min/max temps — if both set, average; if one set, use it; if neither, return 0
+static int16_t avgTemp(int16_t minT, int16_t maxT) {
+    if (minT > 0 && maxT > 0) return (minT + maxT) / 2;
+    if (maxT > 0) return maxT;
+    if (minT > 0) return minT;
+    return 0;
+}
+
 static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     const char* material = materialTypeToSpoolmanStr(req.material_type);
 
@@ -394,14 +402,16 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
                         StaticJsonDocument<JSON_SMALL_CAPACITY> patchDoc;
 
                         int existingExtruder = filDoc["settings_extruder_temp"] | 0;
-                        if (existingExtruder == 0 && (req.max_print_temp > 0 || req.min_print_temp > 0)) {
-                            patchDoc["settings_extruder_temp"] = req.max_print_temp > 0 ? req.max_print_temp : req.min_print_temp;
+                        int16_t extruderAvg = avgTemp(req.min_print_temp, req.max_print_temp);
+                        if (existingExtruder == 0 && extruderAvg > 0) {
+                            patchDoc["settings_extruder_temp"] = extruderAvg;
                             hasUpdate = true;
                         }
 
                         int existingBed = filDoc["settings_bed_temp"] | 0;
-                        if (existingBed == 0 && (req.max_bed_temp > 0 || req.min_bed_temp > 0)) {
-                            patchDoc["settings_bed_temp"] = req.max_bed_temp > 0 ? req.max_bed_temp : req.min_bed_temp;
+                        int16_t bedAvg = avgTemp(req.min_bed_temp, req.max_bed_temp);
+                        if (existingBed == 0 && bedAvg > 0) {
+                            patchDoc["settings_bed_temp"] = bedAvg;
                             hasUpdate = true;
                         }
 
@@ -448,18 +458,11 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     createDoc["weight"] = req.initial_weight_g;
     createDoc["color_hex"] = colorHex;
 
-    // Spoolman built-in temperature fields
-    // Use max print temp as the extruder setting (most useful for slicer reference)
-    if (req.max_print_temp > 0) {
-        createDoc["settings_extruder_temp"] = req.max_print_temp;
-    } else if (req.min_print_temp > 0) {
-        createDoc["settings_extruder_temp"] = req.min_print_temp;
-    }
-    if (req.max_bed_temp > 0) {
-        createDoc["settings_bed_temp"] = req.max_bed_temp;
-    } else if (req.min_bed_temp > 0) {
-        createDoc["settings_bed_temp"] = req.min_bed_temp;
-    }
+    // Spoolman built-in temperature fields — average min/max from tag
+    int16_t extruderAvg = avgTemp(req.min_print_temp, req.max_print_temp);
+    if (extruderAvg > 0) createDoc["settings_extruder_temp"] = extruderAvg;
+    int16_t bedAvg = avgTemp(req.min_bed_temp, req.max_bed_temp);
+    if (bedAvg > 0) createDoc["settings_bed_temp"] = bedAvg;
 
     String body;
     serializeJson(createDoc, body);
