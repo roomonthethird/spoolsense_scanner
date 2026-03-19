@@ -1,6 +1,61 @@
 # Changelog
 
-## [1.2.0] - 2026-03-17 — ESP32-S3-Zero Support
+## [1.3.3] - 2026-03-18 — Multi-page Web UI, TigerTag, OTA Updates
+
+### Added
+- Multi-page web UI at `spoolsense.local` — landing page with tool cards, shared navigation across all pages
+- Tag Reader page (`/reader`) — auto-detects tag format (OpenPrintTag, TigerTag, generic UID), displays all data read-only, stops polling on detection with "Scan Again" button
+- TigerTag reader support — detect and parse NTAG213/215 TigerTag binary format with embedded material/brand lookup tables
+- TigerTag writer page (`/writer/tigertag`) — write filament data to NTAG tags in TigerTag format with material, brand, color, weight, diameter, aspect, and temperature fields
+- `writeISO14443Pages()` — NTAG page write support via PN5180 `mifareBlockWrite4` (command 0xA2)
+- `WRITE_TIGERTAG` NFC write type with 40-byte binary payload
+- OTA firmware update page (`/update`) — check for updates from GitHub releases with release notes display, one-click download and flash with progress tracking, manual `.bin` upload
+- Dual OTA partition table (`ota_0` + `ota_1`, 1.88MB each) — enables automatic rollback on failed update
+- Async OTA download — background FreeRTOS task streams firmware from GitHub HTTPS, browser polls `/api/ota-status` for progress
+- NFC scan task pause/resume during OTA upload
+- `GET /api/version` — returns firmware version and board type
+- `GET /api/ota-status` — returns OTA download/flash state and progress
+- `POST /api/update-from-url` — ESP32 downloads and flashes firmware from a URL
+- `POST /api/upload-firmware` — multipart binary upload for manual OTA
+- `/api/status` extended with `tag_kind` field and nested `tigertag` object for TigerTag data
+- `POST /api/write-tigertag` — assemble and enqueue TigerTag binary write
+- OpenPrintTag and TigerTag logos served as PROGMEM PNGs at `/img/openprinttag.png` and `/img/tigertag.png`
+- Logos displayed in writer page card headers
+- Spool archive on re-tag — automatically archives old Spoolman spool when tag is re-written with different filament, or same filament with weight jump on nearly empty spool (≤100g → >500g)
+- `FIRMWARE_VERSION` build flag in `platformio.ini` — single source of truth for version, shown on update page and in HA discovery
+- Shared CSS (`/css/shared.css`) and JS (`/js/shared.js`) served as cacheable endpoints
+- Firmware Update card on landing page
+- Update link in navigation bar across all pages
+- Git commit-msg hook to prevent AI attribution in commits
+
+### Changed
+- OpenPrintTag writer moved from `/` to `/writer/openprinttag` — landing page is now the tool hub
+- CSS and JS extracted from inline to shared PROGMEM endpoints
+- LCD status line shows `NFC+ Wifi+` / `SM+ MQTT+` (replaces BLE indicator with MQTT connection status)
+- `DEVICE_VERSION` aliased to `FIRMWARE_VERSION` from build flags (was hardcoded `"0.76 BETA"`)
+- ESP32-S3 NeoPixel color order fixed from `NEO_GRB` to `NEO_RGB`
+
+### Removed
+- BLE stack — `BluetoothManager.cpp/.h` deleted, `CONFIG_BT` build flags removed, BLE init removed from `main.cpp`. Saves ~540KB flash. Configuration moving to web UI
+- Old BLE web UI (`docs/index.html`) — replaced by multi-page web UI served from firmware
+- Fill Demo buttons from writer pages
+
+## [1.2.0] - 2026-03-18 — TigerTag Reader, NVS Config, Spoolman Fixes
+
+### Added
+- TigerTag reader support — detect and parse NTAG213/215 TigerTag binary format (ISO14443A) with material, brand, color, weight, and temperature data via embedded lookup tables
+- NVS config support — `ConfigurationManager` reads from NVS partition first, per-key fallback to compile-time defaults; enables pre-built binary flashing via installer without recompiling
+- GitHub Actions release workflow — auto-builds ESP32-WROOM and ESP32-S3-Zero firmware on tag push, attaches bootloader + partitions + firmware to GitHub release
+- SpoolSense Installer — interactive CLI (`spoolsense-installer` repo) that downloads firmware, generates NVS config, verifies chip/flash, and flashes via esptool
+- SpoolSense GitHub org — both repos transferred to `github.com/SpoolSense`
+
+### Fixed
+- Spoolman 400 on spool create — fixed double-escaped UUID, switched to `nfc_id` extra field, wrapped value as JSON string
+- Spoolman filament exact match — switched to ArduinoJson for filament lookup; streaming parser couldn't handle nested vendor objects, was creating duplicate filaments
+- Material type dropdown — fixed tag writer dropdown order to match OpenPrintTag enum (TPU=2, ABS=3, ASA=4); was writing wrong type codes
+- setupRF() after tag re-detection — fixed LED state being overwritten after setupRF failure
+
+## [1.1.1] - 2026-03-17 — ESP32-S3-Zero Support
 
 ### Added
 - ESP32-S3-Zero as a second supported board alongside ESP32-WROOM-32
