@@ -440,17 +440,20 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
 
                         const char* existingAspect = existingExtra["aspect"] | "";
                         if (existingAspect[0] == '\0' && req.aspect[0] != '\0') {
-                            patchExtra["aspect"] = req.aspect;
+                            char buf[32]; snprintf(buf, sizeof(buf), "\"%s\"", req.aspect);
+                            patchExtra["aspect"] = buf;
                             extraChanged = true;
                         }
                         const char* existingDryTemp = existingExtra["dry_temp"] | "";
                         if (existingDryTemp[0] == '\0' && req.dry_temp > 0) {
-                            patchExtra["dry_temp"] = String(req.dry_temp);
+                            char buf[16]; snprintf(buf, sizeof(buf), "\"%d\"", req.dry_temp);
+                            patchExtra["dry_temp"] = buf;
                             extraChanged = true;
                         }
                         const char* existingDryTime = existingExtra["dry_time_hours"] | "";
                         if (existingDryTime[0] == '\0' && req.dry_time_hours > 0) {
-                            patchExtra["dry_time_hours"] = String(req.dry_time_hours);
+                            char buf[16]; snprintf(buf, sizeof(buf), "\"%d\"", req.dry_time_hours);
+                            patchExtra["dry_time_hours"] = buf;
                             extraChanged = true;
                         }
 
@@ -497,11 +500,20 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     int16_t bedAvg = avgTemp(req.min_bed_temp, req.max_bed_temp);
     if (bedAvg > 0) createDoc["settings_bed_temp"] = bedAvg;
 
-    // Extra fields (opportunistic — Spoolman ignores unknown fields in extra object)
+    // Extra fields — Spoolman requires values as JSON-encoded strings ("\"value\"")
     JsonObject filExtra = createDoc.createNestedObject("extra");
-    if (req.aspect[0] != '\0') filExtra["aspect"] = req.aspect;
-    if (req.dry_temp > 0) filExtra["dry_temp"] = String(req.dry_temp);
-    if (req.dry_time_hours > 0) filExtra["dry_time_hours"] = String(req.dry_time_hours);
+    if (req.aspect[0] != '\0') {
+        char buf[32]; snprintf(buf, sizeof(buf), "\"%s\"", req.aspect);
+        filExtra["aspect"] = buf;
+    }
+    if (req.dry_temp > 0) {
+        char buf[16]; snprintf(buf, sizeof(buf), "\"%d\"", req.dry_temp);
+        filExtra["dry_temp"] = buf;
+    }
+    if (req.dry_time_hours > 0) {
+        char buf[16]; snprintf(buf, sizeof(buf), "\"%d\"", req.dry_time_hours);
+        filExtra["dry_time_hours"] = buf;
+    }
 
     String body;
     serializeJson(createDoc, body);
@@ -563,7 +575,10 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     snprintf(nfcIdJson, sizeof(nfcIdJson), "\"%s\"", req.spool_id);
     JsonObject spoolExtra = doc.createNestedObject("extra");
     spoolExtra["nfc_id"] = nfcIdJson;
-    if (req.tag_format[0] != '\0') spoolExtra["tag_format"] = req.tag_format;
+    if (req.tag_format[0] != '\0') {
+        char buf[32]; snprintf(buf, sizeof(buf), "\"%s\"", req.tag_format);
+        spoolExtra["tag_format"] = buf;
+    }
 
     String body;
     serializeJson(doc, body);
