@@ -238,7 +238,7 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     if (update.mqtt_pass[0] != '\0') {
         prefs.putString(NVS_KEY_MQTT_PASS, update.mqtt_pass);
     }
-    prefs.putUChar(NVS_KEY_SPOOLMAN_ON, update.spoolman_on);
+    prefs.putBool(NVS_KEY_SPOOLMAN_ON, update.spoolman_on != 0);
     prefs.putString(NVS_KEY_SPOOLMAN_URL, update.spoolman_url);
     prefs.putUChar(NVS_KEY_AUTO_MODE, update.auto_mode);
     prefs.putUChar(NVS_KEY_LCD_ON, update.lcd_enabled);

@@ -816,7 +816,8 @@ bool SpoolmanManager::enqueueSync(const SpoolmanSyncRequest& req) {
 }
 
 bool SpoolmanManager::isConfigured() const {
-    return strlen(ConfigurationManager::getInstance().getSpoolmanURL()) > 0;
+    return ConfigurationManager::getInstance().isSpoolmanEnabled() &&
+           strlen(ConfigurationManager::getInstance().getSpoolmanURL()) > 0;
 }
 
 int32_t SpoolmanManager::lookupCachedSpoolmanId(const char* spoolId) const {
