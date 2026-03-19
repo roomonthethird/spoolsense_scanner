@@ -37,8 +37,6 @@
 
 ### Removed
 - BLE stack — `BluetoothManager.cpp/.h` deleted, `CONFIG_BT` build flags removed, BLE init removed from `main.cpp`. Saves ~540KB flash. Configuration moving to web UI
-- Old BLE web UI (`docs/index.html`) — replaced by multi-page web UI served from firmware
-- Fill Demo buttons from writer pages
 
 ## [1.2.0] - 2026-03-18 — TigerTag Reader, NVS Config, Spoolman Fixes
 
