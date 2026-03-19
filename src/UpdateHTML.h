@@ -241,7 +241,7 @@ const char UPDATE_HTML[] PROGMEM = R"rawliteral(
         });
     });
 
-    // Auto-update: download .bin from GitHub then upload to device
+    // Auto-update: tell ESP32 to download .bin from GitHub and flash it
     document.getElementById('updateBtn').addEventListener('click', function() {
       if (!latestAssetUrl) return;
 
@@ -249,25 +249,75 @@ const char UPDATE_HTML[] PROGMEM = R"rawliteral(
       var checkBtn = document.getElementById('checkBtn');
       btn.disabled = true;
       checkBtn.disabled = true;
-      btn.textContent = 'Downloading...';
+      btn.textContent = 'Updating...';
 
-      fetch(latestAssetUrl)
-        .then(function(r) {
-          if (!r.ok) throw new Error('Download failed: HTTP ' + r.status);
-          return r.blob();
-        })
-        .then(function(blob) {
-          btn.textContent = 'Uploading to device...';
-          uploadFirmware(blob, 'progressFill', 'progressText', 'uploadResult', 'uploadProgress');
+      var progressWrap = document.getElementById('uploadProgress');
+      var resultEl = document.getElementById('uploadResult');
+      var progressFill = document.getElementById('progressFill');
+      var progressText = document.getElementById('progressText');
+      progressWrap.classList.remove('hidden');
+      resultEl.textContent = 'Starting download...';
+      resultEl.className = 'result';
+      progressFill.style.width = '0%';
+      progressText.textContent = 'Starting...';
+
+      // Kick off the download on the ESP32
+      fetch('/api/update-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: latestAssetUrl })
+      }).then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.success) throw new Error(data.error || 'Failed to start');
+          // Poll OTA status
+          var pollTimer = setInterval(function() {
+            fetch('/api/ota-status').then(function(r) { return r.json(); })
+              .then(function(s) {
+                progressFill.style.width = s.progress + '%';
+                if (s.state === 'downloading') {
+                  progressText.textContent = 'Downloading... ' + s.progress + '%';
+                  resultEl.textContent = 'Device is downloading firmware from GitHub...';
+                } else if (s.state === 'flashing') {
+                  progressText.textContent = 'Flashing... ' + s.progress + '%';
+                  resultEl.textContent = 'Writing firmware to flash...';
+                } else if (s.state === 'success') {
+                  clearInterval(pollTimer);
+                  progressFill.style.width = '100%';
+                  progressText.textContent = '100%';
+                  resultEl.textContent = 'Update successful! Device is rebooting...';
+                  resultEl.className = 'result success';
+                  setTimeout(function() {
+                    resultEl.textContent += '\nReloading page in 10 seconds...';
+                  }, 3000);
+                  setTimeout(function() { window.location.reload(); }, 13000);
+                } else if (s.state === 'failed') {
+                  clearInterval(pollTimer);
+                  progressFill.style.width = '0%';
+                  progressText.textContent = '';
+                  resultEl.textContent = s.error || 'Update failed';
+                  resultEl.className = 'result error';
+                  btn.disabled = false;
+                  checkBtn.disabled = false;
+                  btn.textContent = 'Update Now';
+                }
+              })
+              .catch(function() {
+                // ESP32 rebooted — stop polling and reload
+                clearInterval(pollTimer);
+                progressFill.style.width = '100%';
+                progressText.textContent = 'Rebooting...';
+                resultEl.textContent = 'Update complete. Reloading in 10 seconds...';
+                resultEl.className = 'result success';
+                setTimeout(function() { window.location.reload(); }, 10000);
+              });
+          }, 1500);
         })
         .catch(function(err) {
           btn.disabled = false;
           checkBtn.disabled = false;
           btn.textContent = 'Update Now';
-          var result = document.getElementById('uploadResult');
-          document.getElementById('uploadProgress').classList.remove('hidden');
-          result.textContent = err.message || 'Download failed';
-          result.className = 'result error';
+          resultEl.textContent = err.message || 'Failed to start update';
+          resultEl.className = 'result error';
         });
     });
 

@@ -44,6 +44,16 @@ private:
     void handleApiVersion();
     void handleApiUploadFirmwareComplete();
     void handleApiUploadFirmwareChunk();
+    void handleApiUpdateFromUrl();
+    void handleApiOtaStatus();
+
+    // OTA download state
+    static void otaDownloadTask(void* param);
+    enum class OtaState : uint8_t { IDLE, DOWNLOADING, FLASHING, SUCCESS, FAILED };
+    volatile OtaState _otaState = OtaState::IDLE;
+    char _otaUrl[512] = {0};
+    char _otaError[64] = {0};
+    volatile uint8_t _otaProgress = 0;
 
     void sendError(int code, const char* msg);
 #endif

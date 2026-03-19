@@ -6,6 +6,8 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 #include "LandingHTML.h"
 #include "TagWriterHTML.h"
@@ -74,6 +76,8 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/api/upload-firmware",  HTTP_POST,
         [this]() { handleApiUploadFirmwareComplete(); },
         [this]() { handleApiUploadFirmwareChunk(); });
+    _server.on("/api/update-from-url", HTTP_POST, [this]() { handleApiUpdateFromUrl(); });
+    _server.on("/api/ota-status",      HTTP_GET,  [this]() { handleApiOtaStatus(); });
     _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
     _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
@@ -215,6 +219,145 @@ void WebServerManager::handleApiUploadFirmwareComplete() {
         delay(1000);
         ESP.restart();
     }
+}
+
+// ---------------------------------------------------------------------------
+// API: Update from URL (ESP32 downloads .bin from GitHub)
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiUpdateFromUrl() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    if (_otaState == OtaState::DOWNLOADING || _otaState == OtaState::FLASHING) {
+        sendError(409, "Update already in progress");
+        return;
+    }
+
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    const char* url = doc["url"] | "";
+    if (strlen(url) == 0) {
+        sendError(400, "Missing url");
+        return;
+    }
+
+    // Store URL and kick off background task
+    strncpy(_otaUrl, url, sizeof(_otaUrl) - 1);
+    _otaState = OtaState::DOWNLOADING;
+    _otaProgress = 0;
+    _otaError[0] = '\0';
+
+    Serial.printf("OTA: Free heap before task: %u\n", ESP.getFreeHeap());
+    xTaskCreatePinnedToCore(otaDownloadTask, "OTATask", 24576, this, 2, nullptr, 0);
+
+    _server.send(200, "application/json", "{\"success\":true,\"status\":\"started\"}");
+}
+
+void WebServerManager::otaDownloadTask(void* param) {
+    WebServerManager* self = static_cast<WebServerManager*>(param);
+
+    Serial.printf("OTA: Downloading from %s\n", self->_otaUrl);
+
+    // Pause NFC during OTA
+    NFCManager::getInstance().pauseScanTask();
+
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure();
+
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(30000);
+    http.begin(secureClient, self->_otaUrl);
+    http.addHeader("Accept", "application/octet-stream");
+    int httpCode = http.GET();
+
+    if (httpCode != 200) {
+        Serial.printf("OTA: Download failed, HTTP %d\n", httpCode);
+        http.end();
+        NFCManager::getInstance().resumeScanTask();
+        snprintf(self->_otaError, sizeof(self->_otaError), "Download failed: HTTP %d", httpCode);
+        self->_otaState = OtaState::FAILED;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    int contentLength = http.getSize();
+    Serial.printf("OTA: Content length: %d bytes\n", contentLength);
+    Serial.printf("OTA: Free heap before Update.begin: %u\n", ESP.getFreeHeap());
+
+    self->_otaState = OtaState::FLASHING;
+
+    if (!Update.begin(contentLength > 0 ? contentLength : UPDATE_SIZE_UNKNOWN)) {
+        Serial.println("OTA: Update.begin() failed");
+        Update.printError(Serial);
+        http.end();
+        NFCManager::getInstance().resumeScanTask();
+        strncpy(self->_otaError, "Update.begin failed", sizeof(self->_otaError));
+        self->_otaState = OtaState::FAILED;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buf[1024];
+    size_t written = 0;
+
+    while (http.connected() && (contentLength <= 0 || written < (size_t)contentLength)) {
+        size_t available = stream->available();
+        if (available) {
+            size_t toRead = (available > sizeof(buf)) ? sizeof(buf) : available;
+            size_t bytesRead = stream->readBytes(buf, toRead);
+            if (bytesRead > 0) {
+                Update.write(buf, bytesRead);
+                written += bytesRead;
+                if (contentLength > 0) {
+                    self->_otaProgress = (uint8_t)((written * 100) / contentLength);
+                }
+            }
+        }
+        vTaskDelay(1);
+    }
+
+    http.end();
+
+    if (Update.end(true)) {
+        Serial.printf("OTA: Success, %u bytes written\n", written);
+        self->_otaProgress = 100;
+        self->_otaState = OtaState::SUCCESS;
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        ESP.restart();
+    } else {
+        Serial.println("OTA: Update.end() failed");
+        Update.printError(Serial);
+        NFCManager::getInstance().resumeScanTask();
+        strncpy(self->_otaError, "Update verification failed", sizeof(self->_otaError));
+        self->_otaState = OtaState::FAILED;
+    }
+
+    vTaskDelete(nullptr);
+}
+
+void WebServerManager::handleApiOtaStatus() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    StaticJsonDocument<128> doc;
+
+    switch (_otaState) {
+        case OtaState::IDLE:        doc["state"] = "idle"; break;
+        case OtaState::DOWNLOADING: doc["state"] = "downloading"; break;
+        case OtaState::FLASHING:    doc["state"] = "flashing"; break;
+        case OtaState::SUCCESS:     doc["state"] = "success"; break;
+        case OtaState::FAILED:      doc["state"] = "failed"; doc["error"] = _otaError; break;
+    }
+    doc["progress"] = _otaProgress;
+
+    String body;
+    serializeJson(doc, body);
+    _server.send(200, "application/json", body);
 }
 
 // ---------------------------------------------------------------------------
