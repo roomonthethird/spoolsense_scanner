@@ -167,7 +167,7 @@ The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same
 
 > **Note:** The LCD module needs 5V on VCC for display contrast. The I2C SDA/SCL lines run at 3.3V logic, which the PCF8574 backpack accepts without a level shifter.
 
-**Status LED:** The S3-Zero has an onboard WS2812 RGB LED on GPIO 21 — no external LED or wiring needed. Enable it with `#define ENABLE_STATUS_LED 1` in `UserConfig.h`.
+**Status LED:** The S3-Zero has an onboard WS2812 RGB LED on GPIO 21 — no external LED or wiring needed. If compiling from source, enable it with `#define ENABLE_STATUS_LED 1` in `UserConfig.h`. The installer enables it by default.
 
 **Serial:** The S3-Zero uses USB CDC — just plug in a USB-C cable, no external UART adapter needed.
 
