@@ -17,6 +17,7 @@ enum class TagKind : uint8_t {
     GenericUidTag,  // UID-only tag (e.g. NTAG215) — ISO14443A
     OpenTag3D,      // OpenTag3D format — ISO14443A
     TigerTag,       // TigerTag format — ISO14443A (NTAG213/215/216)
+    BambuTag,       // Bambu Lab spool — MIFARE Classic (encrypted, UID-only)
     BlankTag,
     Unsupported
 };

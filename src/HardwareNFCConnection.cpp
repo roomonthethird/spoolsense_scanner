@@ -216,15 +216,28 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
         return true;
     }
 
-    // ISO15693 not found — try ISO14443A (NTAG215 etc.)
+    // ISO15693 not found — try ISO14443A (NTAG215, MIFARE Classic, etc.)
     if (iso14443a_) {
         iso14443a_->setupRF();
-        uint8_t iso14443aBuf[7] = {0};
-        uint8_t iso14443aLen = iso14443a_->readCardSerial(iso14443aBuf);
-        if (iso14443aLen >= 4) {
-            memcpy(uid, iso14443aBuf, iso14443aLen);
-            *uidLength = iso14443aLen;
-            return true;
+        // activateTypeA returns: response[0..1]=ATQA, response[2]=SAK, response[3..9]=UID
+        uint8_t response[10] = {0};
+        uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
+        if (uidLen >= 4) {
+            // Check for invalid responses
+            if ((response[0] == 0xFF && response[1] == 0xFF) ||
+                (response[3] == 0x00 && response[4] == 0x00 && response[5] == 0x00 && response[6] == 0x00) ||
+                (response[3] == 0xFF && response[4] == 0xFF && response[5] == 0xFF && response[6] == 0xFF)) {
+                iso14443a_->mifareHalt();
+            } else {
+                // Store ATQA/SAK for tag classification
+                lastATQA_ = (response[0] << 8) | response[1];
+                lastSAK_ = response[2];
+                // Copy UID (starts at offset 3)
+                memcpy(uid, response + 3, uidLen);
+                *uidLength = uidLen;
+                iso14443a_->mifareHalt();
+                return true;
+            }
         }
     }
 

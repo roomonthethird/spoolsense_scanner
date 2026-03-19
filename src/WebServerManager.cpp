@@ -38,6 +38,7 @@ static const char* tagKindToString(TagKind kind) {
         case TagKind::GenericUidTag: return "GenericUidTag";
         case TagKind::TigerTag:     return "TigerTag";
         case TagKind::OpenTag3D:    return "OpenTag3D";
+        case TagKind::BambuTag:     return "BambuTag";
         case TagKind::BlankTag:     return "BlankTag";
         default:                    return "Unsupported";
     }

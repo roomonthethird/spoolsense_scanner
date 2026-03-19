@@ -254,7 +254,25 @@ void NFCManager::scanLoop() {
                 Serial.println("NFCManager: New spool detected, reading tag...");
                 TagScanResult scan = classifyTag(uid, uidLength);
 
-                if (scan.kind == TagKind::GenericUidTag) {
+                if (scan.kind == TagKind::BambuTag) {
+                    // Bambu Lab MIFARE Classic — UID-only (data is encrypted)
+                    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
+                        memcpy(currentSpool.uid, uid, uidLength);
+                        currentSpool.uid_length = uidLength;
+                        currentSpool.present = true;
+                        currentSpool.blank_tag_present = false;
+                        currentSpool.kind = TagKind::BambuTag;
+                        currentSpool.tag_data_valid = false;
+                        lastTigerTagValid_ = false;
+                        memcpy(lastSeenUid, uid, uidLength);
+                        lastSeenUidLength = uidLength;
+                        lastSeenValid = true;
+                        xSemaphoreGive(tagMutex);
+                    }
+                    Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
+                    sendGenericTagMessage();
+                } else if (scan.kind == TagKind::GenericUidTag) {
                     // ISO14443A tag — try TigerTag detection first, fall back to UID-only
                     bool isTigerTag = false;
                     TigerTagData tigerData;
@@ -831,7 +849,16 @@ TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
         result.kind = TagKind::BlankTag;
     } else {
         result.protocol = TagProtocol::ISO14443A;
-        result.kind = TagKind::GenericUidTag;
+        // Check SAK to distinguish NTAG/Ultralight from MIFARE Classic
+        uint8_t sak = connection_->getLastSAK();
+        if (sak == 0x08 || sak == 0x18) {
+            // SAK 0x08 = MIFARE Classic 1K, 0x18 = MIFARE Classic 4K
+            // Likely a Bambu Lab spool tag
+            result.kind = TagKind::BambuTag;
+            Serial.printf("NFCManager: MIFARE Classic detected (SAK=0x%02X) — treating as Bambu tag\n", sak);
+        } else {
+            result.kind = TagKind::GenericUidTag;
+        }
     }
     uint8_t len = uid_length < 8 ? uid_length : 8;
     for (uint8_t i = 0; i < len; i++) {

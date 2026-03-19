@@ -134,6 +134,7 @@ var TAG_KIND_LABELS = {
   'OpenPrintTag': 'OpenPrintTag',
   'GenericUidTag': 'Generic UID Tag',
   'TigerTag': 'TigerTag',
+  'BambuTag': 'Bambu Lab Tag',
   'BlankTag': 'Blank Tag',
   'OpenTag3D': 'OpenTag3D',
   'Unsupported': 'Unsupported'

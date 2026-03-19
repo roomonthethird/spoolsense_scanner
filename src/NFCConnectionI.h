@@ -21,6 +21,11 @@ public:
     // Tag detection - returns true if tag found, populates uid/uidLength
     virtual bool detectTag(uint8_t* uid, uint8_t* uidLength) = 0;
 
+    // ISO14443A tag identification (valid after detectTag returns true for 14443A)
+    // SAK byte identifies chip type: 0x00=NTAG/Ultralight, 0x08=MIFARE Classic 1K
+    virtual uint8_t getLastSAK() const { return 0; }
+    virtual uint16_t getLastATQA() const { return 0; }
+
     // Set current UID for addressed read/write commands
     virtual void setCurrentUid(const uint8_t* uid, uint8_t length) = 0;
 

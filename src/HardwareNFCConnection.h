@@ -22,6 +22,8 @@ public:
     opt_nfc_hal_t* getHal() override;
     uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) override;
     bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount, const uint8_t* data, uint16_t dataLen) override;
+    uint8_t getLastSAK() const override { return lastSAK_; }
+    uint16_t getLastATQA() const override { return lastATQA_; }
     // Diagnostics: log RF_STATUS, IRQ_STATUS, SYSTEM_STATUS registers
     void logDiagnostics();
 
@@ -36,6 +38,10 @@ private:
     static constexpr uint8_t READ_CACHE_PAGES = 78;
     uint8_t readCache_[READ_CACHE_PAGES * 4];
     bool readCacheValid_ = false;
+
+    // ISO14443A identification (populated by detectTag)
+    uint8_t lastSAK_ = 0;
+    uint16_t lastATQA_ = 0;
 
     // Static HAL callbacks
     static opt_error_t halReadPage(void* ctx, uint8_t page, uint8_t* buffer);
