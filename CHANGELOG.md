@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.4] - 2026-03-19 — P0 Bug Fixes
+
+### Fixed
+- **setupRF() no longer fails after tag reads** — root cause was the PN5180 state machine not being reset between scan cycles. After any tag read (ISO15693 multi-block or ISO14443A probe), the chip stayed in Transceive/Receive state. `setupRF()` now performs a full state machine reset: RF_OFF → Idle → clear IRQs → loadRFConfig → RF_ON → Transceive. Eliminates repeated SpoolDetected events and Spoolman API spam.
+- **Spoolman spool lookup no longer creates duplicates** — replaced the streaming JSON parser (`htcw_json`) with ArduinoJson for spool UUID lookups. The streaming parser could not reliably handle Spoolman's nested JSON responses (filament → vendor → id), causing UUID matching to fail and duplicate spools to be created on every scan. ArduinoJson handles nesting correctly.
+
 ## [1.3.3] - 2026-03-18 — Multi-page Web UI, TigerTag, OTA Updates
 
 ### Added
