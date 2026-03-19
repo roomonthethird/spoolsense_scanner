@@ -1,0 +1,6 @@
+#!/bin/bash
+# Reject commits containing AI attribution
+if grep -qi "Co-Authored-By.*Claude\|Co-Authored-By.*anthropic\|Co-Authored-By.*AI\|Co-Authored-By.*noreply@anthropic" "$1"; then
+    echo "ERROR: Commit message contains AI attribution. Remove Co-Authored-By line."
+    exit 1
+fi
