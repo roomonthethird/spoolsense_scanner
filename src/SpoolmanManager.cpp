@@ -178,6 +178,10 @@ static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outI
                 break;
             }
             if (reader.node_type() != json_node_type::field) continue;
+            // Only process fields at the spool object level — skip nested
+            // objects (filament, vendor) which also have 'id' fields that
+            // would overwrite spoolId with the wrong value.
+            if (reader.depth() != spoolDepth + 1) continue;
             const char* field = reader.value();
             if (strcmp(field, "id") == 0) {
                 if (reader.read()) readIntValue(reader, spoolId);
