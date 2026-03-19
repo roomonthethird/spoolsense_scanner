@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-03-19 — Web Config, Spoolman Enrichment, Bug Fixes
+
+### Added
+- Web-based configuration page at `spoolsense.local/config` — change WiFi, MQTT, Spoolman, automation mode, and hardware settings from the browser. Settings saved to NVS and persist across OTA updates. Device reboots after saving.
+- Spoolman filament enrichment — `settings_extruder_temp` and `settings_bed_temp` populated from tag data (averaged from min/max). Custom `material_name` from tag used as filament name.
+- Spoolman extra fields — `tag_format` on spool (OpenPrintTag/TigerTag), `aspect`, `dry_temp`, `dry_time_hours` on filament (from TigerTag data). Written opportunistically; no errors if fields don't exist.
+- Installer creates Spoolman extra fields (nfc_id, tag_format, aspect, dry_temp, dry_time_hours) when Spoolman is enabled.
+- Spoolman sync test suite (11 tests) covering spool UUID lookup with nested JSON, matching edge cases.
+- Native test build fixed — all 45+ tests passing.
+
+### Changed
+- Filament matching uses vendor + material + color (was vendor + material only). Prevents different colored filaments from the same brand conflating into one entry.
+- Spoolman is source of truth — existing filament fields (name, temps) are never overwritten; only blank values are filled from tag data.
+- `SpoolmanManager::isConfigured()` now checks `isSpoolmanEnabled()` flag, not just URL length. Respects web config enable/disable toggle.
+- Spoolman spool lookup replaced streaming JSON parser with ArduinoJson for reliable nested object handling.
+
+### Fixed
+- **setupRF() no longer fails after tag reads** — full PN5180 state machine reset (RF_OFF → Idle → clear IRQs → loadRFConfig → RF_ON → Transceive) between scan cycles.
+- **Spoolman spool lookup no longer creates duplicates** — ArduinoJson correctly handles nested filament/vendor `id` fields.
+- **Spoolman enable/disable via web config** — fixed NVS type mismatch (putBool/getBool) and isConfigured check.
+- **LCD config flag** — uses `#if ENABLE_LCD` (value check) instead of `#ifdef ENABLE_LCD` (existence check).
+- **Native test build** — `ENABLE_STATUS_LED` unset in native builds, `pauseScanTask`/`resumeScanTask` gated behind `NATIVE_TEST`, TigerTagParser/ConversionUtils linked into NFC tests.
+
 ## [1.3.4] - 2026-03-19 — P0 Bug Fixes
 
 ### Fixed
