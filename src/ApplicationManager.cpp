@@ -1,5 +1,9 @@
 #include "ApplicationManager.h"
 #include "UserConfig.h"
+#ifdef NATIVE_TEST
+  // LED hardware not available in native tests
+  #undef ENABLE_STATUS_LED
+#endif
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"

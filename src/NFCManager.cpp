@@ -104,17 +104,21 @@ bool NFCManager::getLastTigerTagData(TigerTagData& out) {
 }
 
 void NFCManager::pauseScanTask() {
+#ifndef NATIVE_TEST
     if (scanTaskHandle) {
         vTaskSuspend(scanTaskHandle);
         Serial.println("NFCManager: Scan task paused");
     }
+#endif
 }
 
 void NFCManager::resumeScanTask() {
+#ifndef NATIVE_TEST
     if (scanTaskHandle) {
         vTaskResume(scanTaskHandle);
         Serial.println("NFCManager: Scan task resumed");
     }
+#endif
 }
 
 void NFCManager::startScanTask() {
