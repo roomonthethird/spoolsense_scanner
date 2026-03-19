@@ -15,6 +15,7 @@
 #include "TigerTagWriterHTML.h"
 #include "SharedCSS.h"
 #include "SharedJS.h"
+#include "ConfigHTML.h"
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
 #include "UpdateHTML.h"
@@ -70,6 +71,7 @@ bool WebServerManager::begin(uint16_t port) {
 
     // Update page
     _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
+    _server.on("/config",              HTTP_GET, [this]() { handleConfigPage(); });
 
     // API
     _server.on("/api/version",         HTTP_GET, [this]() { handleApiVersion(); });
@@ -78,6 +80,8 @@ bool WebServerManager::begin(uint16_t port) {
         [this]() { handleApiUploadFirmwareChunk(); });
     _server.on("/api/update-from-url", HTTP_POST, [this]() { handleApiUpdateFromUrl(); });
     _server.on("/api/ota-status",      HTTP_GET,  [this]() { handleApiOtaStatus(); });
+    _server.on("/api/config",          HTTP_GET,  [this]() { handleApiGetConfig(); });
+    _server.on("/api/config",          HTTP_POST, [this]() { handleApiPostConfig(); });
     _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
     _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
@@ -157,6 +161,80 @@ void WebServerManager::handleTigerTagLogo() {
 void WebServerManager::handleUpdatePage() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", UPDATE_HTML);
+}
+
+void WebServerManager::handleConfigPage() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", CONFIG_HTML);
+}
+
+// ---------------------------------------------------------------------------
+// API: Config
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiGetConfig() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    ConfigUpdate cfg;
+    ConfigurationManager::getInstance().getCurrentConfig(cfg);
+
+    StaticJsonDocument<512> doc;
+    doc["wifi_ssid"] = cfg.wifi_ssid;
+    doc["wifi_pass_set"] = (cfg.wifi_pass[0] != '\0');
+    doc["mqtt_host"] = cfg.mqtt_host;
+    doc["mqtt_port"] = cfg.mqtt_port;
+    doc["mqtt_user"] = cfg.mqtt_user;
+    doc["mqtt_pass_set"] = (cfg.mqtt_pass[0] != '\0');
+    doc["spoolman_on"] = cfg.spoolman_on;
+    doc["spoolman_url"] = cfg.spoolman_url;
+    doc["auto_mode"] = cfg.auto_mode;
+    doc["lcd_enabled"] = cfg.lcd_enabled;
+    doc["led_enabled"] = cfg.led_enabled;
+
+    String body;
+    serializeJson(doc, body);
+    _server.send(200, "application/json", body);
+}
+
+void WebServerManager::handleApiPostConfig() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    ConfigUpdate update;
+    memset(&update, 0, sizeof(update));
+
+    strncpy(update.wifi_ssid, doc["wifi_ssid"] | "", sizeof(update.wifi_ssid) - 1);
+    strncpy(update.wifi_pass, doc["wifi_pass"] | "", sizeof(update.wifi_pass) - 1);
+    strncpy(update.mqtt_host, doc["mqtt_host"] | "", sizeof(update.mqtt_host) - 1);
+    update.mqtt_port = doc["mqtt_port"] | (uint16_t)1883;
+    strncpy(update.mqtt_user, doc["mqtt_user"] | "", sizeof(update.mqtt_user) - 1);
+    strncpy(update.mqtt_pass, doc["mqtt_pass"] | "", sizeof(update.mqtt_pass) - 1);
+    update.spoolman_on = doc["spoolman_on"] | (uint8_t)0;
+    strncpy(update.spoolman_url, doc["spoolman_url"] | "", sizeof(update.spoolman_url) - 1);
+    update.auto_mode = doc["auto_mode"] | (uint8_t)0;
+    update.lcd_enabled = doc["lcd_enabled"] | (uint8_t)0;
+    update.led_enabled = doc["led_enabled"] | (uint8_t)0;
+
+    if (update.wifi_ssid[0] == '\0') {
+        sendError(400, "WiFi SSID is required");
+        return;
+    }
+
+    if (!ConfigurationManager::getInstance().saveToNVS(update)) {
+        sendError(500, "Failed to save config");
+        return;
+    }
+
+    Serial.println("WebServerManager: Config saved, rebooting in 3 seconds...");
+    _server.send(200, "application/json", "{\"success\":true}");
+    delay(3000);
+    ESP.restart();
 }
 
 // ---------------------------------------------------------------------------

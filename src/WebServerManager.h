@@ -35,6 +35,7 @@ private:
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
     void handleUpdatePage();
+    void handleConfigPage();
 
     // API handlers
     void handleApiStatus();
@@ -46,6 +47,8 @@ private:
     void handleApiUploadFirmwareChunk();
     void handleApiUpdateFromUrl();
     void handleApiOtaStatus();
+    void handleApiGetConfig();
+    void handleApiPostConfig();
 
     // OTA download state
     static void otaDownloadTask(void* param);

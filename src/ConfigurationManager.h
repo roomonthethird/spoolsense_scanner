@@ -8,6 +8,20 @@
 #endif
 #define DEVICE_VERSION FIRMWARE_VERSION
 
+struct ConfigUpdate {
+    char wifi_ssid[64];
+    char wifi_pass[64];
+    char mqtt_host[128];
+    uint16_t mqtt_port;
+    char mqtt_user[64];
+    char mqtt_pass[64];
+    uint8_t spoolman_on;
+    char spoolman_url[128];
+    uint8_t auto_mode;
+    uint8_t lcd_enabled;
+    uint8_t led_enabled;
+};
+
 class ConfigurationManager {
 public:
     static ConfigurationManager& getInstance();
@@ -28,6 +42,10 @@ public:
     const char* getHAMqttUser() const;
     const char* getHAMqttPass() const;
     uint8_t getAutomationMode() const;
+
+    // Web config support
+    void getCurrentConfig(ConfigUpdate& out) const;
+    bool saveToNVS(const ConfigUpdate& update);
 
 private:
     ConfigurationManager() = default;

@@ -19,6 +19,8 @@ static const char* NVS_KEY_MQTT_PREFIX    = "mqtt_prefix";
 static const char* NVS_KEY_SPOOLMAN_ON    = "spoolman_on";
 static const char* NVS_KEY_SPOOLMAN_URL   = "spoolman_url";
 static const char* NVS_KEY_AUTO_MODE      = "auto_mode";
+static const char* NVS_KEY_LCD_ON         = "lcd_on";
+static const char* NVS_KEY_LED_ON         = "led_on";
 
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
@@ -192,3 +194,61 @@ const char* ConfigurationManager::getHAMqttPass() const {
 uint8_t ConfigurationManager::getAutomationMode() const {
     return _automationMode;
 }
+
+void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
+    memset(&out, 0, sizeof(out));
+    strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
+    strncpy(out.wifi_pass, _wifiPass, sizeof(out.wifi_pass) - 1);
+    strncpy(out.mqtt_host, _haMqttHost, sizeof(out.mqtt_host) - 1);
+    out.mqtt_port = _haMqttPort;
+    strncpy(out.mqtt_user, _haMqttUser, sizeof(out.mqtt_user) - 1);
+    strncpy(out.mqtt_pass, _haMqttPass, sizeof(out.mqtt_pass) - 1);
+    out.spoolman_on = _spoolmanEnabled ? 1 : 0;
+    strncpy(out.spoolman_url, _spoolmanUrl, sizeof(out.spoolman_url) - 1);
+    out.auto_mode = _automationMode;
+#ifdef ENABLE_LCD
+    out.lcd_enabled = 1;
+#else
+    out.lcd_enabled = 0;
+#endif
+#ifdef ENABLE_STATUS_LED
+    out.led_enabled = 1;
+#else
+    out.led_enabled = 0;
+#endif
+}
+
+#ifndef NATIVE_TEST
+bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
+    Preferences prefs;
+    if (!prefs.begin(NVS_NAMESPACE, false)) {  // read-write
+        Serial.println("ConfigurationManager: Failed to open NVS for writing");
+        return false;
+    }
+
+    prefs.putString(NVS_KEY_WIFI_SSID, update.wifi_ssid);
+    // Only write password if non-empty (empty = keep existing)
+    if (update.wifi_pass[0] != '\0') {
+        prefs.putString(NVS_KEY_WIFI_PASS, update.wifi_pass);
+    }
+    prefs.putString(NVS_KEY_MQTT_HOST, update.mqtt_host);
+    prefs.putUShort(NVS_KEY_MQTT_PORT, update.mqtt_port);
+    prefs.putString(NVS_KEY_MQTT_USER, update.mqtt_user);
+    if (update.mqtt_pass[0] != '\0') {
+        prefs.putString(NVS_KEY_MQTT_PASS, update.mqtt_pass);
+    }
+    prefs.putUChar(NVS_KEY_SPOOLMAN_ON, update.spoolman_on);
+    prefs.putString(NVS_KEY_SPOOLMAN_URL, update.spoolman_url);
+    prefs.putUChar(NVS_KEY_AUTO_MODE, update.auto_mode);
+    prefs.putUChar(NVS_KEY_LCD_ON, update.lcd_enabled);
+    prefs.putUChar(NVS_KEY_LED_ON, update.led_enabled);
+
+    prefs.end();
+    Serial.println("ConfigurationManager: Config saved to NVS");
+    return true;
+}
+#else
+bool ConfigurationManager::saveToNVS(const ConfigUpdate&) {
+    return true;  // No-op in native tests
+}
+#endif

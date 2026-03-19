@@ -21,6 +21,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/update">Update</a>
+      <a href="/config">Config</a>
     </nav>
 
     <div style="text-align:center;margin:32px 0 28px">
@@ -65,6 +66,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-icon">&#9889;</div>
         <div class="tool-name">Firmware Update</div>
         <div class="tool-desc">Check for new firmware versions and update over WiFi.</div>
+      </a>
+
+      <a href="/config" class="tool-card">
+        <div class="tool-icon">&#9881;</div>
+        <div class="tool-name">Configuration</div>
+        <div class="tool-desc">Change WiFi, MQTT, Spoolman, and hardware settings.</div>
       </a>
     </div>
 

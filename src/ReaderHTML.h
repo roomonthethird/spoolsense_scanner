@@ -21,6 +21,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/update">Update</a>
+      <a href="/config">Config</a>
     </nav>
 
     <section class="card">
