@@ -378,6 +378,53 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
         int id = -1;
         if (findExactMaterialId(response.c_str(), material, id)) {
             Serial.printf("SpoolmanManager: Found filament material=%s id=%d\n", material, id);
+
+            // Fill in blank fields on existing filament — Spoolman is source of truth,
+            // so only write values that are currently unset (null/0/empty).
+            if (req.max_print_temp > 0 || req.min_print_temp > 0 || req.max_bed_temp > 0 ||
+                req.min_bed_temp > 0 || req.material_name[0] != '\0') {
+                char filPath[64];
+                snprintf(filPath, sizeof(filPath), "/api/v1/filament/%d", id);
+                String filResp;
+                int filCode = httpGet(filPath, filResp);
+                if (filCode == 200) {
+                    DynamicJsonDocument filDoc(2048);
+                    if (deserializeJson(filDoc, filResp) == DeserializationError::Ok) {
+                        bool hasUpdate = false;
+                        StaticJsonDocument<JSON_SMALL_CAPACITY> patchDoc;
+
+                        int existingExtruder = filDoc["settings_extruder_temp"] | 0;
+                        if (existingExtruder == 0 && (req.max_print_temp > 0 || req.min_print_temp > 0)) {
+                            patchDoc["settings_extruder_temp"] = req.max_print_temp > 0 ? req.max_print_temp : req.min_print_temp;
+                            hasUpdate = true;
+                        }
+
+                        int existingBed = filDoc["settings_bed_temp"] | 0;
+                        if (existingBed == 0 && (req.max_bed_temp > 0 || req.min_bed_temp > 0)) {
+                            patchDoc["settings_bed_temp"] = req.max_bed_temp > 0 ? req.max_bed_temp : req.min_bed_temp;
+                            hasUpdate = true;
+                        }
+
+                        const char* existingName = filDoc["name"] | "";
+                        if ((existingName[0] == '\0' || strcmp(existingName, material) == 0) &&
+                            req.material_name[0] != '\0') {
+                            patchDoc["name"] = req.material_name;
+                            hasUpdate = true;
+                        }
+
+                        if (hasUpdate) {
+                            String patchBody;
+                            serializeJson(patchDoc, patchBody);
+                            String patchResp;
+                            int patchCode = httpPatch(filPath, patchBody.c_str(), patchResp);
+                            if (patchCode == 200) {
+                                Serial.printf("SpoolmanManager: Updated filament id=%d with missing fields\n", id);
+                            }
+                        }
+                    }
+                }
+            }
+
             return id;
         }
         Serial.printf("SpoolmanManager: No exact match for material=%s, will create\n", material);
