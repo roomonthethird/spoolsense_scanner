@@ -26,7 +26,6 @@
 - Shared CSS (`/css/shared.css`) and JS (`/js/shared.js`) served as cacheable endpoints
 - Firmware Update card on landing page
 - Update link in navigation bar across all pages
-- Git commit-msg hook to prevent AI attribution in commits
 
 ### Changed
 - OpenPrintTag writer moved from `/` to `/writer/openprinttag` — landing page is now the tool hub
