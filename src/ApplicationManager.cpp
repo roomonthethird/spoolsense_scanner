@@ -764,6 +764,12 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
 
     req.spoolman_id = spool.spoolman_id;
 
+    strncpy(req.material_name, spool.material_name, sizeof(req.material_name) - 1);
+    req.min_print_temp = spool.min_print_temp;
+    req.max_print_temp = spool.max_print_temp;
+    req.min_bed_temp = spool.min_bed_temp;
+    req.max_bed_temp = spool.max_bed_temp;
+
     SpoolmanManager::getInstance().enqueueSync(req);
 }
 #endif

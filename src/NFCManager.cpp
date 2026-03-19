@@ -670,6 +670,13 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
     opt_get_gp_spoolman_id(&currentSpool.tag_data, &spoolman_id);
     msg.payload.spoolDetected.spoolman_id = spoolman_id;
 
+    // Get temperatures
+    int16_t t = 0;
+    msg.payload.spoolDetected.min_print_temp = (opt_get_min_print_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
+    msg.payload.spoolDetected.max_print_temp = (opt_get_max_print_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
+    msg.payload.spoolDetected.min_bed_temp = (opt_get_min_bed_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
+    msg.payload.spoolDetected.max_bed_temp = (opt_get_max_bed_temp(&currentSpool.tag_data, &t) == OPT_OK) ? t : 0;
+
     // Set suppress_spoolman_sync flag
     msg.payload.spoolDetected.suppress_spoolman_sync = suppress_spoolman_sync ? 1 : 0;
 
@@ -771,6 +778,11 @@ void NFCManager::sendTigerTagMessage(const TigerTagData& tt) {
 
     s.density = getDefaultDensity(s.material_type);
     s.diameter = tt.diameter_mm > 0 ? tt.diameter_mm : 1.75f;
+
+    s.min_print_temp = tt.nozzle_temp_min;
+    s.max_print_temp = tt.nozzle_temp_max;
+    s.min_bed_temp = tt.bed_temp_min;
+    s.max_bed_temp = tt.bed_temp_max;
 
     s.spoolman_id = -1;
     s.suppress_spoolman_sync = 0;

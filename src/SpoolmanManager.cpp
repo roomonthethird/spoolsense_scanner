@@ -388,13 +388,31 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     snprintf(colorHex, sizeof(colorHex), "%02X%02X%02X", req.color[0], req.color[1], req.color[2]);
 
     StaticJsonDocument<JSON_MEDIUM_CAPACITY> createDoc;
-    createDoc["name"] = material;
+    // Use custom material name if available (e.g. "Blood Red PLA"), otherwise material type
+    if (req.material_name[0] != '\0') {
+        createDoc["name"] = req.material_name;
+    } else {
+        createDoc["name"] = material;
+    }
     createDoc["vendor_id"] = vendorId;
     createDoc["material"] = material;
     createDoc["density"] = req.density;
     createDoc["diameter"] = req.diameter;
     createDoc["weight"] = req.initial_weight_g;
     createDoc["color_hex"] = colorHex;
+
+    // Spoolman built-in temperature fields
+    // Use max print temp as the extruder setting (most useful for slicer reference)
+    if (req.max_print_temp > 0) {
+        createDoc["settings_extruder_temp"] = req.max_print_temp;
+    } else if (req.min_print_temp > 0) {
+        createDoc["settings_extruder_temp"] = req.min_print_temp;
+    }
+    if (req.max_bed_temp > 0) {
+        createDoc["settings_bed_temp"] = req.max_bed_temp;
+    } else if (req.min_bed_temp > 0) {
+        createDoc["settings_bed_temp"] = req.min_bed_temp;
+    }
 
     String body;
     serializeJson(createDoc, body);

@@ -17,6 +17,11 @@ struct SpoolmanSyncRequest {
     float density;               // g/cm3 (from tag, or default)
     float diameter;              // mm (from tag, or default)
     int32_t spoolman_id;         // Spoolman ID from tag (-1 if absent)
+    char material_name[32];      // Custom material name (e.g. "Blood Red PLA")
+    int16_t min_print_temp;      // Min extruder temp C (0 = not set)
+    int16_t max_print_temp;      // Max extruder temp C (0 = not set)
+    int16_t min_bed_temp;        // Min bed temp C (0 = not set)
+    int16_t max_bed_temp;        // Max bed temp C (0 = not set)
 };
 
 struct SpoolDetails {

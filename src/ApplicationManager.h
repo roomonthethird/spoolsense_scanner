@@ -44,6 +44,10 @@ struct SpoolDetectedPayload {
     float initial_weight_g;      // Full spool weight in grams
     char manufacturer[33];       // Brand name from tag
     int32_t spoolman_id;         // Spoolman ID from tag (-1 if absent)
+    int16_t min_print_temp;      // Min extruder temp C (0 = not set)
+    int16_t max_print_temp;      // Max extruder temp C (0 = not set)
+    int16_t min_bed_temp;        // Min bed temp C (0 = not set)
+    int16_t max_bed_temp;        // Max bed temp C (0 = not set)
     uint8_t suppress_spoolman_sync; // 1 = don't trigger Spoolman sync (e.g., after write_spoolman_spool batch)
 };
 
