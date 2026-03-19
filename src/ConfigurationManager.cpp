@@ -1,4 +1,5 @@
 #include "ConfigurationManager.h"
+#include "UserConfig.h"
 #include "DeviceConfig.h"
 #include <cstring>
 #include <Arduino.h>
