@@ -32,7 +32,6 @@
 - OpenPrintTag writer moved from `/` to `/writer/openprinttag` — landing page is now the tool hub
 - CSS and JS extracted from inline to shared PROGMEM endpoints
 - LCD status line shows `NFC+ Wifi+` / `SM+ MQTT+` (replaces BLE indicator with MQTT connection status)
-- `DEVICE_VERSION` aliased to `FIRMWARE_VERSION` from build flags (was hardcoded `"0.76 BETA"`)
 - ESP32-S3 NeoPixel color order fixed from `NEO_GRB` to `NEO_RGB`
 
 ### Removed
