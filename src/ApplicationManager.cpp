@@ -792,7 +792,7 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
 
     char deviceId[7];
     HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
-    snprintf(req.topic, sizeof(req.topic), "openprinttag/%s/%s", deviceId, topicSuffix);
+    snprintf(req.topic, sizeof(req.topic), "spoolsense/%s/%s", deviceId, topicSuffix);
     strncpy(req.payload, payload, sizeof(req.payload) - 1);
     req.retained = retained;
 
