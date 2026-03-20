@@ -10,6 +10,8 @@
   
   #include <esp_heap_caps.h>
   #include "NFCManager.h"
+  #include "NFCTypes.h"
+  #include "TigerTagParser.h"
   #include "esp_mac.h"
 #else
   #include "platform/NativePlatform.h"
@@ -672,7 +674,6 @@ void HomeAssistantManager::publishCurrentTagState() {
     snprintf(attrsTopic, sizeof(attrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
 
     if (!got || !spool.present) {
-        // Publish "not present" so HA entities are in a known state.
         const char* emptyState =
             "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,\"material_type\":\"\","
             "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
@@ -684,19 +685,50 @@ void HomeAssistantManager::publishCurrentTagState() {
         return;
     }
 
-    // Extract fields from tag data (mirrors ApplicationManager::handleSpoolDetected format)
-    const char* materialName = "PLA";
+    // Build payload based on tag type
+    const char* materialType = "";
+    const char* materialName = "";
     char manufacturer[64] = {0};
-    uint8_t color[4] = {255, 255, 255, 255};
-    float fullWeight = 1000.0f;
-    float remaining = 1000.0f;
+    char colorHex[8] = "#FFFFFF";
+    float fullWeight = 0.0f;
+    float remaining = 0.0f;
     int32_t spoolmanId = -1;
+    bool tagDataValid = false;
 
-    if (spool.tag_data_valid) {
+    if (spool.kind == TagKind::TigerTag) {
+        // TigerTag — read from cached TigerTag data
+        TigerTagData tt;
+        if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
+            tagDataValid = true;
+            materialType = tt.material_name;  // e.g. "PLA"
+            materialName = tt.material_name;
+            strncpy(manufacturer, tt.brand_name, sizeof(manufacturer) - 1);
+            snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
+            fullWeight = tt.weight_g;
+            remaining = tt.weight_g;  // TigerTag has no consumed weight
+        }
+    } else if (spool.tag_data_valid) {
+        // OpenPrintTag — read from opt_tag_t
+        tagDataValid = true;
         uint8_t matType = 0;
         opt_get_material_type(&spool.tag_data, &matType);
-        materialName = materialTypeToString(matType);
+        materialType = materialTypeToString(matType);
+
+        char customName[33] = {0};
+        if (opt_get_material_name(&spool.tag_data, customName, sizeof(customName)) == OPT_OK
+                && customName[0] != '\0') {
+            // Use custom name — need static buffer since materialName is a pointer
+            static char nameBuf[33];
+            strncpy(nameBuf, customName, sizeof(nameBuf) - 1);
+            materialName = nameBuf;
+        } else {
+            materialName = materialType;
+        }
+
+        uint8_t color[4] = {0};
         opt_get_primary_color(&spool.tag_data, color);
+        snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", color[0], color[1], color[2]);
+
         opt_get_brand_name(&spool.tag_data, manufacturer, sizeof(manufacturer));
         opt_get_actual_full_weight(&spool.tag_data, &fullWeight);
         float consumed = 0.0f;
@@ -705,9 +737,7 @@ void HomeAssistantManager::publishCurrentTagState() {
         if (remaining < 0) remaining = 0;
         opt_get_gp_spoolman_id(&spool.tag_data, &spoolmanId);
     }
-
-    char colorHex[8];
-    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", color[0], color[1], color[2]);
+    // BambuTag / GenericUidTag — tagDataValid stays false, UID-only payload
 
     char json[384];
     snprintf(json, sizeof(json),
@@ -716,14 +746,15 @@ void HomeAssistantManager::publishCurrentTagState() {
              "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
              "\"blank\":%s}",
              spool.spool_id,
-             spool.tag_data_valid ? "true" : "false",
-             materialName, materialName, colorHex,
+             tagDataValid ? "true" : "false",
+             materialType, materialName, colorHex,
              manufacturer, remaining, fullWeight, spoolmanId,
              spool.blank_tag_present ? "true" : "false");
 
     mqttClient.publish(stateTopic, json, true);
     mqttClient.publish(attrsTopic, json, true);
-    Serial.printf("HomeAssistantManager: Published current tag state uid=%s\n", spool.spool_id);
+    Serial.printf("HomeAssistantManager: Published current tag state uid=%s kind=%d\n",
+                  spool.spool_id, (int)spool.kind);
 }
 
 // Static callback - routes to instance
