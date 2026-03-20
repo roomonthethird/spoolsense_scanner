@@ -12,6 +12,13 @@
 
 ### Tag Format Support
 - [P3] **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
+- [P2] **Proprietary tag format support** — OpenRFID project (GPL v3, /Users/sjordan/Code/OpenRFID) has parsers for manufacturer-specific tag formats. Can be used as reference for format documentation. Licensing: middleware can use directly if made GPL; scanner firmware must implement independently. Formats available:
+  - **Bambu Lab** — MIFARE Classic 1K, AES-encrypted, HKDF-SHA256 key derivation from UID + salt. Full data: material, color, weight, temps, production date, tray UID
+  - **Creality** — proprietary format on MIFARE Classic/Ultralight
+  - **Elegoo** — proprietary format on MIFARE Classic/Ultralight
+  - **Anycubic** — proprietary format on MIFARE Classic/Ultralight
+  - **Snapmaker** — proprietary format on MIFARE Classic/Ultralight
+  - **OpenSpool** — NDEF-based format
 - ~~**TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide~~
 - [P2] **Bambu Lab spool tags** — MIFARE Ultralight AES (MF0AES) with AES-128 encrypted data pages. PN5180 can activate via ISO14443A (same anticollision as NTAG). **Phase 1:** detect Bambu tag via ATQA/SAK or GET_VERSION chip response, classify as `TagKind::BambuTag`, extract UID, treat as UID-only for Spoolman registration. Public pages (0-1) are readable without auth. **Phase 2:** best-effort metadata decode from unencrypted public pages — community reverse engineering suggests some material/color bytes may be in the clear area. Fragile and undocumented but worth investigating.
 
