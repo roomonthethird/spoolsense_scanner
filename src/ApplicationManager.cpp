@@ -315,7 +315,8 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
                  s.primary_color[0], s.primary_color[1], s.primary_color[2]);
         char json[384];
         snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"material_type\":\"%s\","
+                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":true,"
+                 "\"material_type\":\"%s\","
                  "\"material_name\":\"%s\",\"color\":\"%s\",\"manufacturer\":\"%s\","
                  "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
                  "\"blank\":false}",
@@ -481,7 +482,8 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
     {
         char json[256];
         snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"material_type\":\"\","
+                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
+                 "\"material_type\":\"\","
                  "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
                  "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
                  "\"blank\":true}",
@@ -649,7 +651,8 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
 
     // Publish tag removed to HA
     publishToHA("tag/state",
-                "{\"uid\":\"\",\"present\":false,\"material_type\":\"\","
+                "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
+                "\"material_type\":\"\","
                 "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
                 "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
                 "\"blank\":false}",
