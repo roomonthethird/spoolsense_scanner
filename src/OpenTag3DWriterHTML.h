@@ -39,18 +39,75 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             <h2 class="section-title">Filament</h2>
             <div class="grid-2">
               <div class="field">
-                <label for="base_material">Material (5 char max)</label>
-                <input id="base_material" type="text" maxlength="5" value="PLA" required />
+                <label for="base_material">Material</label>
+                <select id="base_material" required>
+                  <option value="PLA" selected>PLA</option>
+                  <option value="PETG">PETG</option>
+                  <option value="TPU">TPU</option>
+                  <option value="ABS">ABS</option>
+                  <option value="ASA">ASA</option>
+                  <option value="PC">PC</option>
+                  <option value="PCTG">PCTG</option>
+                  <option value="PP">PP</option>
+                  <option value="PA6">PA6</option>
+                  <option value="PA12">PA12</option>
+                  <option value="PA66">PA66</option>
+                  <option value="CPE">CPE</option>
+                  <option value="TPE">TPE</option>
+                  <option value="HIPS">HIPS</option>
+                  <option value="PET">PET</option>
+                  <option value="PEI">PEI</option>
+                  <option value="PVA">PVA</option>
+                  <option value="PVB">PVB</option>
+                  <option value="PEEK">PEEK</option>
+                  <option value="PEKK">PEKK</option>
+                </select>
               </div>
               <div class="field">
-                <label for="material_modifiers">Modifiers (optional)</label>
-                <input id="material_modifiers" type="text" maxlength="5" placeholder="CF, GF" />
+                <label for="material_modifiers">Modifiers</label>
+                <select id="material_modifiers">
+                  <option value="" selected>None</option>
+                  <option value="CF">CF (Carbon Fiber)</option>
+                  <option value="GF">GF (Glass Fiber)</option>
+                  <option value="HF">HF (High Flow)</option>
+                  <option value="HS">HS (High Speed)</option>
+                  <option value="HT">HT (High Temp)</option>
+                  <option value="Silk">Silk</option>
+                  <option value="Matt">Matte</option>
+                  <option value="Wood">Wood Fill</option>
+                  <option value="Metal">Metal Fill</option>
+                  <option value="Glow">Glow in Dark</option>
+                </select>
               </div>
             </div>
             <div class="grid-2">
               <div class="field">
-                <label for="manufacturer">Manufacturer</label>
-                <input id="manufacturer" type="text" maxlength="16" placeholder="Polymaker" />
+                <label for="manufacturer">Brand / Manufacturer</label>
+                <input id="manufacturer" list="brand-list" maxlength="16" placeholder="Select or type a brand" />
+                <datalist id="brand-list">
+                  <option value="3DXTech"></option>
+                  <option value="Amolen"></option>
+                  <option value="Anycubic"></option>
+                  <option value="AzureFilm"></option>
+                  <option value="Bambu Lab"></option>
+                  <option value="ColorFabb"></option>
+                  <option value="Creality"></option>
+                  <option value="eSun"></option>
+                  <option value="Elegoo"></option>
+                  <option value="Fiberlogy"></option>
+                  <option value="Fillamentum"></option>
+                  <option value="FlashForge"></option>
+                  <option value="FormFutura"></option>
+                  <option value="Hatchbox"></option>
+                  <option value="Inland"></option>
+                  <option value="Jayo"></option>
+                  <option value="MatterHackers"></option>
+                  <option value="Overture"></option>
+                  <option value="Polymaker"></option>
+                  <option value="Prusament"></option>
+                  <option value="Proto-Pasta"></option>
+                  <option value="Sunlu"></option>
+                </datalist>
               </div>
               <div class="field">
                 <label for="target_weight_g">Spool Weight (g)</label>
@@ -396,9 +453,12 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
           await sleep(500);
           var status = await api('/api/status');
           if (status.present && status.tag_kind === 'OpenTag3D') {
+            // Wait for the full read cycle to complete before declaring success
+            setBanner('statusBanner', 'Tag verified \u2014 hold for a moment\u2026');
+            await sleep(2000);
             setStepState('step-verify', 'done');
-            setBanner('statusBanner', 'Write successful.');
-            setResult('resultBox', 'OpenTag3D data verified successfully.', 'success');
+            setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
+            setResult('resultBox', 'OpenTag3D data written and verified successfully.', 'success');
             backBtn.classList.remove('hidden');
             anotherBtn.classList.remove('hidden');
             return;

@@ -408,9 +408,12 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
           if (status.present && status.tag_kind === 'TigerTag' && status.tigertag) {
             var tt = status.tigertag;
             if (tt.material_id === payload.material_id && tt.brand_id === payload.brand_id) {
+              // Wait for the full read cycle to complete before declaring success
+              setBanner('statusBanner', 'Tag verified \u2014 hold for a moment\u2026');
+              await sleep(2000);
               setStepState('step-verify', 'done');
-              setBanner('statusBanner', 'Write successful.');
-              setResult('resultBox', 'TigerTag data verified successfully.', 'success');
+              setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
+              setResult('resultBox', 'TigerTag data written and verified successfully.', 'success');
               backBtn.classList.remove('hidden');
               anotherBtn.classList.remove('hidden');
               return;

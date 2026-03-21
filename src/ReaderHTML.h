@@ -104,6 +104,34 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       return html;
     }
 
+    function renderOpenTag3D(s) {
+      var t = s.opentag3d || {};
+      var html = '';
+      html += row('Format', 'OpenTag3D');
+      html += row('UID', s.uid || '&mdash;');
+      if (t.base_material) html += row('Material', t.base_material + (t.modifiers ? ' (' + t.modifiers + ')' : ''));
+      if (t.manufacturer) html += row('Manufacturer', t.manufacturer);
+      if (t.color_hex) html += row('Color', colorValue(t.color_hex) + (t.color_name ? ' ' + t.color_name : ''));
+      if (t.target_weight_g !== undefined) html += row('Weight', t.target_weight_g + ' g');
+      if (t.measured_weight_g) html += row('Measured Weight', t.measured_weight_g + ' g');
+      if (t.diameter_mm) html += row('Diameter', t.diameter_mm + ' mm');
+      if (t.density) html += row('Density', t.density.toFixed(3) + ' g/cm\u00B3');
+      if (t.print_temp) {
+        var tempStr = t.print_temp + ' \u00B0C';
+        if (t.min_print_temp && t.max_print_temp) tempStr = t.min_print_temp + ' \u2013 ' + t.max_print_temp + ' \u00B0C';
+        html += row('Print Temp', tempStr);
+      }
+      if (t.bed_temp) {
+        var bedStr = t.bed_temp + ' \u00B0C';
+        if (t.min_bed_temp && t.max_bed_temp) bedStr = t.min_bed_temp + ' \u2013 ' + t.max_bed_temp + ' \u00B0C';
+        html += row('Bed Temp', bedStr);
+      }
+      if (t.dry_temp) html += row('Dry', t.dry_temp + ' \u00B0C / ' + (t.dry_time_hours || '?') + ' hrs');
+      if (t.serial_number) html += row('Serial', t.serial_number);
+      if (t.empty_spool_g) html += row('Empty Spool', t.empty_spool_g + ' g');
+      return html;
+    }
+
     function renderGenericUid(s) {
       var html = '';
       html += row('Format', tagKindLabel(s.tag_kind));
@@ -127,6 +155,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
 
       if (kind === 'TigerTag' && s.tigertag) {
         html = renderTigerTag(s);
+      } else if (kind === 'OpenTag3D' && s.opentag3d) {
+        html = renderOpenTag3D(s);
       } else if (kind === 'OpenPrintTag' || (s.tag_data_valid && !kind)) {
         html = renderOpenPrintTag(s);
       } else {

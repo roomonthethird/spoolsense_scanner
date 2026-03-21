@@ -489,6 +489,47 @@ void WebServerManager::handleApiStatus() {
                 if (tt.dry_temp > 0) ttObj["dry_temp"] = tt.dry_temp;
                 if (tt.dry_time_hours > 0) ttObj["dry_time_hours"] = tt.dry_time_hours;
             }
+        } else if (state.kind == TagKind::OpenTag3D) {
+            // OpenTag3D — include parsed data
+            opentag3d_t ot3d;
+            if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
+                JsonObject otObj = doc.createNestedObject("opentag3d");
+                otObj["base_material"] = ot3d.base_material;
+                if (ot3d.material_modifiers[0]) otObj["modifiers"] = ot3d.material_modifiers;
+                otObj["manufacturer"] = ot3d.manufacturer;
+                if (ot3d.color_name[0]) otObj["color_name"] = ot3d.color_name;
+
+                char colorHex[8];
+                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+                         ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
+                otObj["color_hex"] = colorHex;
+
+                otObj["target_weight_g"] = ot3d.target_weight_g;
+                otObj["diameter_mm"] = opentag3d_diameter_mm(&ot3d);
+                if (ot3d.density_ugcm3 > 0) otObj["density"] = opentag3d_density_gcc(&ot3d);
+
+                uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
+                uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
+                if (printTemp > 0) otObj["print_temp"] = printTemp;
+                if (bedTemp > 0) otObj["bed_temp"] = bedTemp;
+
+                if (ot3d.has_extended) {
+                    if (ot3d.measured_filament_weight_g > 0) otObj["measured_weight_g"] = ot3d.measured_filament_weight_g;
+                    if (ot3d.empty_spool_weight_g > 0) otObj["empty_spool_g"] = ot3d.empty_spool_weight_g;
+                    if (ot3d.serial_number[0]) otObj["serial_number"] = ot3d.serial_number;
+                    uint16_t minPrint = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
+                    uint16_t maxPrint = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
+                    uint16_t minBed = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
+                    uint16_t maxBed = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
+                    if (minPrint > 0) otObj["min_print_temp"] = minPrint;
+                    if (maxPrint > 0) otObj["max_print_temp"] = maxPrint;
+                    if (minBed > 0) otObj["min_bed_temp"] = minBed;
+                    if (maxBed > 0) otObj["max_bed_temp"] = maxBed;
+                    uint16_t dryTemp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
+                    if (dryTemp > 0) otObj["dry_temp"] = dryTemp;
+                    if (ot3d.dry_time_hours > 0) otObj["dry_time_hours"] = ot3d.dry_time_hours;
+                }
+            }
         } else if (state.tag_data_valid) {
             // OpenPrintTag — include OPT fields
             uint8_t mat_type = 0;

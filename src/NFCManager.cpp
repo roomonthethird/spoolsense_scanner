@@ -968,7 +968,16 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
 
     strncpy(s.spool_id, currentSpool.spool_id, sizeof(s.spool_id) - 1);
     strncpy(s.manufacturer, ot3d.manufacturer, sizeof(s.manufacturer) - 1);
-    strncpy(s.material_name, ot3d.base_material, sizeof(s.material_name) - 1);
+
+    // Build descriptive material name: "Color Name Material" (e.g. "Blood Red PLA") or just "PLA"
+    Serial.printf("NFCManager: OpenTag3D color_name='%s' modifiers='%s'\n", ot3d.color_name, ot3d.material_modifiers);
+    if (ot3d.color_name[0] != '\0') {
+        snprintf(s.material_name, sizeof(s.material_name), "%s %s", ot3d.color_name, ot3d.base_material);
+    } else if (ot3d.material_modifiers[0] != '\0') {
+        snprintf(s.material_name, sizeof(s.material_name), "%s %s", ot3d.base_material, ot3d.material_modifiers);
+    } else {
+        strncpy(s.material_name, ot3d.base_material, sizeof(s.material_name) - 1);
+    }
 
     // Map base_material string to closest OpenPrintTag type for Spoolman compat
     s.material_type = 0;  // Default PLA
