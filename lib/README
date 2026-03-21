@@ -1,46 +1,23 @@
+# SpoolSense Scanner Libraries
 
-This directory is intended for project specific (private) libraries.
-PlatformIO will compile them to static libraries and link into the executable file.
+Tag format parsers and NFC protocol libraries. Each library is standalone
+C/C++ with no Arduino dependencies, making them testable natively.
 
-The source code of each library should be placed in a separate directory
-("lib/your_library_name/[Code]").
+## Libraries
 
-For example, see the structure of the following example libraries `Foo` and `Bar`:
+### openprinttag/
+OpenPrintTag encoder/decoder. CBOR-based filament data format over ISO15693 (SLIX2).
+Includes a minimal CBOR implementation and NDEF helpers.
 
-|--lib
-|  |
-|  |--Bar
-|  |  |--docs
-|  |  |--examples
-|  |  |--src
-|  |     |- Bar.c
-|  |     |- Bar.h
-|  |  |- library.json (optional. for custom build options, etc) https://docs.platformio.org/page/librarymanager/config.html
-|  |
-|  |--Foo
-|  |  |- Foo.c
-|  |  |- Foo.h
-|  |
-|  |- README --> THIS FILE
-|
-|- platformio.ini
-|--src
-   |- main.c
+### opentag3d/
+OpenTag3D encoder/decoder. Fixed binary offset format over ISO14443A (NTAG213/215/216).
+Wrapped in NDEF with MIME type `application/opentag3d`. Supports core (102 bytes)
+and extended (187 bytes) field sets. v1.000 spec.
 
-Example contents of `src/main.c` using Foo and Bar:
-```
-#include <Foo.h>
-#include <Bar.h>
+### tigertag/
+TigerTag parser. Binary format over ISO14443A (NTAG213/215). Includes material,
+brand, and aspect lookup tables from the TigerTag public database.
 
-int main (void)
-{
-  ...
-}
-
-```
-
-The PlatformIO Library Dependency Finder will find automatically dependent
-libraries by scanning project source files.
-
-More information about PlatformIO Library Dependency Finder
-- https://docs.platformio.org/page/librarymanager/ldf.html
+### PN5180/
+PN5180 NFC reader driver. SPI register control, ISO15693 and ISO14443A protocol
+implementations. Based on the PN5180 Arduino library with ISO14443A extensions.
