@@ -39,7 +39,16 @@ OT3D_C_SRC = ../../lib/opentag3d/opentag3d_lib.c
 OT3D_TEST_SRC = test_opentag3d.c
 OT3D_TARGET = test_opentag3d_runner
 
-all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET)
+# OpenPrintTag library tests (pure C, no hardware deps)
+OPT_TEST_SRC = test_openprinttag.c
+OPT_TEST_TARGET = test_openprinttag_runner
+
+# TigerTag parser tests (pure C++, no hardware deps)
+TT_TEST_SRC = test_tigertag.cpp
+TT_C_SRC = ../../lib/tigertag/TigerTagParser.cpp
+TT_TARGET = test_tigertag_runner
+
+all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET) $(OPT_TEST_TARGET) $(TT_TARGET)
 	./$(APP_FLOW_TARGET)
 	./$(NFC_READ_TARGET)
 	./$(LCD_MANAGER_TARGET)
@@ -47,6 +56,8 @@ all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HEL
 	./$(RAW_WRITE_TARGET)
 	./$(SPOOLMAN_SYNC_TARGET)
 	./$(OT3D_TARGET)
+	./$(OPT_TEST_TARGET)
+	./$(TT_TARGET)
 
 # Compile C library objects
 openprinttag_lib.o: ../../lib/openprinttag/openprinttag_lib.c
@@ -97,7 +108,19 @@ $(OT3D_TARGET): $(OT3D_TEST_SRC) $(OT3D_C_SRC)
 run-opentag3d: $(OT3D_TARGET)
 	./$(OT3D_TARGET)
 
-clean:
-	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET) $(OPT_OBJS)
+$(OPT_TEST_TARGET): $(OPT_TEST_SRC) $(OPT_OBJS)
+	$(CC) $(CFLAGS) $(INCLUDES) $(OPT_TEST_SRC) $(OPT_OBJS) -lm -o $(OPT_TEST_TARGET)
 
-.PHONY: all clean run-app-flow run-nfc-read run-lcd-manager run-json-pull-helpers run-raw-write run-spoolman-sync run-opentag3d
+run-openprinttag: $(OPT_TEST_TARGET)
+	./$(OPT_TEST_TARGET)
+
+$(TT_TARGET): $(TT_TEST_SRC) $(TT_C_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TT_TEST_SRC) $(TT_C_SRC) -o $(TT_TARGET)
+
+run-tigertag: $(TT_TARGET)
+	./$(TT_TARGET)
+
+clean:
+	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET) $(OPT_TEST_TARGET) $(TT_TARGET) $(OPT_OBJS)
+
+.PHONY: all clean run-app-flow run-nfc-read run-lcd-manager run-json-pull-helpers run-raw-write run-spoolman-sync run-opentag3d run-openprinttag run-tigertag
