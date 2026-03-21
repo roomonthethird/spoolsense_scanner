@@ -11,7 +11,7 @@
 ## Planned
 
 ### Tag Format Support
-- [P3] **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)
+- ~~[P3] **OpenTag3D** — support as an additional tag format (long-term, `TagKind::OpenTag3D` is reserved)~~
 - [P2] **Proprietary tag format support** — OpenRFID project (GPL v3, /Users/sjordan/Code/OpenRFID) has parsers for manufacturer-specific tag formats. Can be used as reference for format documentation. Licensing: middleware can use directly if made GPL; scanner firmware must implement independently. Formats available:
   - **Bambu Lab** — MIFARE Classic 1K, AES-encrypted, HKDF-SHA256 key derivation from UID + salt. Full data: material, color, weight, temps, production date, tray UID
   - **Creality** — proprietary format on MIFARE Classic/Ultralight
@@ -43,12 +43,13 @@
 - ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
 - ~~[P1] **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing~~
 - [P1] **Troubleshooting page** — add a page at `spoolsense.local/troubleshooting` for verifying scanner setup. Tests: Spoolman connectivity (GET /api/v1/info), MQTT broker connectivity (connect + publish test), WiFi signal strength (RSSI), NFC reader status (PN5180 firmware version, RF state), free heap/uptime. Display scanner device ID prominently so users can find it for middleware config. Show pass/fail for each test with actionable error messages.
+- [P1] **Scanner device ID on web UI** — display the scanner's device ID (used for MQTT topic and middleware config) on the landing page, config page, or a dedicated setup page so users can easily find it during installation without needing serial access
 - [P1] **Unified installer** — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
 - [P1] **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
 ### Tag Writer Enhancements
 - ~~**Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing~~
-- [P3] **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support
+- ~~[P3] **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support~~
 - ~~**TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support~~
 - [P1] **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
 - [P2] **TigerTag SpoolmanDB mapping** — TigerTag maintains a Spoolman-compatible materials database at https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB; live API at `https://api.tigertag.io/api:tigertag/SpoolmanDB/materials` returns 100 materials with id/material/density/extruder_temp/bed_temp; the `id` field matches the `material_id` in the TigerTag binary format (e.g. 38219=PLA, density=1.24); simplest approach: document that users should import `materials.json` into Spoolman so filament matching from TigerTag scans just works; longer term: hardcode top ~20 material densities in firmware for offline use
