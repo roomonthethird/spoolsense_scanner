@@ -226,21 +226,33 @@ bool PN5180ISO14443::mifareBlockWrite4(uint8_t pageno, const uint8_t *data) {
 		return false;
 	}
 
-	delay(5);
+	// Poll RX_STATUS until ACK arrives or timeout (max ~15ms)
+	// NTAG write time: typ 3.5ms, max 4.5ms at full field — may be slower at weak coupling
+	uint32_t rxStatus;
+	uint16_t rxLen = 0;
+	for (int wait = 0; wait < 15; wait++) {
+		delay(1);
+		readRegister(RX_STATUS, &rxStatus);
+		rxLen = rxStatus & RX_BYTES_RECEIVED_MASK;
+		if (rxLen >= 1) break;
+	}
 
-	// Read ACK/NAK (1 byte: 0x0A = ACK)
 	uint8_t ack = 0;
-	readData(1, &ack);
+	if (rxLen >= 1) {
+		readData(1, &ack);
+	} else {
+		Serial.printf("PN5180: mifareBlockWrite4 page %d no response (RX_STATUS=0x%08lX)\n",
+		              pageno, (unsigned long)rxStatus);
+	}
 
 	// Re-enable RX CRC
 	writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
 
-	// Return transceiver to Idle so the next sendData finds WaitTransmit state.
-	// Without this, rapid sequential writes can lose the RF field.
+	// Return transceiver to Idle so the next sendData finds WaitTransmit state
 	writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);
 
 	if (ack != 0x0A) {
-		Serial.printf("PN5180: mifareBlockWrite4 page %d NAK/bad ACK=0x%02X\n", pageno, ack);
+		Serial.printf("PN5180: mifareBlockWrite4 page %d NAK/bad ACK=0x%02X (rxLen=%d)\n", pageno, ack, rxLen);
 	}
 
 	return (ack == 0x0A);
