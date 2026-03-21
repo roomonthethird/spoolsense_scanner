@@ -53,6 +53,12 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 - TigerTag spec: [TigerTag RFID Guide](https://github.com/TigerTag-Project/TigerTag-RFID-Guide)
 - OpenTag3D spec: [OpenTag3D](https://opentag3d.com/)
 
+## Requirements
+
+- **WiFi network** — the scanner connects to your local network
+- **MQTT broker** — required for middleware and Home Assistant integration (e.g. [Mosquitto](https://mosquitto.org/)). Home Assistant users typically already have this via the Mosquitto add-on. Not needed if using the scanner as a standalone tag reader/writer with direct Spoolman sync.
+- **Spoolman** (optional) — for automatic spool tracking and filament management
+
 ## Installation
 
 ### Option 1: SpoolSense Installer (recommended)
