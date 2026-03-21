@@ -76,10 +76,30 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       </a>
     </div>
 
+    <div class="card" style="margin-top:24px;padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:11px;color:#A1A1AA;text-transform:uppercase;letter-spacing:1px">Device ID</div>
+          <div id="deviceId" style="font-size:20px;font-weight:700;font-family:monospace;color:#F4F4F5;user-select:all">loading&hellip;</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#A1A1AA;text-transform:uppercase;letter-spacing:1px">Firmware</div>
+          <div id="fwVersion" style="font-size:14px;color:#A1A1AA">--</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:#71717A">Use this Device ID when configuring the SpoolSense middleware.</div>
+    </div>
+
     <div class="footer-note" style="margin-top:28px">SpoolSense Scanner &mdash; spoolsense.local</div>
   </div>
 
   <script src="/js/shared.js"></script>
+  <script>
+    fetch('/api/status').then(function(r){return r.json()}).then(function(d){
+      if(d.device_id) document.getElementById('deviceId').textContent = d.device_id;
+      if(d.firmware_version) document.getElementById('fwVersion').textContent = 'v' + d.firmware_version;
+    }).catch(function(){});
+  </script>
 </body>
 </html>
 )rawliteral";
