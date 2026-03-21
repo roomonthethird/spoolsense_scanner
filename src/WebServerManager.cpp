@@ -27,6 +27,7 @@
 #include "ApplicationManager.h"
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
+#include "HomeAssistantManager.h"
 
 extern "C" {
 #include "openprinttag_lib.h"
@@ -456,6 +457,12 @@ void WebServerManager::handleApiStatus() {
 
     CurrentSpoolState state;
     StaticJsonDocument<1024> doc;
+
+    // Always include device ID and firmware version
+    char deviceId[8];
+    HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
+    doc["device_id"] = deviceId;
+    doc["firmware_version"] = FIRMWARE_VERSION;
 
     if (NFCManager::getInstance().getCurrentSpoolState(state) && state.present) {
         doc["present"] = true;

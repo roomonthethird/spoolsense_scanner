@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1] - 2026-03-21 — Device ID on Web UI
+
+### Added
+- Device ID and firmware version displayed on landing page for easy middleware setup
+- Device ID and firmware version included in /api/status response
+
+---
+
 ## [1.5.0] - 2026-03-21 — OpenTag3D Support
 
 ### Added
