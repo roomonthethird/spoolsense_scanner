@@ -1,7 +1,5 @@
 .pio/
 .vscode/
-CLAUDE.md
-AI_CONTEXT.md
 include/UserConfig.h
 serial.log
 test/build/
@@ -18,3 +16,4 @@ docs/opentag3d_architecture.md
 docs/tigertag-architecture.md
 docs/deep-thoughts.md
 CODE-CLEANUP.md
+docs/writer-ui-plan.md
