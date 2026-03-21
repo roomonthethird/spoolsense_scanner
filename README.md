@@ -66,7 +66,7 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 The installer handles everything — firmware download, WiFi/MQTT/Spoolman configuration, and flashing:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
 Configuration is stored in NVS (non-volatile storage) and survives OTA firmware updates.
@@ -81,7 +81,7 @@ Configuration is stored in NVS (non-volatile storage) and survives OTA firmware 
    - **S3-Zero:** `pio run -e esp32s3zero -t upload`
 5. **Important for OTA updates:** Run the installer in "Config only" mode to write your settings to NVS. Without this, OTA updates will overwrite your compiled-in settings with defaults.
    ```bash
-   curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh | bash
+   curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
    ```
    Select **"Config only (source builds)"** when prompted.
 
