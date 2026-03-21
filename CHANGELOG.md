@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.0] - 2026-03-21 — OpenTag3D Support
+
+### Added
+- OpenTag3D read/write support — full tag detection, parsing, NDEF wrapping,
+  Spoolman sync, MQTT publish, and web writer UI
+- OpenTag3D parser library (lib/opentag3d/) with encode/decode
+- OpenTag3D writer page at /writer/opentag3d with material/modifier dropdowns,
+  brand datalist, color picker + hex input, extended fields toggle
+- OpenTag3D data in /api/status and reader page
+- Descriptive Spoolman filament names from color name (e.g. "Blood Red PLA")
+
+### Changed
+- Moved TigerTag parser from src/ to lib/tigertag/ for consistency with other parsers
+- Write button text standardized to "Write Tag" across all writer pages
+- Tag writers show "safe to remove" after 2s verify hold (prevents premature tag removal)
+- Core-only OpenTag3D writes when no extended fields set (32 pages vs 54)
+
+### Fixed
+- PN5180 mifareBlockWrite4: poll RX_STATUS instead of blind delay for reliable ACK detection
+- PN5180 transceiver reset to Idle after each write ACK for clean state machine
+- OpenTag3D temperature decode: fall back to core temps when extended fields are zero
+- OpenTag3D density field: use x1000 scale (mg/cm³) to fit uint16 range
+
+---
+
 ## [1.4.0] - 2026-03-19 — Web Config, Spoolman Enrichment, Bug Fixes
 
 ### Added

@@ -372,8 +372,6 @@ void NFCManager::scanLoop() {
                                                 }
                                             }
 
-                                            Serial.printf("NFCManager: OpenTag3D NDEF - payloadOffset=%u payloadLen=%lu availFirst=%u payloadBytes=%u\n",
-                                                          payloadOffset, (unsigned long)payloadLen, availableInFirstRead, payloadBytes);
                                             if (payloadBytes >= OT3D_CORE_SIZE) {
                                                 opentag3d_result_t res = opentag3d_decode(fullPayload, payloadBytes, &ot3dData);
                                                 if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
@@ -970,7 +968,6 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
     strncpy(s.manufacturer, ot3d.manufacturer, sizeof(s.manufacturer) - 1);
 
     // Build descriptive material name: "Color Name Material" (e.g. "Blood Red PLA") or just "PLA"
-    Serial.printf("NFCManager: OpenTag3D color_name='%s' modifiers='%s'\n", ot3d.color_name, ot3d.material_modifiers);
     if (ot3d.color_name[0] != '\0') {
         snprintf(s.material_name, sizeof(s.material_name), "%s %s", ot3d.color_name, ot3d.base_material);
     } else if (ot3d.material_modifiers[0] != '\0') {
