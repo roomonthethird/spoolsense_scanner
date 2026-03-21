@@ -34,7 +34,7 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 * **Web Configuration:** Change WiFi, MQTT, Spoolman, and hardware settings from the browser at `spoolsense.local/config`. Settings saved to NVS and persist across OTA updates.
 * **OTA Firmware Updates:** Check for updates from GitHub releases with release notes, one-click download and flash, or manual .bin upload. Dual partition layout with automatic rollback on failed update.
 * **MQTT Integration:** Publishes spool state to MQTT for use by the SpoolSense middleware or any MQTT subscriber. Includes optional Home Assistant auto-discovery.
-* **Automatic Spoolman Registration:** When a tagged spool is scanned, the scanner automatically creates or updates the spool entry in Spoolman — no manual data entry needed. If a tag is re-written with different filament, the old spool is automatically archived and a new one created. Requires the `nfc_id` extra field in Spoolman (the installer can create this for you).
+* **Automatic Spoolman Registration:** When a tagged spool is scanned, the scanner automatically creates or updates the spool entry in Spoolman — no manual data entry needed. If a tag is re-written with different filament, the old spool is automatically archived and a new one created. Requires the `nfc_id` extra field in Spoolman (the [installer](https://github.com/SpoolSense/spoolsense-installer) can create this for you).
 * **Device ID on Landing Page:** The scanner's unique device ID is displayed prominently on the home page for easy middleware configuration.
 * **LCD Display (optional):** Displays device status, NFC scan results, and system information.
 * **Status LED:** Visual feedback for boot, WiFi, tag detection, write progress, and filament color display.
@@ -85,24 +85,22 @@ Configuration is stored in NVS (non-volatile storage) and survives OTA firmware 
    ```
    Select **"Config only (source builds)"** when prompted.
 
-## OTA Firmware Updates
+## Web UI Access
 
-Once the scanner is running, navigate to `spoolsense.local/update` to:
+Once the scanner is running, open **`http://spoolsense.local`** in your browser.
 
-1. **Check for Updates** — Fetches the latest release from GitHub, displays version and release notes
-2. **Update Now** — Downloads and flashes the new firmware automatically. Progress is tracked in real-time
-3. **Manual Upload** — Upload a `.bin` file directly for offline updates or beta testing
-
-The device uses dual OTA partitions — if an update fails, the bootloader automatically rolls back to the previous working firmware. NVS configuration (WiFi, MQTT, Spoolman) is preserved across updates.
+1. **Retrieve your Scanner ID** — Your device ID is displayed on the landing page. You'll need this when configuring the SpoolSense middleware.
+2. **Test your scanner** — Try reading a tag on the Tag Reader page, or write a test tag using any of the writer pages.
+3. **Firmware updates** — Navigate to `spoolsense.local/update` to check for new versions, view release notes, and update over WiFi with one click. Manual `.bin` upload is also available.
 
 # Hardware Setup
 
 ## Hardware Needed
-*   NFC Reader/Writer: PN5180 NFC module (ISO 15693 + ISO 14443A)
+*   NFC Reader/Writer: PN5180 NFC module (ISO 15693 + ISO 14443A) — [AITRIP PN5180](https://www.amazon.com/dp/B0BXY1Y7PX) (tested)
 *   ESP32: One of the following supported boards:
-    - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://a.co/d/gW3zBIJ). Primary development board.
+    - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://www.amazon.com/dp/B0C9THDPXP). Primary development board.
     - **ESP32-S3-Zero** — Smaller form factor with onboard WS2812 RGB LED and USB-C (no external UART chip needed).
-*   USB Cable: USB-A to USB-C (1)
+*   USB-C cable
 *   Jumper wires: male-to-female Dupont wires (9)
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional)
 *   Status LED: SK6812 RGBW (WROOM, optional external) or onboard WS2812 RGB (S3-Zero, built in)
@@ -150,7 +148,7 @@ The device uses dual OTA partitions — if an update fails, the bootloader autom
 
 ## Wiring — ESP32-S3-Zero
 
-The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same 5V and GND pins — daisy-chain or splice the power wires to connect both devices. Total draw is ~140mA (PN5180 ~100mA during RF + LCD ~40mA backlight), well within the USB 500mA budget.
+The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same 5V and GND pins — daisy-chain or splice the power wires to connect both devices.
 
 **PN5180 NFC Module (SPI):**
 
@@ -201,7 +199,7 @@ The S3-Zero has a smaller pin count. The PN5180 and LCD (if used) share the same
 
 > **Note:** If you used the SpoolSense Installer, configuration is stored in NVS and you don't need `UserConfig.h`.
 
-## Optional: LCD
+## Optional: LCD (source builds only)
 
 The 16x2 I2C LCD is fully optional. If compiling from source, set in `UserConfig.h`:
 
@@ -211,7 +209,7 @@ The 16x2 I2C LCD is fully optional. If compiling from source, set in `UserConfig
 
 When disabled, no I2C bus is initialized, no LCD task is started, and no LCD code is compiled into the binary. Set to `1` if you have the LCD connected. The installer disables it by default.
 
-## Optional: Status LED
+## Optional: Status LED (source builds only)
 
 The status LED is optional. If compiling from source, set in `UserConfig.h`:
 
