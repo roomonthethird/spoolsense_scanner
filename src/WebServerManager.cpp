@@ -845,6 +845,9 @@ void WebServerManager::handleApiWriteOpenTag3D() {
     uint16_t bedTemp = doc["bed_temp_c"] | (uint16_t)0;
     ot3d.print_temp_encoded = (uint8_t)(printTemp / 5);
     ot3d.bed_temp_encoded = (uint8_t)(bedTemp / 5);
+    Serial.printf("WebServerManager: OpenTag3D temps: print=%u (enc=%u) bed=%u (enc=%u) density=%lu\n",
+                  printTemp, ot3d.print_temp_encoded, bedTemp, ot3d.bed_temp_encoded,
+                  (unsigned long)doc["density_ugcm3"].as<uint32_t>());
 
     ot3d.density_ugcm3 = doc["density_ugcm3"] | (uint16_t)0;
     ot3d.transmission_distance = doc["transmission_distance"] | (uint16_t)0;

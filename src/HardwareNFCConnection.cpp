@@ -309,18 +309,43 @@ bool HardwareNFCConnection::writeISO14443Pages(uint8_t startPage, uint8_t pageCo
         return false;
     }
 
-    // Write one page (4 bytes) at a time
+    // Write one page (4 bytes) at a time, with retry on failure
+    unsigned long writeStart = millis();
+    int retryCount = 0;
     for (uint8_t i = 0; i < pageCount; i++) {
         uint8_t page = startPage + i;
-        if (!iso14443a_->mifareBlockWrite4(page, data + (i * 4))) {
-            Serial.printf("HardwareNFC: writeISO14443Pages - write failed at page %d\n", page);
-            iso14443a_->mifareHalt();
-            return false;
+        bool pageOk = iso14443a_->mifareBlockWrite4(page, data + (i * 4));
+
+        if (!pageOk) {
+            // Retry: re-activate tag and try the same page again (up to 2 retries)
+            for (int retry = 0; retry < 2 && !pageOk; retry++) {
+                retryCount++;
+                Serial.printf("HardwareNFC: writeISO14443Pages - retry %d for page %d\n", retry + 1, page);
+                iso14443a_->mifareHalt();
+                delay(10);
+                iso14443a_->setupRF();
+                uidLen = iso14443a_->activateTypeA(response, 1);
+                if (uidLen < 4) {
+                    Serial.printf("HardwareNFC: writeISO14443Pages - re-activation failed on retry %d\n", retry + 1);
+                    continue;
+                }
+                pageOk = iso14443a_->mifareBlockWrite4(page, data + (i * 4));
+            }
+
+            if (!pageOk) {
+                unsigned long elapsed = millis() - writeStart;
+                Serial.printf("HardwareNFC: writeISO14443Pages - FAILED at page %d after retries (%lums, %d retries total)\n",
+                              page, elapsed, retryCount);
+                iso14443a_->mifareHalt();
+                return false;
+            }
         }
     }
 
+    unsigned long elapsed = millis() - writeStart;
     iso14443a_->mifareHalt();
-    Serial.printf("HardwareNFC: writeISO14443Pages - wrote %d pages starting at page %d\n", pageCount, startPage);
+    Serial.printf("HardwareNFC: writeISO14443Pages - wrote %d pages starting at page %d (%lums, %d retries)\n",
+                  pageCount, startPage, elapsed, retryCount);
     return true;
 }
 

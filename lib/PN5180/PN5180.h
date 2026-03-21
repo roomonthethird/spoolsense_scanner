@@ -36,6 +36,10 @@
 #define RF_STATUS           (0x1d)
 #define SYSTEM_STATUS       (0x24)
 #define TEMP_CONTROL        (0x25)
+#define AGC_REF_CONFIG      (0x26)
+#define DPC_CONFIG          (0x27)
+#define EMD_CONTROL         (0x28)
+#define ANT_CONTROL         (0x29)
 
 // PN5180 EEPROM Addresses
 #define DIE_IDENTIFIER      (0x00)

@@ -221,6 +221,7 @@ bool PN5180ISO14443::mifareBlockWrite4(uint8_t pageno, const uint8_t *data) {
 	writeRegisterWithAndMask(CRC_RX_CONFIG, 0xFFFFFFFE);
 
 	if (!sendData(cmd, 6, 0x00)) {
+		Serial.printf("PN5180: mifareBlockWrite4 page %d sendData failed\n", pageno);
 		writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
 		return false;
 	}
@@ -233,6 +234,14 @@ bool PN5180ISO14443::mifareBlockWrite4(uint8_t pageno, const uint8_t *data) {
 
 	// Re-enable RX CRC
 	writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
+
+	// Return transceiver to Idle so the next sendData finds WaitTransmit state.
+	// Without this, rapid sequential writes can lose the RF field.
+	writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);
+
+	if (ack != 0x0A) {
+		Serial.printf("PN5180: mifareBlockWrite4 page %d NAK/bad ACK=0x%02X\n", pageno, ack);
+	}
 
 	return (ack == 0x0A);
 }

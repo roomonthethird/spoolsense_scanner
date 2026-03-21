@@ -98,7 +98,7 @@ int opentag3d_encode(const opentag3d_t *tag, uint8_t *buf, size_t buflen);
 /* Inline helpers for decoded temperature/dimension values */
 static inline float opentag3d_temp_c(uint8_t encoded) { return encoded * 5.0f; }
 static inline float opentag3d_diameter_mm(const opentag3d_t *t) { return t->diameter_um / 1000.0f; }
-static inline float opentag3d_density_gcc(const opentag3d_t *t) { return t->density_ugcm3 / 1000000.0f; }
+static inline float opentag3d_density_gcc(const opentag3d_t *t) { return t->density_ugcm3 / 1000.0f; }
 static inline float opentag3d_transmission_mm(const opentag3d_t *t) { return t->transmission_distance * 0.1f; }
 
 #ifdef __cplusplus

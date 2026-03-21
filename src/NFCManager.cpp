@@ -372,6 +372,8 @@ void NFCManager::scanLoop() {
                                                 }
                                             }
 
+                                            Serial.printf("NFCManager: OpenTag3D NDEF - payloadOffset=%u payloadLen=%lu availFirst=%u payloadBytes=%u\n",
+                                                          payloadOffset, (unsigned long)payloadLen, availableInFirstRead, payloadBytes);
                                             if (payloadBytes >= OT3D_CORE_SIZE) {
                                                 opentag3d_result_t res = opentag3d_decode(fullPayload, payloadBytes, &ot3dData);
                                                 if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
@@ -420,7 +422,7 @@ void NFCManager::scanLoop() {
                             lastOpenTag3D_ = ot3dData;
                             lastOpenTag3DValid_ = true;
                             lastTigerTagValid_ = false;
-                            Serial.printf("NFCManager: OpenTag3D detected — %s %s %.1fmm %ug\n",
+                            Serial.printf("NFCManager: OpenTag3D detected — %s %s %.2fmm %ug\n",
                                           ot3dData.manufacturer, ot3dData.base_material,
                                           opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
                         } else {
@@ -1011,21 +1013,16 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
     s.diameter = opentag3d_diameter_mm(&ot3d);
     if (s.diameter <= 0) s.diameter = 1.75f;
 
-    // Temps: extended min/max if available, else core single value for both
-    if (ot3d.has_extended) {
-        s.min_print_temp = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
-        s.max_print_temp = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
-        s.min_bed_temp = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
-        s.max_bed_temp = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
-        s.dry_temp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
+    // Temps: use extended min/max if non-zero, otherwise fall back to core single value
+    uint16_t corePrint = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
+    uint16_t coreBed = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
+    s.min_print_temp = (ot3d.min_print_temp_encoded > 0) ? (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded) : corePrint;
+    s.max_print_temp = (ot3d.max_print_temp_encoded > 0) ? (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded) : corePrint;
+    s.min_bed_temp = (ot3d.min_bed_temp_encoded > 0) ? (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded) : coreBed;
+    s.max_bed_temp = (ot3d.max_bed_temp_encoded > 0) ? (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded) : coreBed;
+    if (ot3d.max_dry_temp_encoded > 0) {
+        s.dry_temp = (uint8_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
         s.dry_time_hours = ot3d.dry_time_hours;
-    } else {
-        uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
-        uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
-        s.min_print_temp = printTemp;
-        s.max_print_temp = printTemp;
-        s.min_bed_temp = bedTemp;
-        s.max_bed_temp = bedTemp;
     }
 
     // Material modifiers -> aspect field
@@ -1046,7 +1043,7 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
     Serial.printf("  modifiers:    %s\n", ot3d.material_modifiers);
     Serial.printf("  color:        #%02X%02X%02X (A=%d)\n",
                   ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2], ot3d.color_rgba[0][3]);
-    Serial.printf("  weight:       %dg\n", s.initial_weight_g);
+    Serial.printf("  weight:       %.0fg\n", s.initial_weight_g);
     Serial.printf("  diameter:     %.2fmm\n", s.diameter);
     Serial.printf("  density:      %.4f g/cm³\n", s.density);
     Serial.printf("  nozzle:       %d-%d°C\n", s.min_print_temp, s.max_print_temp);
@@ -1529,9 +1526,11 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
         rawWritePending_ = false;
 
-        // Encode to binary payload
+        // Encode to binary payload — use core-only size when no extended fields are set
+        // to reduce page count (32 pages vs 54) for better write reliability at range
+        size_t encodeSize = ot3d.has_extended ? OT3D_EXTENDED_MIN : OT3D_CORE_SIZE;
         uint8_t payloadBuf[OT3D_EXTENDED_MIN];
-        int payloadLen = opentag3d_encode(&ot3d, payloadBuf, sizeof(payloadBuf));
+        int payloadLen = opentag3d_encode(&ot3d, payloadBuf, encodeSize);
         if (payloadLen <= 0) {
             Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
             return false;
@@ -1593,8 +1592,12 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         // Terminator TLV
         ndefBuf[idx++] = 0xFE;
 
+        // Pad to page boundary (4 bytes per page)
+        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
+
         // Write to NTAG pages starting at page 4
-        uint8_t pagesNeeded = (uint8_t)((idx + 3) / 4);
+        uint8_t pagesNeeded = (uint8_t)(idx / 4);
+        Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages), payload=%d\n", idx, pagesNeeded, payloadLen);
         bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
         if (ok) {
             Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);

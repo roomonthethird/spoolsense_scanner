@@ -228,7 +228,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
 
           <div class="actions">
-            <button type="submit" class="btn-primary" id="writeBtn">Write TigerTag</button>
+            <button type="submit" class="btn-primary" id="writeBtn">Write Tag</button>
             <button type="reset" class="btn-ghost">Clear</button>
           </div>
         </form>

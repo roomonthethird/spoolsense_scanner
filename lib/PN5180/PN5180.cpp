@@ -323,7 +323,8 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
 
   PN5180TransceiveStat transceiveState = getTransceiveState();
   if (PN5180_TS_WaitTransmit != transceiveState) {
-    PN5180DEBUG(F("*** ERROR: Transceiver not in state WaitTransmit!?\n"));
+    Serial.printf("PN5180: sendData FAILED - transceiver state=%d (expected %d=WaitTransmit)\n",
+                  (int)transceiveState, (int)PN5180_TS_WaitTransmit);
     return false;
   }
 
