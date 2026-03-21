@@ -2,7 +2,7 @@ CXX = g++
 CC = gcc
 CXXFLAGS = -std=c++14 -DNATIVE_TEST -Wall -Wextra
 CFLAGS = -std=c11 -DNATIVE_TEST -Wall -Wextra
-INCLUDES = -I ../../include -I ../../src -I . -I ../../lib/openprinttag
+INCLUDES = -I ../../include -I ../../src -I . -I ../../lib/openprinttag -I ../../lib/tigertag
 JSON_INCLUDES = -I ../../.pio/libdeps/esp32dev/htcw_json/src -I ../../.pio/libdeps/esp32dev/htcw_io/src -I ../../.pio/libdeps/esp32dev/htcw_bits
 ARDUINOJSON_INCLUDES = -I ../../.pio/libdeps/esp32dev/ArduinoJson/src
 
@@ -17,7 +17,7 @@ APP_FLOW_SRCS = test_app_flow.cpp $(COMMON_NATIVE_SRCS)
 APP_FLOW_TARGET = test_runner
 
 # NFC read tests (uses real NFCManager with StubNFCConnection)
-NFC_READ_SRCS = test_nfc_read.cpp $(COMMON_NATIVE_SRCS) ../../src/TigerTagParser.cpp ../../src/ConversionUtils.cpp
+NFC_READ_SRCS = test_nfc_read.cpp $(COMMON_NATIVE_SRCS) ../../lib/tigertag/TigerTagParser.cpp ../../src/ConversionUtils.cpp
 NFC_READ_TARGET = test_nfc_read_runner
 
 LCD_MANAGER_SRCS = test_lcd_manager.cpp $(COMMON_NATIVE_SRCS)
@@ -27,20 +27,26 @@ JSON_PULL_HELPERS_SRCS = test_json_pull_helpers.cpp ../../src/JsonPullHelpers.cp
 JSON_PULL_HELPERS_TARGET = test_json_pull_helpers_runner
 
 # Raw write tests (uses real NFCManager with StubNFCConnection)
-RAW_WRITE_SRCS = test_raw_write.cpp $(COMMON_NATIVE_SRCS) ../../src/TigerTagParser.cpp ../../src/ConversionUtils.cpp
+RAW_WRITE_SRCS = test_raw_write.cpp $(COMMON_NATIVE_SRCS) ../../lib/tigertag/TigerTagParser.cpp ../../src/ConversionUtils.cpp
 RAW_WRITE_TARGET = test_raw_write_runner
 
 # Spoolman sync tests (uses ArduinoJson, no hardware deps)
 SPOOLMAN_SYNC_SRCS = test_spoolman_sync.cpp $(COMMON_NATIVE_SRCS)
 SPOOLMAN_SYNC_TARGET = test_spoolman_sync_runner
 
-all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET)
+# OpenTag3D library tests (pure C, no hardware deps)
+OT3D_C_SRC = ../../lib/opentag3d/opentag3d_lib.c
+OT3D_TEST_SRC = test_opentag3d.c
+OT3D_TARGET = test_opentag3d_runner
+
+all: $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET)
 	./$(APP_FLOW_TARGET)
 	./$(NFC_READ_TARGET)
 	./$(LCD_MANAGER_TARGET)
 	./$(JSON_PULL_HELPERS_TARGET)
 	./$(RAW_WRITE_TARGET)
 	./$(SPOOLMAN_SYNC_TARGET)
+	./$(OT3D_TARGET)
 
 # Compile C library objects
 openprinttag_lib.o: ../../lib/openprinttag/openprinttag_lib.c
@@ -85,7 +91,13 @@ run-raw-write: $(RAW_WRITE_TARGET)
 run-spoolman-sync: $(SPOOLMAN_SYNC_TARGET)
 	./$(SPOOLMAN_SYNC_TARGET)
 
-clean:
-	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OPT_OBJS)
+$(OT3D_TARGET): $(OT3D_TEST_SRC) $(OT3D_C_SRC)
+	$(CC) $(CFLAGS) -I ../../lib/opentag3d $(OT3D_TEST_SRC) $(OT3D_C_SRC) -o $(OT3D_TARGET)
 
-.PHONY: all clean run-app-flow run-nfc-read run-lcd-manager run-json-pull-helpers run-raw-write run-spoolman-sync
+run-opentag3d: $(OT3D_TARGET)
+	./$(OT3D_TARGET)
+
+clean:
+	rm -f $(APP_FLOW_TARGET) $(NFC_READ_TARGET) $(LCD_MANAGER_TARGET) $(JSON_PULL_HELPERS_TARGET) $(RAW_WRITE_TARGET) $(SPOOLMAN_SYNC_TARGET) $(OT3D_TARGET) $(OPT_OBJS)
+
+.PHONY: all clean run-app-flow run-nfc-read run-lcd-manager run-json-pull-helpers run-raw-write run-spoolman-sync run-opentag3d

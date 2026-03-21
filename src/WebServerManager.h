@@ -30,6 +30,7 @@ private:
     void handleReader();
     void handleOpenPrintTagWriter();
     void handleTigerTagWriter();
+    void handleOpenTag3DWriter();
     void handleSharedCSS();
     void handleSharedJS();
     void handleOpenPrintTagLogo();
@@ -42,6 +43,7 @@ private:
     void handleApiWriteTag();
     void handleApiFormatTag();
     void handleApiWriteTigerTag();
+    void handleApiWriteOpenTag3D();
     void handleApiVersion();
     void handleApiUploadFirmwareComplete();
     void handleApiUploadFirmwareChunk();

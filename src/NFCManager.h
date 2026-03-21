@@ -12,6 +12,7 @@
 #include "NFCTypes.h"
 #include "NFCConnectionI.h"
 #include "TigerTagParser.h"
+#include "opentag3d_lib.h"
 
 class NFCManager {
 public:
@@ -26,6 +27,7 @@ public:
     bool scanOnce();                                 // Single scan cycle (for testing)
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
+    bool getLastOpenTag3DData(opentag3d_t& out);
     void pauseScanTask();
     void resumeScanTask();
 
@@ -66,6 +68,7 @@ private:
     void sendBlankTagMessage();
     void sendGenericTagMessage();
     void sendTigerTagMessage(const TigerTagData& tt);
+    void sendOpenTag3DMessage(const opentag3d_t& ot3d);
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);
@@ -90,6 +93,10 @@ private:
     // Last parsed TigerTag data (retained for /api/status)
     TigerTagData lastTigerTag_;
     bool lastTigerTagValid_ = false;
+
+    // Last parsed OpenTag3D data (retained for /api/status)
+    opentag3d_t lastOpenTag3D_;
+    bool lastOpenTag3DValid_ = false;
 
     // Raw tag write sidecar buffer (filled by HTTP context, consumed by scan task)
     static constexpr size_t RAW_WRITE_BUFFER_SIZE = 320;

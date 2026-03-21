@@ -25,6 +25,7 @@ enum class NFCWriteType : uint8_t {
     SET_MIN_BED_TEMP,     // Set minimum bed temperature (°C)
     SET_MAX_BED_TEMP,     // Set maximum bed temperature (°C)
     WRITE_TIGERTAG,       // Write 40-byte TigerTag binary to NTAG pages 4-13
+    WRITE_OPENTAG3D,      // Write NDEF-wrapped OpenTag3D payload to NTAG pages
 };
 
 struct NFCWriteRequest {

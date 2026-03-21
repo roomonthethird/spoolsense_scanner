@@ -24,6 +24,7 @@ const char TAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/reader">Reader</a>
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
+      <a href="/writer/opentag3d">OpenTag3D</a>
       <a href="/update">Update</a>
       <a href="/config">Config</a>
     </nav>

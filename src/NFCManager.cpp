@@ -103,6 +103,15 @@ bool NFCManager::getLastTigerTagData(TigerTagData& out) {
     return valid;
 }
 
+bool NFCManager::getLastOpenTag3DData(opentag3d_t& out) {
+    if (tagMutex == nullptr) return false;
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool valid = lastOpenTag3DValid_;
+    if (valid) out = lastOpenTag3D_;
+    xSemaphoreGive(tagMutex);
+    return valid;
+}
+
 void NFCManager::pauseScanTask() {
 #ifndef NATIVE_TEST
     if (scanTaskHandle) {
@@ -273,20 +282,116 @@ void NFCManager::scanLoop() {
                     Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
                     sendGenericTagMessage();
                 } else if (scan.kind == TagKind::GenericUidTag) {
-                    // ISO14443A tag — try TigerTag detection first, fall back to UID-only
+                    // ISO14443A tag — try TigerTag, then OpenTag3D, fall back to UID-only
                     bool isTigerTag = false;
+                    bool isOpenTag3D = false;
                     TigerTagData tigerData;
+                    opentag3d_t ot3dData;
                     memset(&tigerData, 0, sizeof(tigerData));
+                    memset(&ot3dData, 0, sizeof(ot3dData));
 
-                    // Read pages 4-13 (40 bytes) — enough for TigerTag magic check + full parse
+                    // Read pages 4-13 (40 bytes) — enough for TigerTag magic check + NDEF header scan
                     uint8_t pageData[40] = {0};
                     uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData));
+
+                    // Try TigerTag first (binary magic at offset 0)
                     if (bytesRead >= 14 && tigerTagCheckMagic(pageData, bytesRead)) {
                         if (bytesRead >= 38) {
                             tigerData = tigerTagParse(pageData, bytesRead);
                             isTigerTag = tigerData.valid;
                         } else {
                             Serial.printf("NFCManager: TigerTag magic matched but only got %d bytes (need 38)\n", bytesRead);
+                        }
+                    }
+
+                    // If not TigerTag, check for OpenTag3D NDEF record
+                    if (!isTigerTag && bytesRead >= 4) {
+                        uint16_t pos = 0;
+                        while (pos < bytesRead) {
+                            uint8_t tlvType = pageData[pos++];
+                            if (tlvType == 0x00) continue;
+                            if (tlvType == 0xFE) break;
+                            if (pos >= bytesRead) break;
+
+                            uint16_t tlvLen = pageData[pos++];
+                            if (tlvLen == 0xFF) {
+                                if (pos + 2 > bytesRead) break;
+                                tlvLen = (uint16_t)(pageData[pos] << 8) | pageData[pos + 1];
+                                pos += 2;
+                            }
+
+                            if (tlvType == 0x03) {
+                                uint16_t ndefStart = pos;
+                                if (ndefStart >= bytesRead) break;
+
+                                uint8_t ndefFlags = pageData[ndefStart];
+                                uint8_t tnf = ndefFlags & 0x07;
+                                if (tnf == 0x02 && ndefStart + 1 < bytesRead) {
+                                    uint8_t typeLen = pageData[ndefStart + 1];
+                                    bool sr = (ndefFlags & 0x10) != 0;
+                                    uint16_t headerSize = 2 + (sr ? 1 : 4);
+                                    if (ndefStart + headerSize + typeLen <= bytesRead) {
+                                        const char* mime = OT3D_MIME_TYPE;
+                                        size_t mimeLen = strlen(mime);
+                                        if (typeLen == mimeLen &&
+                                            memcmp(pageData + ndefStart + headerSize, mime, mimeLen) == 0) {
+                                            uint32_t payloadLen = 0;
+                                            if (sr) {
+                                                payloadLen = pageData[ndefStart + 2];
+                                            } else {
+                                                payloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
+                                                             ((uint32_t)pageData[ndefStart + 3] << 16) |
+                                                             ((uint32_t)pageData[ndefStart + 4] << 8) |
+                                                             pageData[ndefStart + 5];
+                                            }
+
+                                            uint16_t payloadOffset = ndefStart + headerSize + typeLen;
+                                            uint16_t availableInFirstRead = (payloadOffset < bytesRead) ? bytesRead - payloadOffset : 0;
+
+                                            uint8_t fullPayload[OT3D_EXTENDED_MIN];
+                                            uint16_t payloadBytes = 0;
+
+                                            if (availableInFirstRead >= payloadLen) {
+                                                memcpy(fullPayload, pageData + payloadOffset, payloadLen);
+                                                payloadBytes = (uint16_t)payloadLen;
+                                            } else {
+                                                uint8_t payloadStartPage = 4 + (payloadOffset / 4);
+                                                uint16_t totalPagesNeeded = (uint16_t)((payloadLen + 3) / 4) + 1;
+                                                if (totalPagesNeeded > 50) totalPagesNeeded = 50;
+
+                                                uint8_t extendedData[200] = {0};
+                                                uint16_t extendedRead = connection_->readISO14443Pages(
+                                                    payloadStartPage, (uint8_t)totalPagesNeeded, extendedData, sizeof(extendedData));
+
+                                                uint16_t offsetInPage = payloadOffset % 4;
+                                                if (extendedRead > offsetInPage) {
+                                                    payloadBytes = extendedRead - offsetInPage;
+                                                    if (payloadBytes > payloadLen) payloadBytes = (uint16_t)payloadLen;
+                                                    if (payloadBytes > sizeof(fullPayload)) payloadBytes = sizeof(fullPayload);
+                                                    memcpy(fullPayload, extendedData + offsetInPage, payloadBytes);
+                                                }
+                                            }
+
+                                            if (payloadBytes >= OT3D_CORE_SIZE) {
+                                                opentag3d_result_t res = opentag3d_decode(fullPayload, payloadBytes, &ot3dData);
+                                                if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
+                                                    isOpenTag3D = true;
+                                                    if (res == OT3D_VERSION_WARNING) {
+                                                        Serial.printf("NFCManager: OpenTag3D tag version %u ahead of supported %u — parsing anyway\n",
+                                                                      ot3dData.tag_version, OT3D_SUPPORTED_VERSION);
+                                                    }
+                                                } else if (res == OT3D_VERSION_ERROR) {
+                                                    Serial.printf("NFCManager: OpenTag3D major version too new (%u) — cannot parse\n",
+                                                                  ot3dData.tag_version);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            } else {
+                                pos += tlvLen;
+                            }
                         }
                     }
 
@@ -302,16 +407,27 @@ void NFCManager::scanLoop() {
 
                         if (isTigerTag) {
                             currentSpool.kind = TagKind::TigerTag;
-                            currentSpool.tag_data_valid = false;  // No opt_tag_t for TigerTag
+                            currentSpool.tag_data_valid = false;
                             lastTigerTag_ = tigerData;
                             lastTigerTagValid_ = true;
+                            lastOpenTag3DValid_ = false;
                             Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
                                           tigerData.brand_name, tigerData.material_name,
                                           tigerData.aspect1_name);
+                        } else if (isOpenTag3D) {
+                            currentSpool.kind = TagKind::OpenTag3D;
+                            currentSpool.tag_data_valid = false;
+                            lastOpenTag3D_ = ot3dData;
+                            lastOpenTag3DValid_ = true;
+                            lastTigerTagValid_ = false;
+                            Serial.printf("NFCManager: OpenTag3D detected — %s %s %.1fmm %ug\n",
+                                          ot3dData.manufacturer, ot3dData.base_material,
+                                          opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
                         } else {
                             currentSpool.kind = TagKind::GenericUidTag;
                             currentSpool.tag_data_valid = false;
                             lastTigerTagValid_ = false;
+                            lastOpenTag3DValid_ = false;
                         }
                         xSemaphoreGive(tagMutex);
                     } else {
@@ -320,6 +436,8 @@ void NFCManager::scanLoop() {
 
                     if (isTigerTag) {
                         sendTigerTagMessage(tigerData);
+                    } else if (isOpenTag3D) {
+                        sendOpenTag3DMessage(ot3dData);
                     } else {
                         sendGenericTagMessage();
                     }
@@ -391,6 +509,7 @@ if (!readOk) {
                 currentSpool.blank_tag_present = false;
                 lastSeenValid = false;
                 lastTigerTagValid_ = false;
+                lastOpenTag3DValid_ = false;
 
                 // Clear suppression if tag removed
                 suppressReDetection_ = false;
@@ -838,6 +957,108 @@ void NFCManager::sendTigerTagMessage(const TigerTagData& tt) {
     ApplicationManager::getInstance().sendMessage(msg);
 }
 
+void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
+    AppMessage msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = AppMessageType::SPOOL_DETECTED;
+
+    auto& s = msg.payload.spoolDetected;
+
+    strncpy(s.spool_id, currentSpool.spool_id, sizeof(s.spool_id) - 1);
+    strncpy(s.manufacturer, ot3d.manufacturer, sizeof(s.manufacturer) - 1);
+    strncpy(s.material_name, ot3d.base_material, sizeof(s.material_name) - 1);
+
+    // Map base_material string to closest OpenPrintTag type for Spoolman compat
+    s.material_type = 0;  // Default PLA
+    if (strcmp(ot3d.base_material, "PLA") == 0)        s.material_type = OPT_MATERIAL_TYPE_PLA;
+    else if (strcmp(ot3d.base_material, "PETG") == 0)  s.material_type = OPT_MATERIAL_TYPE_PETG;
+    else if (strcmp(ot3d.base_material, "TPU") == 0)   s.material_type = OPT_MATERIAL_TYPE_TPU;
+    else if (strcmp(ot3d.base_material, "ABS") == 0)   s.material_type = OPT_MATERIAL_TYPE_ABS;
+    else if (strcmp(ot3d.base_material, "ASA") == 0)   s.material_type = OPT_MATERIAL_TYPE_ASA;
+    else if (strcmp(ot3d.base_material, "PC") == 0)    s.material_type = OPT_MATERIAL_TYPE_PC;
+    else if (strcmp(ot3d.base_material, "PCTG") == 0)  s.material_type = OPT_MATERIAL_TYPE_PCTG;
+    else if (strcmp(ot3d.base_material, "PP") == 0)    s.material_type = OPT_MATERIAL_TYPE_PP;
+    else if (strcmp(ot3d.base_material, "PA6") == 0)   s.material_type = OPT_MATERIAL_TYPE_PA6;
+    else if (strcmp(ot3d.base_material, "PA12") == 0)  s.material_type = OPT_MATERIAL_TYPE_PA12;
+    else if (strcmp(ot3d.base_material, "HIPS") == 0)  s.material_type = OPT_MATERIAL_TYPE_HIPS;
+    else if (strcmp(ot3d.base_material, "PVA") == 0)   s.material_type = OPT_MATERIAL_TYPE_PVA;
+    else if (strcmp(ot3d.base_material, "PEEK") == 0)  s.material_type = OPT_MATERIAL_TYPE_PEEK;
+    else if (strcmp(ot3d.base_material, "PEI") == 0)   s.material_type = OPT_MATERIAL_TYPE_PEI;
+    else if (strcmp(ot3d.base_material, "TPE") == 0)   s.material_type = OPT_MATERIAL_TYPE_TPE;
+
+    // Color from primary RGBA (first color slot)
+    s.has_color = 1;
+    s.primary_color[0] = ot3d.color_rgba[0][0];
+    s.primary_color[1] = ot3d.color_rgba[0][1];
+    s.primary_color[2] = ot3d.color_rgba[0][2];
+
+    // Weight: prefer measured if extended data available, else target
+    if (ot3d.has_extended && ot3d.measured_filament_weight_g > 0) {
+        s.initial_weight_g = ot3d.measured_filament_weight_g;
+        s.kg_remaining = ot3d.measured_filament_weight_g / 1000.0f;
+    } else {
+        s.initial_weight_g = ot3d.target_weight_g;
+        s.kg_remaining = ot3d.target_weight_g / 1000.0f;
+    }
+
+    // Density from tag if non-zero, else fallback
+    if (ot3d.density_ugcm3 > 0) {
+        s.density = opentag3d_density_gcc(&ot3d);
+    } else {
+        s.density = getDefaultDensity(s.material_type);
+    }
+
+    s.diameter = opentag3d_diameter_mm(&ot3d);
+    if (s.diameter <= 0) s.diameter = 1.75f;
+
+    // Temps: extended min/max if available, else core single value for both
+    if (ot3d.has_extended) {
+        s.min_print_temp = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
+        s.max_print_temp = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
+        s.min_bed_temp = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
+        s.max_bed_temp = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
+        s.dry_temp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
+        s.dry_time_hours = ot3d.dry_time_hours;
+    } else {
+        uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
+        uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
+        s.min_print_temp = printTemp;
+        s.max_print_temp = printTemp;
+        s.min_bed_temp = bedTemp;
+        s.max_bed_temp = bedTemp;
+    }
+
+    // Material modifiers -> aspect field
+    if (ot3d.material_modifiers[0] != '\0' && ot3d.material_modifiers[0] != ' ') {
+        strncpy(s.aspect, ot3d.material_modifiers, sizeof(s.aspect) - 1);
+    }
+
+    strncpy(s.tag_format, "OpenTag3D", sizeof(s.tag_format) - 1);
+
+    s.spoolman_id = -1;
+    s.suppress_spoolman_sync = 0;
+
+    // Payload dump
+    Serial.println("--- OpenTag3D SpoolDetected payload ---");
+    Serial.printf("  uid:          %s\n", s.spool_id);
+    Serial.printf("  manufacturer: %s\n", s.manufacturer);
+    Serial.printf("  material:     %s (type=%d)\n", s.material_name, s.material_type);
+    Serial.printf("  modifiers:    %s\n", ot3d.material_modifiers);
+    Serial.printf("  color:        #%02X%02X%02X (A=%d)\n",
+                  ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2], ot3d.color_rgba[0][3]);
+    Serial.printf("  weight:       %dg\n", s.initial_weight_g);
+    Serial.printf("  diameter:     %.2fmm\n", s.diameter);
+    Serial.printf("  density:      %.4f g/cm³\n", s.density);
+    Serial.printf("  nozzle:       %d-%d°C\n", s.min_print_temp, s.max_print_temp);
+    Serial.printf("  bed:          %d-%d°C\n", s.min_bed_temp, s.max_bed_temp);
+    if (ot3d.has_extended) {
+        Serial.printf("  dry:          %d°C / %dh\n", s.dry_temp, s.dry_time_hours);
+    }
+    Serial.println("---------------------------------------");
+
+    ApplicationManager::getInstance().sendMessage(msg);
+}
+
 TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
     TagScanResult result;
     result.present = true;
@@ -1280,6 +1501,110 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
             }
         } else {
             Serial.println("NFCManager: WRITE_TIGERTAG failed");
+        }
+        return ok;
+    }
+
+    // Handle WRITE_OPENTAG3D — write NDEF-wrapped OpenTag3D payload to NTAG pages
+    if (request.type == NFCWriteType::WRITE_OPENTAG3D) {
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("NFCManager: WRITE_OPENTAG3D - could not acquire tagMutex");
+            return false;
+        }
+        if (request.expected_spool_id[0] != '\0' &&
+            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+            xSemaphoreGive(tagMutex);
+            Serial.println("NFCManager: WRITE_OPENTAG3D rejected - UID mismatch");
+            return false;
+        }
+        xSemaphoreGive(tagMutex);
+
+        // Decode opentag3d_t from rawWriteBuffer_
+        if (!rawWritePending_ || rawWriteBufferSize_ < sizeof(opentag3d_t)) {
+            Serial.println("NFCManager: WRITE_OPENTAG3D - no raw data available");
+            return false;
+        }
+
+        opentag3d_t ot3d;
+        memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
+        rawWritePending_ = false;
+
+        // Encode to binary payload
+        uint8_t payloadBuf[OT3D_EXTENDED_MIN];
+        int payloadLen = opentag3d_encode(&ot3d, payloadBuf, sizeof(payloadBuf));
+        if (payloadLen <= 0) {
+            Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
+            return false;
+        }
+
+        // Build NDEF TLV wrapper
+        const char* mime = OT3D_MIME_TYPE;
+        uint8_t mimeLen = (uint8_t)strlen(mime);
+        // NDEF record: flags(1) + typeLen(1) + payloadLen(1, SR) + type(mimeLen) + payload
+        bool sr = (payloadLen <= 255);
+        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
+        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + (uint16_t)payloadLen;
+
+        // TLV: type(1) + length(1 or 3) + NDEF record + terminator(1)
+        bool longTlv = (ndefRecordLen > 254);
+        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
+        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;  // +1 for terminator
+
+        uint8_t ndefBuf[256];
+        if (totalSize > sizeof(ndefBuf)) {
+            Serial.printf("NFCManager: WRITE_OPENTAG3D - NDEF too large (%u bytes)\n", totalSize);
+            return false;
+        }
+
+        uint16_t idx = 0;
+
+        // TLV header
+        ndefBuf[idx++] = 0x03;  // NDEF Message TLV
+        if (longTlv) {
+            ndefBuf[idx++] = 0xFF;
+            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
+            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
+        } else {
+            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
+        }
+
+        // NDEF record header
+        uint8_t ndefFlags = 0xC0 | 0x02;  // MB + ME + TNF=media-type
+        if (sr) ndefFlags |= 0x10;         // SR flag
+        ndefBuf[idx++] = ndefFlags;
+        ndefBuf[idx++] = mimeLen;
+        if (sr) {
+            ndefBuf[idx++] = (uint8_t)payloadLen;
+        } else {
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
+        }
+
+        // MIME type
+        memcpy(ndefBuf + idx, mime, mimeLen);
+        idx += mimeLen;
+
+        // Payload
+        memcpy(ndefBuf + idx, payloadBuf, payloadLen);
+        idx += (uint16_t)payloadLen;
+
+        // Terminator TLV
+        ndefBuf[idx++] = 0xFE;
+
+        // Write to NTAG pages starting at page 4
+        uint8_t pagesNeeded = (uint8_t)((idx + 3) / 4);
+        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
+        if (ok) {
+            Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
+            // Force re-scan to pick up the new OpenTag3D data
+            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                currentSpool.present = false;
+                xSemaphoreGive(tagMutex);
+            }
+        } else {
+            Serial.println("NFCManager: WRITE_OPENTAG3D failed");
         }
         return ok;
     }

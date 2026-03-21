@@ -13,6 +13,7 @@
 #include "TagWriterHTML.h"
 #include "ReaderHTML.h"
 #include "TigerTagWriterHTML.h"
+#include "OpenTag3DWriterHTML.h"
 #include "SharedCSS.h"
 #include "SharedJS.h"
 #include "ConfigHTML.h"
@@ -63,6 +64,7 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/reader",              HTTP_GET, [this]() { handleReader(); });
     _server.on("/writer/openprinttag", HTTP_GET, [this]() { handleOpenPrintTagWriter(); });
     _server.on("/writer/tigertag",     HTTP_GET, [this]() { handleTigerTagWriter(); });
+    _server.on("/writer/opentag3d",    HTTP_GET, [this]() { handleOpenTag3DWriter(); });
 
     // Static assets
     _server.on("/css/shared.css",      HTTP_GET, [this]() { handleSharedCSS(); });
@@ -87,6 +89,7 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
     _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
+    _server.on("/api/write-opentag3d", HTTP_POST, [this]() { handleApiWriteOpenTag3D(); });
 
     // Allow browser preflight requests (CORS) so the page can be tested
     // from a local file during development.
@@ -135,6 +138,11 @@ void WebServerManager::handleOpenPrintTagWriter() {
 void WebServerManager::handleTigerTagWriter() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", TIGERTAG_WRITER_HTML);
+}
+
+void WebServerManager::handleOpenTag3DWriter() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", OPENTAG3D_WRITER_HTML);
 }
 
 void WebServerManager::handleSharedCSS() {
@@ -787,6 +795,105 @@ void WebServerManager::handleApiWriteTigerTag() {
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
     memcpy(req.data.tigertag_data, payload, 40);
     NFCManager::getInstance().enqueueWrite(req);
+
+    _server.send(200, "application/json", "{\"success\":true}");
+}
+
+// ---------------------------------------------------------------------------
+// API: Write OpenTag3D
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiWriteOpenTag3D() {
+    Serial.println("WebServerManager: POST /api/write-opentag3d received");
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    const char* uid = doc["uid"] | "";
+
+    opentag3d_t ot3d;
+    memset(&ot3d, 0, sizeof(ot3d));
+
+    ot3d.tag_version = doc["tag_version"] | (uint16_t)OT3D_SUPPORTED_VERSION;
+
+    const char* baseMat = doc["base_material"] | "PLA";
+    strncpy(ot3d.base_material, baseMat, sizeof(ot3d.base_material) - 1);
+
+    const char* modifiers = doc["material_modifiers"] | "";
+    strncpy(ot3d.material_modifiers, modifiers, sizeof(ot3d.material_modifiers) - 1);
+
+    const char* mfr = doc["manufacturer"] | "";
+    strncpy(ot3d.manufacturer, mfr, sizeof(ot3d.manufacturer) - 1);
+
+    const char* colorName = doc["color_name"] | "";
+    strncpy(ot3d.color_name, colorName, sizeof(ot3d.color_name) - 1);
+
+    ot3d.color_rgba[0][0] = doc["color_r"] | (uint8_t)0;
+    ot3d.color_rgba[0][1] = doc["color_g"] | (uint8_t)0;
+    ot3d.color_rgba[0][2] = doc["color_b"] | (uint8_t)0;
+    ot3d.color_rgba[0][3] = doc["color_a"] | (uint8_t)255;
+
+    ot3d.diameter_um = doc["diameter_um"] | (uint16_t)1750;
+    ot3d.target_weight_g = doc["target_weight_g"] | (uint16_t)1000;
+
+    uint16_t printTemp = doc["print_temp_c"] | (uint16_t)0;
+    uint16_t bedTemp = doc["bed_temp_c"] | (uint16_t)0;
+    ot3d.print_temp_encoded = (uint8_t)(printTemp / 5);
+    ot3d.bed_temp_encoded = (uint8_t)(bedTemp / 5);
+
+    ot3d.density_ugcm3 = doc["density_ugcm3"] | (uint16_t)0;
+    ot3d.transmission_distance = doc["transmission_distance"] | (uint16_t)0;
+
+    if (doc.containsKey("serial_number") || doc.containsKey("min_print_temp_c")) {
+        ot3d.has_extended = 1;
+
+        const char* serial = doc["serial_number"] | "";
+        strncpy(ot3d.serial_number, serial, sizeof(ot3d.serial_number) - 1);
+
+        const char* url = doc["online_url"] | "";
+        strncpy(ot3d.online_url, url, sizeof(ot3d.online_url) - 1);
+
+        ot3d.manufacture_year = doc["manufacture_year"] | (uint16_t)0;
+        ot3d.manufacture_month = doc["manufacture_month"] | (uint8_t)0;
+        ot3d.manufacture_day = doc["manufacture_day"] | (uint8_t)0;
+
+        ot3d.empty_spool_weight_g = doc["empty_spool_weight_g"] | (uint16_t)0;
+        ot3d.measured_filament_weight_g = doc["measured_filament_weight_g"] | (uint16_t)0;
+        ot3d.measured_filament_length_m = doc["measured_filament_length_m"] | (uint16_t)0;
+
+        uint16_t maxDryTemp = doc["max_dry_temp_c"] | (uint16_t)0;
+        ot3d.max_dry_temp_encoded = (uint8_t)(maxDryTemp / 5);
+        ot3d.dry_time_hours = doc["dry_time_hours"] | (uint8_t)0;
+
+        uint16_t minPrint = doc["min_print_temp_c"] | (uint16_t)0;
+        uint16_t maxPrint = doc["max_print_temp_c"] | (uint16_t)0;
+        uint16_t minBed = doc["min_bed_temp_c"] | (uint16_t)0;
+        uint16_t maxBed = doc["max_bed_temp_c"] | (uint16_t)0;
+        ot3d.min_print_temp_encoded = (uint8_t)(minPrint / 5);
+        ot3d.max_print_temp_encoded = (uint8_t)(maxPrint / 5);
+        ot3d.min_bed_temp_encoded = (uint8_t)(minBed / 5);
+        ot3d.max_bed_temp_encoded = (uint8_t)(maxBed / 5);
+
+        ot3d.min_volumetric_speed = doc["min_volumetric_speed"] | (uint8_t)0;
+        ot3d.max_volumetric_speed = doc["max_volumetric_speed"] | (uint8_t)0;
+        ot3d.target_volumetric_speed = doc["target_volumetric_speed"] | (uint8_t)0;
+    }
+
+    NFCWriteRequest req;
+    memset(&req, 0, sizeof(req));
+    req.request_id = millis();
+    req.type = NFCWriteType::WRITE_OPENTAG3D;
+    strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
+
+    if (!NFCManager::getInstance().enqueueRawWrite(req, (const uint8_t*)&ot3d, sizeof(ot3d))) {
+        sendError(503, "Write queue full or busy");
+        return;
+    }
 
     _server.send(200, "application/json", "{\"success\":true}");
 }

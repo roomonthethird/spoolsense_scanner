@@ -707,6 +707,22 @@ void HomeAssistantManager::publishCurrentTagState() {
             fullWeight = tt.weight_g;
             remaining = tt.weight_g;  // TigerTag has no consumed weight
         }
+    } else if (spool.kind == TagKind::OpenTag3D) {
+        // OpenTag3D — read from cached parsed data
+        opentag3d_t ot3d;
+        if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
+            tagDataValid = true;
+            static char matBuf[6];
+            strncpy(matBuf, ot3d.base_material, sizeof(matBuf) - 1);
+            materialType = matBuf;
+            materialName = matBuf;
+            strncpy(manufacturer, ot3d.manufacturer, sizeof(manufacturer) - 1);
+            snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+                     ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
+            fullWeight = (ot3d.has_extended && ot3d.measured_filament_weight_g > 0)
+                         ? ot3d.measured_filament_weight_g : ot3d.target_weight_g;
+            remaining = fullWeight;  // OpenTag3D has no consumed weight
+        }
     } else if (spool.tag_data_valid) {
         // OpenPrintTag — read from opt_tag_t
         tagDataValid = true;
