@@ -26,6 +26,9 @@ public:
     uint16_t getLastATQA() const override { return lastATQA_; }
     // Diagnostics: log RF_STATUS, IRQ_STATUS, SYSTEM_STATUS registers
     void logDiagnostics();
+    // Returns PN5180 firmware version bytes (set during begin()). fw[0]=minor, fw[1]=major.
+    void getPN5180FirmwareVersion(uint8_t fw[2]) const { fw[0] = fw_[0]; fw[1] = fw_[1]; }
+    bool isPN5180Ready() const { return pn5180Ready_; }
 
 private:
     PN5180ISO15693* nfc_ = nullptr;
@@ -42,6 +45,10 @@ private:
     // ISO14443A identification (populated by detectTag)
     uint8_t lastSAK_ = 0;
     uint16_t lastATQA_ = 0;
+
+    // PN5180 firmware version (populated during begin())
+    uint8_t fw_[2] = {0, 0};
+    bool pn5180Ready_ = false;
 
     // Static HAL callbacks
     static opt_error_t halReadPage(void* ctx, uint8_t page, uint8_t* buffer);
