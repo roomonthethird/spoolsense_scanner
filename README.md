@@ -105,6 +105,20 @@ Once the scanner is running, open **`http://spoolsense.local`** in your browser.
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional)
 *   Status LED: SK6812 RGBW (WROOM, optional external) or onboard WS2812 RGB (S3-Zero, built in)
 
+## Help Wanted: CAD / Enclosure Design
+
+No printable cases exist yet for the current hardware. If you design for 3D printing, contributions are very welcome.
+
+**Designs needed:**
+
+- **Standalone scanner case (ESP32-WROOM-32 + AITRIP PN5180)** — wall or desk mount with a flat NFC placement area on top. The PN5180 antenna should sit close to the surface where a spool tag is placed.
+- **Standalone scanner case (ESP32-S3-Zero + AITRIP PN5180)** — same requirements, smaller footprint.
+- **BoxTurtle AFC lane mount** — a bracket or tray replacement that positions the AITRIP PN5180 antenna alongside an AFC BoxTurtle lane so the NFC antenna is correctly positioned for tags on loaded spools.
+
+If you have a design, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files.
+
+---
+
 ## Wiring — ESP32-WROOM-32
 
 **PN5180 NFC Module (SPI, right side of ESP32 top to bottom, skipping D12):**
@@ -244,7 +258,7 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 **How you can help:**
 
 - **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with any bugs or feedback you find.
-- **Case design** — I have zero CAD skills. If you're handy with Fusion 360, FreeCAD, or anything similar, I'd love a printable enclosure that fits the ESP32 + PN5180 + optional LCD. Open an issue or reach out.
+- **Case design** — No enclosures exist yet for the current hardware. See the [Help Wanted: CAD section](#help-wanted-cad--enclosure-design) above for details on what's needed.
 - **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
 ## Credits
