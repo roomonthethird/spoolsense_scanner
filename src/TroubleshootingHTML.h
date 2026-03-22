@@ -248,8 +248,9 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
         }
 
       } catch(e) {
+        const names = {wifi:'WiFi', mqtt:'MQTT Broker', spoolman:'Spoolman', nfc:'NFC Reader (PN5180)', heap:'Memory'};
         ['wifi','mqtt','spoolman','nfc','heap'].forEach(id => {
-          setCheck(id, 'fail', id, 'Error fetching diagnostics');
+          setCheck(id, 'fail', names[id] || id, 'Error fetching diagnostics');
         });
       }
 
