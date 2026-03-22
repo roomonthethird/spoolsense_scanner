@@ -7,7 +7,7 @@
 //   POST /api/write-tag   — write all fields to tag (JSON body)
 //   POST /api/format-tag  — format a blank tag (optional JSON body: {"uid":"..."})
 
-const char TAG_WRITER_HTML[] PROGMEM = R"rawliteral(
+const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,6 +26,7 @@ const char TAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
       <a href="/update">Update</a>
+      <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
     </nav>
 

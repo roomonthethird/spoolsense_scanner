@@ -112,6 +112,9 @@ bool HardwareNFCConnection::begin() {
     // Read firmware version
     uint8_t firmwareVersion[2];
     nfc_->readEEprom(PN5180_FIRMWARE_VERSION, firmwareVersion, 2);
+    fw_[0] = firmwareVersion[0];
+    fw_[1] = firmwareVersion[1];
+    pn5180Ready_ = true;
     Serial.printf("HardwareNFCConnection: PN5180 firmware: %d.%d\n",
                   firmwareVersion[1], firmwareVersion[0]);
 

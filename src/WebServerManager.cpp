@@ -10,13 +10,14 @@
 #include <WiFiClientSecure.h>
 
 #include "LandingHTML.h"
-#include "TagWriterHTML.h"
+#include "OpenPrintTagWriterHTML.h"
 #include "ReaderHTML.h"
 #include "TigerTagWriterHTML.h"
 #include "OpenTag3DWriterHTML.h"
 #include "SharedCSS.h"
 #include "SharedJS.h"
 #include "ConfigHTML.h"
+#include "TroubleshootingHTML.h"
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
 #include "UpdateHTML.h"
@@ -76,6 +77,7 @@ bool WebServerManager::begin(uint16_t port) {
     // Update page
     _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
     _server.on("/config",              HTTP_GET, [this]() { handleConfigPage(); });
+    _server.on("/troubleshooting",     HTTP_GET, [this]() { handleTroubleshootingPage(); });
 
     // API
     _server.on("/api/version",         HTTP_GET, [this]() { handleApiVersion(); });
@@ -87,6 +89,7 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/api/config",          HTTP_GET,  [this]() { handleApiGetConfig(); });
     _server.on("/api/config",          HTTP_POST, [this]() { handleApiPostConfig(); });
     _server.on("/api/status",          HTTP_GET,  [this]() { handleApiStatus(); });
+    _server.on("/api/diagnostics",     HTTP_GET,  [this]() { handleApiDiagnostics(); });
     _server.on("/api/write-tag",       HTTP_POST, [this]() { handleApiWriteTag(); });
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
     _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
@@ -133,7 +136,7 @@ void WebServerManager::handleReader() {
 
 void WebServerManager::handleOpenPrintTagWriter() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    _server.send_P(200, "text/html", TAG_WRITER_HTML);
+    _server.send_P(200, "text/html", OPENPRINTTAG_WRITER_HTML);
 }
 
 void WebServerManager::handleTigerTagWriter() {
@@ -176,6 +179,90 @@ void WebServerManager::handleUpdatePage() {
 void WebServerManager::handleConfigPage() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", CONFIG_HTML);
+}
+
+void WebServerManager::handleTroubleshootingPage() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", TROUBLESHOOTING_HTML);
+}
+
+// ---------------------------------------------------------------------------
+// API: Diagnostics
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiDiagnostics() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<1024> doc;
+
+    // Device ID
+    char deviceId[8];
+    HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
+    doc["device_id"] = deviceId;
+    doc["firmware_version"] = FIRMWARE_VERSION;
+
+    // WiFi
+    JsonObject wifi = doc.createNestedObject("wifi");
+    wifi["connected"] = (WiFi.status() == WL_CONNECTED);
+    if (WiFi.status() == WL_CONNECTED) {
+        wifi["ssid"]     = WiFi.SSID();
+        wifi["rssi_dbm"] = (int)WiFi.RSSI();
+        wifi["ip"]       = WiFi.localIP().toString();
+    }
+
+    // MQTT
+    ConfigUpdate cfg;
+    ConfigurationManager::getInstance().getCurrentConfig(cfg);
+    JsonObject mqtt = doc.createNestedObject("mqtt");
+    bool mqttEnabled = (strlen(cfg.mqtt_host) > 0);
+    mqtt["enabled"]   = mqttEnabled;
+    mqtt["broker"]    = cfg.mqtt_host;
+    mqtt["connected"] = HomeAssistantManager::getInstance().isConnected();
+
+    // Spoolman
+    JsonObject spoolman = doc.createNestedObject("spoolman");
+    bool spoolmanEnabled = (cfg.spoolman_on != 0) && (strlen(cfg.spoolman_url) > 0);
+    spoolman["enabled"] = spoolmanEnabled;
+    spoolman["url"]     = cfg.spoolman_url;
+    if (spoolmanEnabled) {
+        // Quick reachability check — GET /api/v1/info
+        HTTPClient http;
+        char infoUrl[160];
+        snprintf(infoUrl, sizeof(infoUrl), "%s/api/v1/info", cfg.spoolman_url);
+        http.begin(infoUrl);
+        http.setTimeout(3000);
+        int code = http.GET();
+        spoolman["reachable"] = (code == 200);
+        if (code == 200) {
+            // Extract version from response
+            String body = http.getString();
+            StaticJsonDocument<256> info;
+            if (!deserializeJson(info, body) && info.containsKey("version")) {
+                spoolman["version"] = info["version"].as<const char*>();
+            }
+        }
+        http.end();
+    } else {
+        spoolman["reachable"] = false;
+    }
+
+    // NFC reader
+    JsonObject nfc = doc.createNestedObject("nfc");
+    uint8_t fw[2] = {0, 0};
+    bool nfcOk = NFCManager::getInstance().getPN5180FirmwareVersion(fw);
+    nfc["ok"]       = nfcOk;
+    nfc["fw_major"] = fw[1];
+    nfc["fw_minor"] = fw[0];
+
+    // Memory
+    JsonObject memory = doc.createNestedObject("memory");
+    memory["free_bytes"]      = (uint32_t)ESP.getFreeHeap();
+    memory["largest_block"]   = (uint32_t)ESP.getMaxAllocHeap();
+    memory["uptime_s"]        = (uint32_t)(millis() / 1000);
+
+    String out;
+    serializeJson(doc, out);
+    _server.send(200, "application/json", out);
 }
 
 // ---------------------------------------------------------------------------

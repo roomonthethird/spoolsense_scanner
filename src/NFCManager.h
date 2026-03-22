@@ -28,6 +28,8 @@ public:
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
     bool getLastOpenTag3DData(opentag3d_t& out);
+    // Returns PN5180 firmware version. fw[0]=minor, fw[1]=major. Returns false if not available.
+    bool getPN5180FirmwareVersion(uint8_t fw[2]) const;
     void pauseScanTask();
     void resumeScanTask();
 

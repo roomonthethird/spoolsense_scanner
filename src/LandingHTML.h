@@ -22,6 +22,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
       <a href="/update">Update</a>
+      <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
     </nav>
 

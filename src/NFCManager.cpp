@@ -112,6 +112,18 @@ bool NFCManager::getLastOpenTag3DData(opentag3d_t& out) {
     return valid;
 }
 
+bool NFCManager::getPN5180FirmwareVersion(uint8_t fw[2]) const {
+#ifndef NATIVE_TEST
+    if (!connection_) return false;
+    auto* hw = static_cast<HardwareNFCConnection*>(connection_);
+    if (!hw->isPN5180Ready()) return false;
+    hw->getPN5180FirmwareVersion(fw);
+    return true;
+#else
+    return false;
+#endif
+}
+
 void NFCManager::pauseScanTask() {
 #ifndef NATIVE_TEST
     if (scanTaskHandle) {
