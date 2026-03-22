@@ -256,7 +256,11 @@ void WebServerManager::handleApiDiagnostics() {
 
     // Memory
     JsonObject memory = doc.createNestedObject("memory");
-    memory["free_bytes"]      = (uint32_t)ESP.getFreeHeap();
+    uint32_t freeHeap  = (uint32_t)ESP.getFreeHeap();
+    uint32_t totalHeap = (uint32_t)ESP.getHeapSize();
+    memory["free_bytes"]      = freeHeap;
+    memory["total_bytes"]     = totalHeap;
+    memory["used_bytes"]      = totalHeap - freeHeap;
     memory["largest_block"]   = (uint32_t)ESP.getMaxAllocHeap();
     memory["uptime_s"]        = (uint32_t)(millis() / 1000);
 

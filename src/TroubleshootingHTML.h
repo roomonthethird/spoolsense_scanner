@@ -239,8 +239,11 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
         if (d.memory) {
           const mem = d.memory;
           const status = mem.free_bytes > 50000 ? 'pass' : 'warn';
+          const usedPct = mem.total_bytes > 0 ? Math.round(mem.used_bytes / mem.total_bytes * 100) : 0;
           setCheck('heap', status, 'Memory',
-            'Free heap: ' + formatBytes(mem.free_bytes) +
+            'Free: ' + formatBytes(mem.free_bytes) +
+            ' / Total: ' + formatBytes(mem.total_bytes) +
+            ' (' + usedPct + '% used)' +
             ' &mdash; Uptime: ' + formatUptime(mem.uptime_s));
         }
 
