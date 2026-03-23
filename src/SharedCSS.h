@@ -166,8 +166,14 @@ form{
 }
 
 .field select option{
-  background:#0f1115;
-  color:var(--text);
+  background:#1a1d24;
+  color:#e5e7eb;
+}
+@media (prefers-color-scheme: light) {
+  .field select option{
+    background:#fff;
+    color:#111;
+  }
 }
 
 .field input[type="color"]{

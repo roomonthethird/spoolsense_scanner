@@ -22,6 +22,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
       <a href="/update">Update</a>
+      <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
     </nav>
 
@@ -103,6 +104,9 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
                   <option value="63340">Flashforge</option>
                   <option value="8384">Taulman3D</option>
                 </select>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px">
+                  Brand not listed? Use Generic. <a href="https://github.com/TigerTag-Project/TigerTag-RFID-Guide/issues" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">Request a new brand &rarr;</a>
+                </div>
               </div>
 
               <div class="field">
@@ -304,6 +308,97 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
+
+    // Fetch TigerTag API data — fallback to hardcoded options on failure
+    var materialData = {};  // Store full material data for auto-fill on selection
+
+    function validateResponse(data, requiredFields) {
+      if (!Array.isArray(data)) return null;
+      var valid = data.filter(function(item) {
+        if (typeof item !== 'object' || item === null) return false;
+        return requiredFields.every(function(f) {
+          return f.type === 'number' ? (typeof item[f.key] === 'number' && isFinite(item[f.key]))
+               : f.type === 'string' ? (typeof item[f.key] === 'string' && item[f.key].trim().length > 0)
+               : true;
+        });
+      });
+      return valid;
+    }
+
+    function populateSelect(selectId, items, valueFn, labelFn) {
+      var el = document.getElementById(selectId);
+      var currentVal = el.value;
+      var hardcodedCount = el.options.length;
+      if (items.length < hardcodedCount) return;
+      var frag = document.createDocumentFragment();
+      items.forEach(function(item) {
+        var opt = document.createElement('option');
+        opt.value = valueFn(item);
+        opt.textContent = labelFn(item);
+        frag.appendChild(opt);
+      });
+      el.innerHTML = '';
+      el.appendChild(frag);
+      if (currentVal) {
+        el.value = currentVal;
+        if (!el.value) el.selectedIndex = 0;
+      }
+    }
+
+    function autoFillFromMaterial() {
+      var id = document.getElementById('material_id').value;
+      var m = materialData[id];
+      if (!m) return;
+      if (m.extruder_temp) {
+        document.getElementById('nozzle_min').value = Math.max(0, m.extruder_temp - 10);
+        document.getElementById('nozzle_max').value = m.extruder_temp + 10;
+      }
+      if (m.bed_temp) {
+        document.getElementById('bed_min').value = Math.max(0, m.bed_temp - 5);
+        document.getElementById('bed_max').value = m.bed_temp + 5;
+      }
+    }
+
+    document.getElementById('material_id').addEventListener('change', autoFillFromMaterial);
+
+    (async function loadTigerTagAPI() {
+      try {
+        var resp = await fetch('https://api.tigertag.io/api:tigertag/SpoolmanDB/materials');
+        if (resp.ok) {
+          var raw = await resp.json();
+          var materials = validateResponse(raw, [
+            {key: 'id', type: 'number'},
+            {key: 'material', type: 'string'}
+          ]);
+          if (materials) {
+            materials.forEach(function(m) { materialData[m.id] = m; });
+            materials.sort(function(a, b) { return a.material.localeCompare(b.material); });
+            populateSelect('material_id', materials,
+              function(m) { return m.id; },
+              function(m) { return m.material; }
+            );
+          }
+        }
+      } catch(e) { /* keep hardcoded fallback */ }
+
+      try {
+        var resp2 = await fetch('https://api.tigertag.io/api:tigertag/brand/get/all');
+        if (resp2.ok) {
+          var raw2 = await resp2.json();
+          var brands = validateResponse(raw2, [
+            {key: 'id', type: 'number'},
+            {key: 'name', type: 'string'}
+          ]);
+          if (brands) {
+            brands.sort(function(a, b) { return a.name.localeCompare(b.name); });
+            populateSelect('brand_id', brands,
+              function(b) { return b.id; },
+              function(b) { return b.name; }
+            );
+          }
+        }
+      } catch(e) { /* keep hardcoded fallback */ }
+    })();
 
     function showStatusView() {
       createView.classList.add('hidden');

@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.2] - 2026-03-23 — Troubleshooting & TigerTag API
+
+### Added
+- Troubleshooting page at /troubleshooting with WiFi, MQTT, Spoolman, NFC, and memory checks
+- Scanner Device ID displayed prominently for middleware configuration
+- TigerTag writer fetches materials and brands from TigerTag API with hardcoded fallback
+- Auto-fill nozzle and bed temperatures when selecting TigerTag material
+- API response validation — rejects malformed data, falls back to hardcoded options
+- Brand help link for requesting missing brands from TigerTag database
+
+### Changed
+- Renamed TagWriterHTML.h to OpenPrintTagWriterHTML.h for consistency
+- Added /troubleshooting nav link to all pages
+- Memory display shows total, used, free, and usage percentage
+
+### Fixed
+- TigerTag dropdown invisible text on some browsers (CSS light-mode fallback)
+- PN5180 firmware version read now checks return value before marking reader as ready
+- External links use rel="noopener noreferrer" to prevent tabnabbing
+
 ## [1.5.1] - 2026-03-21 — Device ID on Web UI
 
 ### Added
