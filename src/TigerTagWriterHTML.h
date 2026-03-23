@@ -306,6 +306,52 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
 
+    // Fetch TigerTag API data — fallback to hardcoded options on failure
+    function populateSelect(selectId, items, valueFn, labelFn) {
+      var el = document.getElementById(selectId);
+      var currentVal = el.value;
+      var frag = document.createDocumentFragment();
+      items.forEach(function(item) {
+        var opt = document.createElement('option');
+        opt.value = valueFn(item);
+        opt.textContent = labelFn(item);
+        frag.appendChild(opt);
+      });
+      el.innerHTML = '';
+      el.appendChild(frag);
+      // Restore previous selection if it exists
+      if (currentVal) {
+        el.value = currentVal;
+        if (!el.value) el.selectedIndex = 0;
+      }
+    }
+
+    (async function loadTigerTagAPI() {
+      try {
+        var resp = await fetch('https://api.tigertag.io/api:tigertag/SpoolmanDB/materials');
+        if (resp.ok) {
+          var materials = await resp.json();
+          materials.sort(function(a, b) { return a.material.localeCompare(b.material); });
+          populateSelect('material_id', materials,
+            function(m) { return m.id; },
+            function(m) { return m.material; }
+          );
+        }
+      } catch(e) { /* keep hardcoded fallback */ }
+
+      try {
+        var resp2 = await fetch('https://api.tigertag.io/api:tigertag/brand/get/all');
+        if (resp2.ok) {
+          var brands = await resp2.json();
+          brands.sort(function(a, b) { return a.name.localeCompare(b.name); });
+          populateSelect('brand_id', brands,
+            function(b) { return b.id; },
+            function(b) { return b.name; }
+          );
+        }
+      } catch(e) { /* keep hardcoded fallback */ }
+    })();
+
     function showStatusView() {
       createView.classList.add('hidden');
       statusView.classList.remove('hidden');
