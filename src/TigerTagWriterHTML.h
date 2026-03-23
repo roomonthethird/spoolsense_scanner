@@ -105,7 +105,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
                   <option value="8384">Taulman3D</option>
                 </select>
                 <div style="font-size:11px;color:var(--muted);margin-top:4px">
-                  Brand not listed? Use Generic. <a href="https://github.com/TigerTag-Project/TigerTag-RFID-Guide/issues" target="_blank" style="color:var(--blue)">Request a new brand &rarr;</a>
+                  Brand not listed? Use Generic. <a href="https://github.com/TigerTag-Project/TigerTag-RFID-Guide/issues" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">Request a new brand &rarr;</a>
                 </div>
               </div>
 
