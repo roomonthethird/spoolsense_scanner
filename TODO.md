@@ -6,7 +6,7 @@
 - ~~[P0] **Spoolman spool lookup creates duplicates** — `parseSpoolIdByUuid` has the same nested-object depth bug as the filament parser; spool response contains nested `filament` and `vendor` objects whose `id` fields confuse the streaming JSON reader, causing the scanner to create a new spool every scan instead of updating the existing one~~
 - [P1] **ledManager references not gated behind ENABLE_STATUS_LED** — `ApplicationManager.cpp` calls `ledManager.showFilamentColor()`, `ledManager.showOff()`, `ledManager.flashTagDetected()` etc. without `#ifdef ENABLE_STATUS_LED` guards. Compiles on device (extern resolves) but breaks native tests where LEDManager isn't available. Need to wrap all ledManager calls in `#ifdef ENABLE_STATUS_LED` blocks
 - ~~[P2] **Remaining legacy `openprinttag` naming** — project name in `CMakeLists.txt` and `.code-workspace` filename~~
-- [P2] **TigerTag dropdown API fetch creates invisible options** — fetching material/brand lists from `api.tigertag.io` and dynamically replacing `<option>` elements produces invisible text in the dropdown on some browsers; temporarily removed API fetch and using hardcoded options only; need to fix styling or merge API data into existing options without breaking visibility
+- ~~[P2] **TigerTag dropdown API fetch creates invisible options** — fixed~~
 
 ## Planned
 
