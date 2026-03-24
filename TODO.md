@@ -20,7 +20,8 @@
   - **Snapmaker** — proprietary format on MIFARE Classic/Ultralight
   - **OpenSpool** — NDEF-based format
 - ~~**TigerTag** — NTAG213 (ISO14443A) fixed binary layout format; simpler than OpenPrintTag (144 bytes, raw byte offsets, no CBOR); ISO14443A detection already works via PN5180ISO14443; no consumed_weight field so weight tracking stays in Spoolman only; has ECDSA signature (64 bytes) for authentication; spec at https://github.com/TigerTag-Project/TigerTag-RFID-Guide~~
-- [P2] **Bambu Lab spool tags** — MIFARE Ultralight AES (MF0AES) with AES-128 encrypted data pages. PN5180 can activate via ISO14443A (same anticollision as NTAG). **Phase 1:** detect Bambu tag via ATQA/SAK or GET_VERSION chip response, classify as `TagKind::BambuTag`, extract UID, treat as UID-only for Spoolman registration. Public pages (0-1) are readable without auth. **Phase 2:** best-effort metadata decode from unencrypted public pages — community reverse engineering suggests some material/color bytes may be in the clear area. Fragile and undocumented but worth investigating.
+- ~~[P2] **Bambu Lab spool tags (Phase 1)** — implemented. TagKind::BambuTag detected via MIFARE Classic SAK, UID extracted, classified as UID-only for Spoolman registration.~~
+- [P3] **Bambu Lab spool tags (Phase 2)** — best-effort metadata decode from unencrypted public pages. Community reverse engineering suggests some material/color bytes may be in the clear area. Fragile and undocumented.
 
 ### PN5180 Library
 - [P2] **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
@@ -55,7 +56,7 @@
 - [P2] **TigerTag SpoolmanDB mapping** — TigerTag maintains a Spoolman-compatible materials database at https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB; live API at `https://api.tigertag.io/api:tigertag/SpoolmanDB/materials` returns 100 materials with id/material/density/extruder_temp/bed_temp; the `id` field matches the `material_id` in the TigerTag binary format (e.g. 38219=PLA, density=1.24); simplest approach: document that users should import `materials.json` into Spoolman so filament matching from TigerTag scans just works; longer term: hardcode top ~20 material densities in firmware for offline use
 
 ### Hardware / Build
-- [P2] **Scanner naming** — configurable name (e.g. `Toolhead1-scanner`, `Lane1-scanner`) via `UserConfig.h`, reflected in BLE device name and MQTT topics
+- ~~[P2] **Scanner naming** — implemented via `DEVICE_NAME` in UserConfig.h / DeviceConfig~~
 - [P2] **TFT display support (ST7789)** — explore replacing the 16x2 I2C LCD with an ST7789 TFT module; color display could show filament color swatch, spool info, and scanner status in a richer format; would need SPI (shared bus with PN5180 or separate), new display driver library, and a display task refactor
 
 ### Debugging / Logging
@@ -68,8 +69,8 @@
 - [P3] **Shared specs repo** — `spoolsense-specs` repo under the SpoolSense org documenting tag formats (OpenPrintTag, OpenTag3D, NTAG215 UID-only), MQTT payload schema, and REST API contract between scanner and middleware; becomes the source of truth both repos reference
 
 ### Spoolman Integration
-- [P1] **OpenPrintTag extra fields** — register additional Spoolman extra fields to surface OpenPrintTag data in the Spoolman UI: `material_name`, `min_print_temp`, `max_print_temp`, `preheat_temp`, `min_bed_temp`, `max_bed_temp`, `openprinttag_version`; installer should auto-register these; scanner writes them during sync
-- [P1] **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
+- ~~[P1] **OpenPrintTag extra fields** — implemented in SpoolmanManager and WebServerManager. Temps written to Spoolman extras during sync.~~
+- ~~[P1] **Preserve existing extra fields on update** — implemented in SpoolmanManager.cpp. Reads existing extras, merges, then writes combined set.~~
 
 ### AFC Integration
 - ~~[P1] **Direct AFC lane control from tag data** — implemented in middleware v1.5.0. SET_COLOR, SET_MATERIAL, SET_WEIGHT sent from tag data without Spoolman. Works with afc_stage (shared scanner) and afc_lane (per-lane scanner).~~
@@ -83,6 +84,12 @@
 - **Scanner device ID on web UI** — device ID displayed on landing page
 - **Unified installer** — `spoolsense-installer` repo with interactive CLI for scanner + middleware setup
 - **Direct AFC lane control from tag data** — middleware v1.5.0 sends SET_COLOR/SET_MATERIAL/SET_WEIGHT without Spoolman
+- **Troubleshooting page** — implemented at `spoolsense.local/troubleshooting`
+- **TigerTag dropdown fix** — invisible options bug resolved
+- **Scanner naming** — configurable via `DEVICE_NAME` in UserConfig.h
+- **OpenPrintTag extra fields** — temps written to Spoolman extras during sync
+- **Preserve existing Spoolman extra fields** — reads existing, merges, writes combined
+- **Bambu Lab spool tags (Phase 1)** — TagKind::BambuTag detected, UID-only Spoolman registration
 - **NTAG215 / UID-only tags** — ISO14443A detection via PN5180ISO14443, UID published as `GENERIC_TAG_DETECTED`, LCD shows "Generic Tag / UID scan only"
 - **Tag classification model** — `TagProtocol`, `TagKind`, `TagScanResult` with UID-length heuristic
 - **LED FreeRTOS task** — non-blocking flash (3 white flashes on scan), persistent filament color after tag removal, breathing animation for low spool (≤100g)
