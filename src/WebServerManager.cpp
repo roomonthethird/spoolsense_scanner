@@ -21,6 +21,7 @@
 #include "UIDRegistrationHTML.h"
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
+#include "OpenTag3DLogo.h"
 #include "UpdateHTML.h"
 #include "ConfigurationManager.h"
 #include "NFCManager.h"
@@ -74,6 +75,7 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/js/shared.js",        HTTP_GET, [this]() { handleSharedJS(); });
     _server.on("/img/openprinttag.png", HTTP_GET, [this]() { handleOpenPrintTagLogo(); });
     _server.on("/img/tigertag.png",    HTTP_GET, [this]() { handleTigerTagLogo(); });
+    _server.on("/img/opentag3d.png",   HTTP_GET, [this]() { handleOpenTag3DLogo(); });
 
     // Update page
     _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
@@ -172,6 +174,11 @@ void WebServerManager::handleOpenPrintTagLogo() {
 void WebServerManager::handleTigerTagLogo() {
     _server.sendHeader("Cache-Control", "public, max-age=86400");
     _server.send_P(200, "image/png", reinterpret_cast<const char*>(TIGERTAG_LOGO_PNG), TIGERTAG_LOGO_PNG_LEN);
+}
+
+void WebServerManager::handleOpenTag3DLogo() {
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "image/png", reinterpret_cast<const char*>(OPENTAG3D_LOGO_PNG), OPENTAG3D_LOGO_PNG_LEN);
 }
 
 void WebServerManager::handleUpdatePage() {

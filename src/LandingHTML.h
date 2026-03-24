@@ -54,19 +54,19 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       </a>
 
       <a href="/writer/openprinttag" class="tool-card">
-        <div class="tool-icon">&#9997;</div>
+        <img src="/img/openprinttag.png" alt="OpenPrintTag" style="height:48px;border-radius:6px" />
         <div class="tool-name">OpenPrintTag Writer</div>
         <div class="tool-desc">Write filament data to ISO15693 tags using the OpenPrintTag format.</div>
       </a>
 
       <a href="/writer/tigertag" class="tool-card">
-        <div class="tool-icon">&#128047;</div>
+        <img src="/img/tigertag.png" alt="TigerTag" style="height:56px;border-radius:6px" />
         <div class="tool-name">TigerTag Writer</div>
         <div class="tool-desc">Write filament data to NTAG213/215 tags using the TigerTag binary format.</div>
       </a>
 
       <a href="/writer/opentag3d" class="tool-card">
-        <div class="tool-icon">&#128196;</div>
+        <img src="/img/opentag3d.png" alt="OpenTag3D" style="height:48px;border-radius:6px" />
         <div class="tool-name">OpenTag3D Writer</div>
         <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenTag3D format.</div>
       </a>

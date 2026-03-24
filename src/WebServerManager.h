@@ -35,6 +35,7 @@ private:
     void handleSharedJS();
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
+    void handleOpenTag3DLogo();
     void handleUpdatePage();
     void handleConfigPage();
 
