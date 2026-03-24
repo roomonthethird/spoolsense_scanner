@@ -64,10 +64,22 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-desc">Write filament data to NTAG213/215 tags using the TigerTag binary format.</div>
       </a>
 
+      <a href="/writer/opentag3d" class="tool-card">
+        <div class="tool-icon">&#128196;</div>
+        <div class="tool-name">OpenTag3D Writer</div>
+        <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenTag3D format.</div>
+      </a>
+
       <a href="/update" class="tool-card">
         <div class="tool-icon">&#9889;</div>
         <div class="tool-name">Firmware Update</div>
         <div class="tool-desc">Check for new firmware versions and update over WiFi.</div>
+      </a>
+
+      <a href="/troubleshooting" class="tool-card">
+        <div class="tool-icon">&#128736;</div>
+        <div class="tool-name">Troubleshooting</div>
+        <div class="tool-desc">Verify scanner connectivity, MQTT, Spoolman, and NFC reader status.</div>
       </a>
 
       <a href="/config" class="tool-card">
