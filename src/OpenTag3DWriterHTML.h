@@ -21,6 +21,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
@@ -41,28 +42,29 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             <div class="grid-2">
               <div class="field">
                 <label for="base_material">Material</label>
-                <select id="base_material" required>
-                  <option value="PLA" selected>PLA</option>
-                  <option value="PETG">PETG</option>
-                  <option value="TPU">TPU</option>
-                  <option value="ABS">ABS</option>
-                  <option value="ASA">ASA</option>
-                  <option value="PC">PC</option>
-                  <option value="PCTG">PCTG</option>
-                  <option value="PP">PP</option>
-                  <option value="PA6">PA6</option>
-                  <option value="PA12">PA12</option>
-                  <option value="PA66">PA66</option>
-                  <option value="CPE">CPE</option>
-                  <option value="TPE">TPE</option>
-                  <option value="HIPS">HIPS</option>
-                  <option value="PET">PET</option>
-                  <option value="PEI">PEI</option>
-                  <option value="PVA">PVA</option>
-                  <option value="PVB">PVB</option>
-                  <option value="PEEK">PEEK</option>
-                  <option value="PEKK">PEKK</option>
-                </select>
+                <input id="base_material" list="material-list" placeholder="Type to search materials" required value="PLA" />
+                <datalist id="material-list">
+                  <option value="PLA"></option>
+                  <option value="PETG"></option>
+                  <option value="TPU"></option>
+                  <option value="ABS"></option>
+                  <option value="ASA"></option>
+                  <option value="PC"></option>
+                  <option value="PCTG"></option>
+                  <option value="PP"></option>
+                  <option value="PA6"></option>
+                  <option value="PA12"></option>
+                  <option value="PA66"></option>
+                  <option value="CPE"></option>
+                  <option value="TPE"></option>
+                  <option value="HIPS"></option>
+                  <option value="PET"></option>
+                  <option value="PEI"></option>
+                  <option value="PVA"></option>
+                  <option value="PVB"></option>
+                  <option value="PEEK"></option>
+                  <option value="PEKK"></option>
+                </datalist>
               </div>
               <div class="field">
                 <label for="material_modifiers">Modifiers</label>
@@ -306,6 +308,45 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
+
+    // Auto-fill temps and density from material selection
+    var baseMaterialEl = document.getElementById('base_material');
+    var modifiersEl = document.getElementById('material_modifiers');
+    var ot3dFieldMap = {
+      minPrintTemp: 'min_print_temp_c', maxPrintTemp: 'max_print_temp_c',
+      minBedTemp: 'min_bed_temp_c', maxBedTemp: 'max_bed_temp_c',
+      density: 'density'
+    };
+    trackAutoFill(['print_temp_c','bed_temp_c','min_print_temp_c','max_print_temp_c','min_bed_temp_c','max_bed_temp_c','density']);
+    function ot3dAutoFill() {
+      var name = baseMaterialEl.value;
+      var mod = modifiersEl ? modifiersEl.value : '';
+      if (mod && mod !== 'None') name = name + '-' + mod;
+      autoFillMaterialData(name, ot3dFieldMap);
+      // Also fill the basic print/bed temp fields
+      var m = lookupMaterial(name);
+      if (m) {
+        var pt = document.getElementById('print_temp_c');
+        if (pt && pt.dataset.autoFilled !== 'false') { pt.value = m.extruder_temp; pt.dataset.autoFilled = 'true'; }
+        var bt = document.getElementById('bed_temp_c');
+        if (bt && bt.dataset.autoFilled !== 'false') { bt.value = m.bed_temp; bt.dataset.autoFilled = 'true'; }
+      }
+    }
+    baseMaterialEl.addEventListener('input', ot3dAutoFill);
+    if (modifiersEl) modifiersEl.addEventListener('change', ot3dAutoFill);
+    loadMaterialDb().then(function(db) {
+      var dl = document.getElementById('material-list');
+      var existing = {};
+      var opts = dl.querySelectorAll('option');
+      for (var i = 0; i < opts.length; i++) existing[opts[i].value.toUpperCase()] = true;
+      Object.keys(db).sort().forEach(function(key) {
+        if (!existing[key]) {
+          var opt = document.createElement('option');
+          opt.value = db[key].material || key;
+          dl.appendChild(opt);
+        }
+      });
+    });
 
     var EXTENDED_IDS = [
       'serial_number', 'online_url', 'measured_filament_weight_g',

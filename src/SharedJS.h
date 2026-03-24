@@ -129,6 +129,125 @@ function setupAdvancedToggle(toggleId, boxId) {
   return { open: function(){ set(true); }, close: function(){ set(false); } };
 }
 
+/* ---- Material data auto-fill ---- */
+
+// Hardcoded fallback — works offline when API is unreachable
+var _materialFallback = {
+  'PLA':  {extruder_temp:240, bed_temp:55,  density:1.24},
+  'PETG': {extruder_temp:270, bed_temp:75,  density:1.27},
+  'ABS':  {extruder_temp:280, bed_temp:90,  density:1.04},
+  'ASA':  {extruder_temp:280, bed_temp:100, density:1.05},
+  'TPU':  {extruder_temp:250, bed_temp:40,  density:1.21},
+  'PC':   {extruder_temp:290, bed_temp:115, density:1.3},
+  'PCTG': {extruder_temp:270, bed_temp:75,  density:1.21},
+  'PP':   {extruder_temp:250, bed_temp:60,  density:0.9},
+  'HIPS': {extruder_temp:270, bed_temp:95,  density:1.03},
+  'PVA':  {extruder_temp:240, bed_temp:60,  density:1.23},
+  'PEEK': {extruder_temp:410, bed_temp:145, density:1.32},
+  'PA6':  {extruder_temp:300, bed_temp:45,  density:1.52},
+  'PA12': {extruder_temp:300, bed_temp:45,  density:1.52},
+  'PEI':  {extruder_temp:380, bed_temp:130, density:1.27},
+  'CPE':  {extruder_temp:270, bed_temp:80,  density:1.25}
+};
+var _materialDb = {};
+var _materialDbLoaded = false;
+
+function loadMaterialDb() {
+  if (_materialDbLoaded) return Promise.resolve(_materialDb);
+  // Start with fallback data
+  Object.keys(_materialFallback).forEach(function(k) {
+    _materialDb[k] = _materialFallback[k];
+  });
+  return fetch('https://api.tigertag.io/api:tigertag/SpoolmanDB/materials')
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(data) {
+      if (Array.isArray(data)) {
+        data.forEach(function(m) {
+          if (m.material) _materialDb[m.material.toUpperCase()] = m;
+        });
+      }
+      _materialDbLoaded = true;
+      return _materialDb;
+    })
+    .catch(function() {
+      _materialDbLoaded = true;
+      return _materialDb;
+    });
+}
+
+function lookupMaterial(name) {
+  if (!name) return null;
+  var key = name.toUpperCase().replace(/\s+/g, '');
+  // Exact match first
+  if (_materialDb[key]) return _materialDb[key];
+  // Try with common separators
+  var withDash = key.replace(/([A-Z]+)(\d)/, '$1-$2');
+  if (_materialDb[withDash]) return _materialDb[withDash];
+  // Prefix match (e.g. "PA6 (Nylon 6)" → "PA6")
+  var prefix = key.split(/[^A-Z0-9-]/)[0];
+  if (prefix && _materialDb[prefix]) return _materialDb[prefix];
+  return null;
+}
+
+// Track which fields the user has manually edited
+function trackAutoFill(fieldIds) {
+  fieldIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.autoFilled = 'true';
+    el.addEventListener('input', function() {
+      el.dataset.autoFilled = 'false';
+    });
+    el.addEventListener('change', function() {
+      if (el.value === '') el.dataset.autoFilled = 'true';
+    });
+  });
+}
+
+function autoFillMaterialData(materialName, fieldMap) {
+  var m = lookupMaterial(materialName);
+  if (!m) return;
+  if (m.extruder_temp) {
+    if (fieldMap.minPrintTemp) {
+      var el = document.getElementById(fieldMap.minPrintTemp);
+      if (el && el.dataset.autoFilled !== 'false') {
+        el.value = Math.max(0, m.extruder_temp - 10);
+        el.dataset.autoFilled = 'true';
+      }
+    }
+    if (fieldMap.maxPrintTemp) {
+      var el = document.getElementById(fieldMap.maxPrintTemp);
+      if (el && el.dataset.autoFilled !== 'false') {
+        el.value = m.extruder_temp + 10;
+        el.dataset.autoFilled = 'true';
+      }
+    }
+  }
+  if (m.bed_temp) {
+    if (fieldMap.minBedTemp) {
+      var el = document.getElementById(fieldMap.minBedTemp);
+      if (el && el.dataset.autoFilled !== 'false') {
+        el.value = Math.max(0, m.bed_temp - 5);
+        el.dataset.autoFilled = 'true';
+      }
+    }
+    if (fieldMap.maxBedTemp) {
+      var el = document.getElementById(fieldMap.maxBedTemp);
+      if (el && el.dataset.autoFilled !== 'false') {
+        el.value = m.bed_temp + 5;
+        el.dataset.autoFilled = 'true';
+      }
+    }
+  }
+  if (m.density && fieldMap.density) {
+    var el = document.getElementById(fieldMap.density);
+    if (el && el.dataset.autoFilled !== 'false') {
+      el.value = m.density;
+      el.dataset.autoFilled = 'true';
+    }
+  }
+}
+
 /* ---- Tag kind labels ---- */
 var TAG_KIND_LABELS = {
   'OpenPrintTag': 'OpenPrintTag',

@@ -18,8 +18,10 @@
 #include "SharedJS.h"
 #include "ConfigHTML.h"
 #include "TroubleshootingHTML.h"
+#include "UIDRegistrationHTML.h"
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
+#include "OpenTag3DLogo.h"
 #include "UpdateHTML.h"
 #include "ConfigurationManager.h"
 #include "NFCManager.h"
@@ -73,11 +75,13 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/js/shared.js",        HTTP_GET, [this]() { handleSharedJS(); });
     _server.on("/img/openprinttag.png", HTTP_GET, [this]() { handleOpenPrintTagLogo(); });
     _server.on("/img/tigertag.png",    HTTP_GET, [this]() { handleTigerTagLogo(); });
+    _server.on("/img/opentag3d.png",   HTTP_GET, [this]() { handleOpenTag3DLogo(); });
 
     // Update page
     _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
     _server.on("/config",              HTTP_GET, [this]() { handleConfigPage(); });
     _server.on("/troubleshooting",     HTTP_GET, [this]() { handleTroubleshootingPage(); });
+    _server.on("/register/uid",        HTTP_GET, [this]() { handleUIDRegistrationPage(); });
 
     // API
     _server.on("/api/version",         HTTP_GET, [this]() { handleApiVersion(); });
@@ -94,6 +98,7 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
     _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
     _server.on("/api/write-opentag3d", HTTP_POST, [this]() { handleApiWriteOpenTag3D(); });
+    _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
 
     // Allow browser preflight requests (CORS) so the page can be tested
     // from a local file during development.
@@ -171,6 +176,11 @@ void WebServerManager::handleTigerTagLogo() {
     _server.send_P(200, "image/png", reinterpret_cast<const char*>(TIGERTAG_LOGO_PNG), TIGERTAG_LOGO_PNG_LEN);
 }
 
+void WebServerManager::handleOpenTag3DLogo() {
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "image/png", reinterpret_cast<const char*>(OPENTAG3D_LOGO_PNG), OPENTAG3D_LOGO_PNG_LEN);
+}
+
 void WebServerManager::handleUpdatePage() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", UPDATE_HTML);
@@ -184,6 +194,191 @@ void WebServerManager::handleConfigPage() {
 void WebServerManager::handleTroubleshootingPage() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", TROUBLESHOOTING_HTML);
+}
+
+void WebServerManager::handleUIDRegistrationPage() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", UID_REGISTRATION_HTML);
+}
+
+void WebServerManager::handleApiRegisterUid() {
+    Serial.println("WebServerManager: POST /api/register-uid received");
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<1024> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    const char* uid = doc["uid"] | "";
+    const char* manufacturer = doc["manufacturer"] | "";
+    const char* material = doc["material"] | "PLA";
+    const char* materialName = doc["material_name"] | "";
+    const char* color = doc["color"] | "FF0000";
+    float initialWeight = doc["initial_weight_g"] | 0.0f;
+    float remainingWeight = doc["remaining_g"] | 0.0f;
+    float density = doc["density"] | 0.0f;
+    float diameter = doc["diameter_mm"] | 1.75f;
+    int minPrintTemp = doc["min_print_temp"] | 0;
+    int maxPrintTemp = doc["max_print_temp"] | 0;
+    int minBedTemp = doc["min_bed_temp"] | 0;
+    int maxBedTemp = doc["max_bed_temp"] | 0;
+
+    if (strlen(uid) == 0) {
+        sendError(400, "UID is required");
+        return;
+    }
+    if (strlen(manufacturer) == 0) {
+        sendError(400, "Manufacturer is required");
+        return;
+    }
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+    if (!baseUrl || strlen(baseUrl) == 0) {
+        sendError(500, "Spoolman URL not configured");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    char url[256];
+    String response;
+    int code;
+
+    // --- Step 1: Find or create vendor ---
+    int vendorId = -1;
+    snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, manufacturer);
+    http.begin(client, url);
+    code = http.GET();
+    if (code == 200) {
+        response = http.getString();
+        StaticJsonDocument<2048> vendorDoc;
+        if (!deserializeJson(vendorDoc, response)) {
+            JsonArray arr = vendorDoc.as<JsonArray>();
+            for (JsonObject v : arr) {
+                if (strcasecmp(v["name"] | "", manufacturer) == 0) {
+                    vendorId = v["id"] | -1;
+                    break;
+                }
+            }
+        }
+    }
+    http.end();
+
+    if (vendorId < 0) {
+        // Create vendor
+        StaticJsonDocument<128> vendorBody;
+        vendorBody["name"] = manufacturer;
+        String vendorJson;
+        serializeJson(vendorBody, vendorJson);
+
+        snprintf(url, sizeof(url), "%s/api/v1/vendor", baseUrl);
+        http.begin(client, url);
+        http.addHeader("Content-Type", "application/json");
+        code = http.POST(vendorJson);
+        if (code == 200 || code == 201) {
+            response = http.getString();
+            StaticJsonDocument<512> vDoc;
+            if (!deserializeJson(vDoc, response)) {
+                vendorId = vDoc["id"] | -1;
+            }
+        }
+        http.end();
+    }
+
+    // --- Step 2: Create filament ---
+    StaticJsonDocument<512> filBody;
+    filBody["name"] = strlen(materialName) > 0 ? materialName : material;
+    filBody["material"] = material;
+    if (vendorId > 0) filBody["vendor_id"] = vendorId;
+    filBody["density"] = density > 0 ? density : 1.24f;
+    filBody["diameter"] = diameter > 0 ? diameter : 1.75f;
+    if (strlen(color) > 0) filBody["color_hex"] = color;
+
+    String filJson;
+    serializeJson(filBody, filJson);
+    Serial.printf("register-uid: filament payload: %s\n", filJson.c_str());
+
+    snprintf(url, sizeof(url), "%s/api/v1/filament", baseUrl);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    code = http.POST(filJson);
+    if (code != 200 && code != 201) {
+        response = http.getString();
+        http.end();
+        char errMsg[128];
+        snprintf(errMsg, sizeof(errMsg), "Failed to create filament (HTTP %d)", code);
+        sendError(500, errMsg);
+        return;
+    }
+    response = http.getString();
+    http.end();
+
+    int filamentId = -1;
+    {
+        StaticJsonDocument<1024> filDoc;
+        if (!deserializeJson(filDoc, response)) {
+            filamentId = filDoc["id"] | -1;
+        }
+    }
+    if (filamentId < 0) {
+        sendError(500, "Failed to parse filament ID from Spoolman response");
+        return;
+    }
+
+    // --- Step 3: Create spool with nfc_id ---
+    StaticJsonDocument<512> spoolBody;
+    spoolBody["filament_id"] = filamentId;
+    if (initialWeight > 0) spoolBody["initial_weight"] = initialWeight;
+    if (remainingWeight > 0) spoolBody["remaining_weight"] = remainingWeight;
+
+    JsonObject extra = spoolBody.createNestedObject("extra");
+    // Spoolman extra fields require JSON-encoded string values (double-quoted)
+    char quotedUid[128];
+    snprintf(quotedUid, sizeof(quotedUid), "\"%s\"", uid);
+    extra["nfc_id"] = quotedUid;
+
+    String spoolJson;
+    serializeJson(spoolBody, spoolJson);
+    Serial.printf("register-uid: spool payload: %s\n", spoolJson.c_str());
+
+    snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    code = http.POST(spoolJson);
+    if (code != 200 && code != 201) {
+        response = http.getString();
+        http.end();
+        Serial.printf("register-uid: spool creation failed HTTP %d: %s\n", code, response.c_str());
+        String errMsg = "Failed to create spool (HTTP " + String(code) + "): " + response;
+        _server.send(500, "application/json", "{\"error\":\"" + errMsg + "\"}");
+        return;
+    }
+    response = http.getString();
+    http.end();
+
+    int spoolId = -1;
+    {
+        StaticJsonDocument<1024> spoolDoc;
+        if (!deserializeJson(spoolDoc, response)) {
+            spoolId = spoolDoc["id"] | -1;
+        }
+    }
+
+    // --- Success ---
+    StaticJsonDocument<256> result;
+    result["success"] = true;
+    result["spool_id"] = spoolId;
+    result["filament_id"] = filamentId;
+    result["vendor_id"] = vendorId;
+    result["uid"] = uid;
+    String resultJson;
+    serializeJson(result, resultJson);
+
+    _server.send(200, "application/json", resultJson);
+    Serial.printf("WebServerManager: Registered UID %s as spool %d (filament %d)\n", uid, spoolId, filamentId);
 }
 
 // ---------------------------------------------------------------------------

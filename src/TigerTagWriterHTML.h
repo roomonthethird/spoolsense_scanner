@@ -21,6 +21,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
@@ -41,69 +42,73 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
             <h2 class="section-title">Filament</h2>
             <div class="grid-2">
               <div class="field">
-                <label for="material_id">Material</label>
-                <select id="material_id" name="material_id" required>
-                  <option value="38219">PLA</option>
-                  <option value="46591">PLA+</option>
-                  <option value="38256">PETG</option>
-                  <option value="43518">TPU</option>
-                  <option value="20562">ABS</option>
-                  <option value="12844">ASA</option>
-                  <option value="30458">PC</option>
-                  <option value="15041">PCTG</option>
-                  <option value="30884">PP</option>
-                  <option value="56666">PA6</option>
-                  <option value="55796">PA12</option>
-                  <option value="59328">PA</option>
-                  <option value="26029">HIPS</option>
-                  <option value="52077">PET</option>
-                  <option value="45962">PVB</option>
-                  <option value="9483">PVA</option>
-                  <option value="29815">PEEK</option>
-                  <option value="53970">PEKK</option>
-                  <option value="56527">PEI</option>
-                  <option value="55279">PBT</option>
-                  <option value="33958">TPE</option>
-                  <option value="48310">PLA-CF</option>
-                  <option value="55418">PETG-CF</option>
-                  <option value="48815">PAHT-CF</option>
-                  <option value="12264">PA6-CF</option>
-                  <option value="10602">PLA Silk</option>
-                  <option value="48001">PLA Wood</option>
-                  <option value="65535">None</option>
-                </select>
+                <label for="material_search">Material</label>
+                <input id="material_search" name="material_search" list="material-list" placeholder="Type to search materials" required />
+                <datalist id="material-list">
+                  <option data-id="38219" value="PLA"></option>
+                  <option data-id="46591" value="PLA+"></option>
+                  <option data-id="38256" value="PETG"></option>
+                  <option data-id="43518" value="TPU"></option>
+                  <option data-id="20562" value="ABS"></option>
+                  <option data-id="12844" value="ASA"></option>
+                  <option data-id="30458" value="PC"></option>
+                  <option data-id="15041" value="PCTG"></option>
+                  <option data-id="30884" value="PP"></option>
+                  <option data-id="56666" value="PA6"></option>
+                  <option data-id="55796" value="PA12"></option>
+                  <option data-id="59328" value="PA"></option>
+                  <option data-id="26029" value="HIPS"></option>
+                  <option data-id="52077" value="PET"></option>
+                  <option data-id="45962" value="PVB"></option>
+                  <option data-id="9483" value="PVA"></option>
+                  <option data-id="29815" value="PEEK"></option>
+                  <option data-id="53970" value="PEKK"></option>
+                  <option data-id="56527" value="PEI"></option>
+                  <option data-id="55279" value="PBT"></option>
+                  <option data-id="33958" value="TPE"></option>
+                  <option data-id="48310" value="PLA-CF"></option>
+                  <option data-id="55418" value="PETG-CF"></option>
+                  <option data-id="48815" value="PAHT-CF"></option>
+                  <option data-id="12264" value="PA6-CF"></option>
+                  <option data-id="10602" value="PLA Silk"></option>
+                  <option data-id="48001" value="PLA Wood"></option>
+                  <option data-id="65535" value="None"></option>
+                </datalist>
+                <input type="hidden" id="material_id" name="material_id" value="38219" />
               </div>
 
               <div class="field">
-                <label for="brand_id">Brand</label>
-                <select id="brand_id" name="brand_id" required>
-                  <option value="65535">Generic</option>
-                  <option value="35123">Bambu Lab</option>
-                  <option value="46392">Prusa</option>
-                  <option value="50604">Polymaker</option>
-                  <option value="47930">eSun</option>
-                  <option value="51857">Sunlu</option>
-                  <option value="46203">Overture</option>
-                  <option value="3132">Hatchbox</option>
-                  <option value="26956">Creality</option>
-                  <option value="15962">Anycubic</option>
-                  <option value="57632">Elegoo</option>
-                  <option value="7812">Jayo</option>
-                  <option value="52222">ColorFabb</option>
-                  <option value="7980">Fillamentum</option>
-                  <option value="8182">Fiberlogy</option>
-                  <option value="53043">FormFutura</option>
-                  <option value="58410">AzureFilm</option>
-                  <option value="4344">MatterHackers</option>
-                  <option value="2">Proto-Pasta</option>
-                  <option value="58231">IC3D</option>
-                  <option value="39652">3DXTech</option>
-                  <option value="51443">BASF</option>
-                  <option value="9798">AMOLEN</option>
-                  <option value="28940">Eryone</option>
-                  <option value="63340">Flashforge</option>
-                  <option value="8384">Taulman3D</option>
-                </select>
+                <label for="brand_name">Brand</label>
+                <input id="brand_name" name="brand_name" list="brand-list" placeholder="Type to search brands" required />
+                <datalist id="brand-list">
+                  <option data-id="65535" value="Generic"></option>
+                  <option data-id="35123" value="Bambu Lab"></option>
+                  <option data-id="46392" value="Prusa"></option>
+                  <option data-id="50604" value="Polymaker"></option>
+                  <option data-id="47930" value="eSun"></option>
+                  <option data-id="51857" value="Sunlu"></option>
+                  <option data-id="46203" value="Overture"></option>
+                  <option data-id="3132" value="Hatchbox"></option>
+                  <option data-id="26956" value="Creality"></option>
+                  <option data-id="15962" value="Anycubic"></option>
+                  <option data-id="57632" value="Elegoo"></option>
+                  <option data-id="7812" value="Jayo"></option>
+                  <option data-id="52222" value="ColorFabb"></option>
+                  <option data-id="7980" value="Fillamentum"></option>
+                  <option data-id="8182" value="Fiberlogy"></option>
+                  <option data-id="53043" value="FormFutura"></option>
+                  <option data-id="58410" value="AzureFilm"></option>
+                  <option data-id="4344" value="MatterHackers"></option>
+                  <option data-id="2" value="Proto-Pasta"></option>
+                  <option data-id="58231" value="IC3D"></option>
+                  <option data-id="39652" value="3DXTech"></option>
+                  <option data-id="51443" value="BASF"></option>
+                  <option data-id="9798" value="AMOLEN"></option>
+                  <option data-id="28940" value="Eryone"></option>
+                  <option data-id="63340" value="Flashforge"></option>
+                  <option data-id="8384" value="Taulman3D"></option>
+                </datalist>
+                <input type="hidden" id="brand_id" name="brand_id" value="65535" />
                 <div style="font-size:11px;color:var(--muted);margin-top:4px">
                   Brand not listed? Use Generic. <a href="https://github.com/TigerTag-Project/TigerTag-RFID-Guide/issues" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">Request a new brand &rarr;</a>
                 </div>
@@ -309,6 +314,23 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
 
+    // Sync brand name input → hidden brand_id
+    var brandNameEl = document.getElementById('brand_name');
+    var brandIdEl = document.getElementById('brand_id');
+    var brandList = document.getElementById('brand-list');
+    if (brandNameEl && brandIdEl && brandList) {
+      brandNameEl.addEventListener('input', function() {
+        var opts = brandList.querySelectorAll('option');
+        brandIdEl.value = '65535'; // default to Generic
+        for (var i = 0; i < opts.length; i++) {
+          if (opts[i].value === brandNameEl.value) {
+            brandIdEl.value = opts[i].dataset.id;
+            break;
+          }
+        }
+      });
+    }
+
     // Fetch TigerTag API data — fallback to hardcoded options on failure
     var materialData = {};  // Store full material data for auto-fill on selection
 
@@ -345,21 +367,44 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    function autoFillFromMaterial() {
-      var id = document.getElementById('material_id').value;
-      var m = materialData[id];
-      if (!m) return;
-      if (m.extruder_temp) {
-        document.getElementById('nozzle_min').value = Math.max(0, m.extruder_temp - 10);
-        document.getElementById('nozzle_max').value = m.extruder_temp + 10;
-      }
-      if (m.bed_temp) {
-        document.getElementById('bed_min').value = Math.max(0, m.bed_temp - 5);
-        document.getElementById('bed_max').value = m.bed_temp + 5;
+    // Sync material search → hidden material_id
+    var materialSearchEl = document.getElementById('material_search');
+    var materialIdEl = document.getElementById('material_id');
+    var materialListEl = document.getElementById('material-list');
+
+    function syncMaterialId() {
+      var opts = materialListEl.querySelectorAll('option');
+      materialIdEl.value = '38219'; // default PLA
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].value === materialSearchEl.value) {
+          materialIdEl.value = opts[i].dataset.id;
+          break;
+        }
       }
     }
 
-    document.getElementById('material_id').addEventListener('change', autoFillFromMaterial);
+    trackAutoFill(['nozzle_min','nozzle_max','bed_min','bed_max']);
+
+    function autoFillFromMaterial() {
+      syncMaterialId();
+      var id = materialIdEl.value;
+      var m = materialData[id];
+      if (!m) return;
+      var nMin = document.getElementById('nozzle_min');
+      var nMax = document.getElementById('nozzle_max');
+      var bMin = document.getElementById('bed_min');
+      var bMax = document.getElementById('bed_max');
+      if (m.extruder_temp) {
+        if (nMin && nMin.dataset.autoFilled !== 'false') { nMin.value = Math.max(0, m.extruder_temp - 10); nMin.dataset.autoFilled = 'true'; }
+        if (nMax && nMax.dataset.autoFilled !== 'false') { nMax.value = m.extruder_temp + 10; nMax.dataset.autoFilled = 'true'; }
+      }
+      if (m.bed_temp) {
+        if (bMin && bMin.dataset.autoFilled !== 'false') { bMin.value = Math.max(0, m.bed_temp - 5); bMin.dataset.autoFilled = 'true'; }
+        if (bMax && bMax.dataset.autoFilled !== 'false') { bMax.value = m.bed_temp + 5; bMax.dataset.autoFilled = 'true'; }
+      }
+    }
+
+    materialSearchEl.addEventListener('input', autoFillFromMaterial);
 
     (async function loadTigerTagAPI() {
       try {
@@ -373,10 +418,16 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
           if (materials) {
             materials.forEach(function(m) { materialData[m.id] = m; });
             materials.sort(function(a, b) { return a.material.localeCompare(b.material); });
-            populateSelect('material_id', materials,
-              function(m) { return m.id; },
-              function(m) { return m.material; }
-            );
+            var dl = document.getElementById('material-list');
+            if (dl && materials.length > dl.options.length) {
+              dl.innerHTML = '';
+              materials.forEach(function(m) {
+                var opt = document.createElement('option');
+                opt.value = m.material;
+                opt.dataset.id = m.id;
+                dl.appendChild(opt);
+              });
+            }
           }
         }
       } catch(e) { /* keep hardcoded fallback */ }
@@ -391,10 +442,16 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
           ]);
           if (brands) {
             brands.sort(function(a, b) { return a.name.localeCompare(b.name); });
-            populateSelect('brand_id', brands,
-              function(b) { return b.id; },
-              function(b) { return b.name; }
-            );
+            var dl = document.getElementById('brand-list');
+            if (dl && brands.length > dl.options.length) {
+              dl.innerHTML = '';
+              brands.forEach(function(b) {
+                var opt = document.createElement('option');
+                opt.value = b.name;
+                opt.dataset.id = b.id;
+                dl.appendChild(opt);
+              });
+            }
           }
         }
       } catch(e) { /* keep hardcoded fallback */ }

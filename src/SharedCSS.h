@@ -45,7 +45,7 @@ nav{
   border:1px solid var(--border);
   border-radius:var(--radius);
   background:var(--panel);
-  overflow-x:auto;
+  flex-wrap:wrap;
 }
 
 nav a{

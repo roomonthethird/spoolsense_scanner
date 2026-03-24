@@ -35,6 +35,7 @@ private:
     void handleSharedJS();
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
+    void handleOpenTag3DLogo();
     void handleUpdatePage();
     void handleConfigPage();
 
@@ -53,6 +54,8 @@ private:
     void handleApiPostConfig();
     void handleApiDiagnostics();
     void handleTroubleshootingPage();
+    void handleUIDRegistrationPage();
+    void handleApiRegisterUid();
 
     // OTA download state
     static void otaDownloadTask(void* param);
