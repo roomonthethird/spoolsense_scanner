@@ -50,31 +50,32 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
             <div class="grid-2">
               <div class="field">
                 <label for="material_type">Material</label>
-                <select id="material_type" name="material_type" required>
-                  <option value="0">PLA</option>
-                  <option value="1">PETG</option>
-                  <option value="2">TPU</option>
-                  <option value="3">ABS</option>
-                  <option value="4">ASA</option>
-                  <option value="5">PC</option>
-                  <option value="6">PCTG</option>
-                  <option value="7">PP</option>
-                  <option value="8">PA6 (Nylon 6)</option>
-                  <option value="9">PA11 (Nylon 11)</option>
-                  <option value="10">PA12 (Nylon 12)</option>
-                  <option value="11">PA66 (Nylon 66)</option>
-                  <option value="12">CPE</option>
-                  <option value="13">TPE</option>
-                  <option value="14">HIPS</option>
-                  <option value="15">PHA</option>
-                  <option value="16">PET</option>
-                  <option value="17">PEI</option>
-                  <option value="18">PBT</option>
-                  <option value="19">PVB</option>
-                  <option value="20">PVA</option>
-                  <option value="21">PEKK</option>
-                  <option value="22">PEEK</option>
-                </select>
+                <input id="material_type" name="material_type" list="material-list" placeholder="Type to search materials" required />
+                <datalist id="material-list">
+                  <option value="PLA"></option>
+                  <option value="PETG"></option>
+                  <option value="TPU"></option>
+                  <option value="ABS"></option>
+                  <option value="ASA"></option>
+                  <option value="PC"></option>
+                  <option value="PCTG"></option>
+                  <option value="PP"></option>
+                  <option value="PA6"></option>
+                  <option value="PA11"></option>
+                  <option value="PA12"></option>
+                  <option value="PA66"></option>
+                  <option value="CPE"></option>
+                  <option value="TPE"></option>
+                  <option value="HIPS"></option>
+                  <option value="PHA"></option>
+                  <option value="PET"></option>
+                  <option value="PEI"></option>
+                  <option value="PBT"></option>
+                  <option value="PVB"></option>
+                  <option value="PVA"></option>
+                  <option value="PEKK"></option>
+                  <option value="PEEK"></option>
+                </datalist>
               </div>
 
               <div class="field">
@@ -210,8 +211,32 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
 
+    // Auto-fill temps and density from material selection
+    var nfcFieldMap = {
+      minPrintTemp: 'min_print_temp', maxPrintTemp: 'max_print_temp',
+      minBedTemp: 'min_bed_temp', maxBedTemp: 'max_bed_temp',
+      density: 'density'
+    };
+    trackAutoFill(['min_print_temp','max_print_temp','min_bed_temp','max_bed_temp','density']);
+    materialTypeEl.addEventListener('input', function() {
+      autoFillMaterialData(materialTypeEl.value, nfcFieldMap);
+    });
+    loadMaterialDb().then(function(db) {
+      var dl = document.getElementById('material-list');
+      var existing = {};
+      var opts = dl.querySelectorAll('option');
+      for (var i = 0; i < opts.length; i++) existing[opts[i].value.toUpperCase()] = true;
+      Object.keys(db).sort().forEach(function(key) {
+        if (!existing[key]) {
+          var opt = document.createElement('option');
+          opt.value = db[key].material || key;
+          dl.appendChild(opt);
+        }
+      });
+    });
+
     function syncMaterialNameFromSelection() {
-      var selectedText = materialTypeEl.options[materialTypeEl.selectedIndex].text;
+      var selectedText = materialTypeEl.value || 'PLA';
       if (!materialNameEl.value.trim() || materialNameEl.dataset.autoFilled === 'true') {
         materialNameEl.value = selectedText.toUpperCase();
         materialNameEl.dataset.autoFilled = 'true';
@@ -223,7 +248,7 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
       resultBox.className = type ? 'result ' + type : 'result';
     }
 
-    materialTypeEl.addEventListener('change', syncMaterialNameFromSelection);
+    materialTypeEl.addEventListener('input', syncMaterialNameFromSelection);
 
     materialNameEl.addEventListener('input', function() {
       materialNameEl.value = materialNameEl.value.toUpperCase();
