@@ -67,9 +67,9 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
-      <a href="/config">Config</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting" class="active">Troubleshooting</a>
+      <a href="/config">Config</a>
     </nav>
 
     <h2 style="margin-bottom:6px">Troubleshooting</h2>
