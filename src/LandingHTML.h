@@ -21,6 +21,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
       <a href="/config">Config</a>
@@ -68,6 +69,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-icon">&#128196;</div>
         <div class="tool-name">OpenTag3D Writer</div>
         <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenTag3D format.</div>
+      </a>
+
+      <a href="/register/uid" class="tool-card">
+        <div class="tool-icon">&#128179;</div>
+        <div class="tool-name">NFC+ Registration</div>
+        <div class="tool-desc">Register a plain NFC tag in Spoolman using its UID. No data written to the tag.</div>
       </a>
 
       <a href="/update" class="tool-card">

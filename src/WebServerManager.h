@@ -53,6 +53,8 @@ private:
     void handleApiPostConfig();
     void handleApiDiagnostics();
     void handleTroubleshootingPage();
+    void handleUIDRegistrationPage();
+    void handleApiRegisterUid();
 
     // OTA download state
     static void otaDownloadTask(void* param);
