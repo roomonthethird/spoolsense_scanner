@@ -46,32 +46,34 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
             <h2 class="section-title">Basic</h2>
             <div class="grid-2">
               <div class="field">
-                <label for="material_type">Material</label>
-                <select id="material_type" name="material_type" required>
-                  <option value="0">PLA</option>
-                  <option value="1">PETG</option>
-                  <option value="2">TPU</option>
-                  <option value="3">ABS</option>
-                  <option value="4">ASA</option>
-                  <option value="5">PC</option>
-                  <option value="6">PCTG</option>
-                  <option value="7">PP</option>
-                  <option value="8">PA6 (Nylon 6)</option>
-                  <option value="9">PA11 (Nylon 11)</option>
-                  <option value="10">PA12 (Nylon 12)</option>
-                  <option value="11">PA66 (Nylon 66)</option>
-                  <option value="12">CPE</option>
-                  <option value="13">TPE</option>
-                  <option value="14">HIPS</option>
-                  <option value="15">PHA</option>
-                  <option value="16">PET</option>
-                  <option value="17">PEI</option>
-                  <option value="18">PBT</option>
-                  <option value="19">PVB</option>
-                  <option value="20">PVA</option>
-                  <option value="21">PEKK</option>
-                  <option value="22">PEEK</option>
-                </select>
+                <label for="material_search">Material</label>
+                <input id="material_search" name="material_search" list="material-list" placeholder="Type to search materials" required />
+                <datalist id="material-list">
+                  <option data-id="0" value="PLA"></option>
+                  <option data-id="1" value="PETG"></option>
+                  <option data-id="2" value="TPU"></option>
+                  <option data-id="3" value="ABS"></option>
+                  <option data-id="4" value="ASA"></option>
+                  <option data-id="5" value="PC"></option>
+                  <option data-id="6" value="PCTG"></option>
+                  <option data-id="7" value="PP"></option>
+                  <option data-id="8" value="PA6 (Nylon 6)"></option>
+                  <option data-id="9" value="PA11 (Nylon 11)"></option>
+                  <option data-id="10" value="PA12 (Nylon 12)"></option>
+                  <option data-id="11" value="PA66 (Nylon 66)"></option>
+                  <option data-id="12" value="CPE"></option>
+                  <option data-id="13" value="TPE"></option>
+                  <option data-id="14" value="HIPS"></option>
+                  <option data-id="15" value="PHA"></option>
+                  <option data-id="16" value="PET"></option>
+                  <option data-id="17" value="PEI"></option>
+                  <option data-id="18" value="PBT"></option>
+                  <option data-id="19" value="PVB"></option>
+                  <option data-id="20" value="PVA"></option>
+                  <option data-id="21" value="PEKK"></option>
+                  <option data-id="22" value="PEEK"></option>
+                </datalist>
+                <input type="hidden" id="material_type" name="material_type" value="0" />
               </div>
 
               <div class="field">
@@ -268,6 +270,8 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     var writerForm = document.getElementById('writerForm');
 
     var materialTypeEl = document.getElementById('material_type');
+    var materialSearchEl = document.getElementById('material_search');
+    var materialListEl = document.getElementById('material-list');
     var materialNameEl = document.getElementById('material_name');
 
     var backBtn = document.getElementById('backBtn');
@@ -277,6 +281,44 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
+
+    // Sync material search → hidden material_type ID
+    function syncMaterialId() {
+      var opts = materialListEl.querySelectorAll('option');
+      materialTypeEl.value = '0'; // default PLA
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].value === materialSearchEl.value) {
+          materialTypeEl.value = opts[i].dataset.id;
+          break;
+        }
+      }
+    }
+
+    // Auto-fill temps and density from material selection
+    var optFieldMap = {
+      minPrintTemp: 'min_print_temp', maxPrintTemp: 'max_print_temp',
+      minBedTemp: 'min_bed_temp', maxBedTemp: 'max_bed_temp',
+      density: 'density'
+    };
+    trackAutoFill(['min_print_temp','max_print_temp','min_bed_temp','max_bed_temp','density']);
+    materialSearchEl.addEventListener('input', function() {
+      syncMaterialId();
+      autoFillMaterialData(materialSearchEl.value, optFieldMap);
+    });
+    loadMaterialDb().then(function(db) {
+      // Expand datalist with API materials that aren't in the hardcoded list
+      var existing = {};
+      var opts = materialListEl.querySelectorAll('option');
+      for (var i = 0; i < opts.length; i++) existing[opts[i].value.toUpperCase()] = true;
+      Object.keys(db).sort().forEach(function(key) {
+        if (!existing[key]) {
+          var opt = document.createElement('option');
+          opt.value = db[key].material || key;
+          opt.dataset.id = db[key].id || '0';
+          materialListEl.appendChild(opt);
+        }
+      });
+    });
 
     function showStatusView() {
       createView.classList.add('hidden');
@@ -291,7 +333,7 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     }
 
     function syncMaterialNameFromSelection() {
-      var selectedText = materialTypeEl.options[materialTypeEl.selectedIndex].text;
+      var selectedText = materialSearchEl.value || 'PLA';
       if (!materialNameEl.value.trim() || materialNameEl.dataset.autoFilled === 'true') {
         materialNameEl.value = selectedText.toUpperCase();
         materialNameEl.dataset.autoFilled = 'true';
@@ -481,7 +523,7 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    materialTypeEl.addEventListener('change', syncMaterialNameFromSelection);
+    materialSearchEl.addEventListener('input', syncMaterialNameFromSelection);
 
     materialNameEl.addEventListener('input', function() {
       materialNameEl.value = materialNameEl.value.toUpperCase();
