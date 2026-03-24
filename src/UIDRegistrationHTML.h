@@ -243,23 +243,51 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
       }, 0);
     });
 
+    var readAbort = null;
+
     readUidBtn.addEventListener('click', function() {
-      uidValue.textContent = 'Reading\u2026';
-      fetch('/api/status')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.uid) {
-            currentUid = d.uid;
-            uidValue.textContent = d.uid;
-          } else {
-            currentUid = '';
-            uidValue.textContent = 'No tag detected';
+      if (readAbort) { readAbort = true; return; }
+      readUidBtn.textContent = 'Waiting for tag\u2026';
+      readUidBtn.disabled = true;
+      uidValue.textContent = 'Place tag on scanner\u2026';
+      readAbort = false;
+      var attempts = 0;
+      var maxAttempts = 60;
+
+      function poll() {
+        if (readAbort || attempts >= maxAttempts) {
+          readUidBtn.textContent = 'Read Tag UID';
+          readUidBtn.disabled = false;
+          readAbort = null;
+          if (attempts >= maxAttempts) {
+            uidValue.textContent = 'Timed out \u2014 no tag detected';
           }
-        })
-        .catch(function() {
-          currentUid = '';
-          uidValue.textContent = 'Error reading scanner';
-        });
+          return;
+        }
+        attempts++;
+        fetch('/api/status')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.present && d.uid) {
+              currentUid = d.uid;
+              uidValue.textContent = d.uid;
+              uidValue.style.fontSize = '22px';
+              readUidBtn.textContent = 'Read Tag UID';
+              readUidBtn.disabled = false;
+              readAbort = null;
+            } else {
+              setTimeout(poll, 500);
+            }
+          })
+          .catch(function() {
+            currentUid = '';
+            uidValue.textContent = 'Error reading scanner';
+            readUidBtn.textContent = 'Read Tag UID';
+            readUidBtn.disabled = false;
+            readAbort = null;
+          });
+      }
+      poll();
     });
 
     async function registerFlow() {
@@ -285,105 +313,37 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
         return;
       }
 
-      setResult('Fetching Spoolman URL\u2026', '');
-
-      var spoolmanUrl = '';
-      try {
-        var statusData = await api('/api/status');
-        spoolmanUrl = (statusData.spoolman_url || '').replace(/\/$/, '');
-      } catch (e) {
-        setResult('Could not reach scanner to get Spoolman URL.', 'error');
-        return;
-      }
-
-      if (!spoolmanUrl) {
-        setResult('Spoolman URL is not configured. Set it in Config.', 'error');
-        return;
-      }
-
       var materialTypeText = materialTypeEl.options[materialTypeEl.selectedIndex].text;
       var materialName = readString('material_name');
       if (materialName) materialName = materialName.toUpperCase();
-      var filamentName = (materialName || materialTypeText.toUpperCase()) + ' ' + manufacturer;
 
-      var density = readPositiveNumber('density');
-      var diameter = readPositiveNumber('diameter_mm');
-      var minPrint = readPositiveNumber('min_print_temp');
-      var maxPrint = readPositiveNumber('max_print_temp');
-      var minBed = readPositiveNumber('min_bed_temp');
-      var maxBed = readPositiveNumber('max_bed_temp');
-
-      // Step 1: find or create vendor
-      setResult('Looking up vendor in Spoolman\u2026', '');
-      var vendorId = null;
-      try {
-        var vendorRes = await fetch(spoolmanUrl + '/api/v1/vendor?name=' + encodeURIComponent(manufacturer));
-        if (vendorRes.ok) {
-          var vendors = await vendorRes.json();
-          if (Array.isArray(vendors) && vendors.length > 0) {
-            vendorId = vendors[0].id;
-          }
-        }
-      } catch (e) { /* vendor lookup optional */ }
-
-      // Step 2: create filament
-      setResult('Creating filament in Spoolman\u2026', '');
-      var filamentPayload = {
-        name: filamentName,
-        material: materialName || materialTypeText.toUpperCase()
-      };
-      if (vendorId !== null) filamentPayload.vendor_id = vendorId;
-      if (density !== undefined) filamentPayload.density = density;
-      if (diameter !== undefined) filamentPayload.diameter = diameter;
-      if (minPrint !== undefined) filamentPayload.settings_extruder_temp = minPrint;
-      if (maxPrint !== undefined) filamentPayload.settings_extruder_temp_max = maxPrint;
-      if (minBed !== undefined) filamentPayload.settings_bed_temp = minBed;
-      if (maxBed !== undefined) filamentPayload.settings_bed_temp_max = maxBed;
-      filamentPayload.color_hex = color.replace('#', '');
-
-      var filamentId = null;
-      try {
-        var filamentRes = await fetch(spoolmanUrl + '/api/v1/filament', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(filamentPayload)
-        });
-        if (!filamentRes.ok) {
-          var errText = await filamentRes.text();
-          setResult('Failed to create filament: ' + errText, 'error');
-          return;
-        }
-        var filamentData = await filamentRes.json();
-        filamentId = filamentData.id;
-      } catch (e) {
-        setResult('Error creating filament: ' + (e.message || e), 'error');
-        return;
-      }
-
-      // Step 3: create spool
-      setResult('Creating spool in Spoolman\u2026', '');
-      var spoolPayload = {
-        filament_id: filamentId,
-        remaining_weight: remainingWeight,
-        initial_weight: initialWeight,
-        extra: { nfc_id: currentUid }
+      var payload = {
+        uid: currentUid,
+        manufacturer: manufacturer,
+        material: materialName || materialTypeText.toUpperCase(),
+        material_name: materialName || '',
+        color: color.replace('#', ''),
+        initial_weight_g: initialWeight,
+        remaining_g: remainingWeight,
+        density: readPositiveNumber('density') || 0,
+        diameter_mm: readPositiveNumber('diameter_mm') || 1.75,
+        min_print_temp: readPositiveNumber('min_print_temp') || 0,
+        max_print_temp: readPositiveNumber('max_print_temp') || 0,
+        min_bed_temp: readPositiveNumber('min_bed_temp') || 0,
+        max_bed_temp: readPositiveNumber('max_bed_temp') || 0
       };
 
+      setResult('Registering in Spoolman\u2026', '');
+
       try {
-        var spoolRes = await fetch(spoolmanUrl + '/api/v1/spool', {
+        var result = await api('/api/register-uid', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(spoolPayload)
+          body: JSON.stringify(payload)
         });
-        if (!spoolRes.ok) {
-          var spoolErr = await spoolRes.text();
-          setResult('Failed to create spool: ' + spoolErr, 'error');
-          return;
-        }
-        var spoolData = await spoolRes.json();
-        setResult('Spool #' + spoolData.id + ' registered successfully. UID: ' + currentUid, 'success');
+        setResult('Spool #' + result.spool_id + ' registered successfully. UID: ' + currentUid, 'success');
       } catch (e) {
-        setResult('Error creating spool: ' + (e.message || e), 'error');
+        setResult('Registration failed: ' + (e.message || e), 'error');
       }
     }
 
