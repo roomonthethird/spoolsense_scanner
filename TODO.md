@@ -42,7 +42,7 @@
 ### Web / UI
 - ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
 - ~~[P1] **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing~~
-- [P1] **Troubleshooting page** — add a page at `spoolsense.local/troubleshooting` for verifying scanner setup. Tests: Spoolman connectivity (GET /api/v1/info), MQTT broker connectivity (connect + publish test), WiFi signal strength (RSSI), NFC reader status (PN5180 firmware version, RF state), free heap/uptime. Display scanner device ID prominently so users can find it for middleware config. Show pass/fail for each test with actionable error messages.
+- ~~[P1] **Troubleshooting page** — implemented at `spoolsense.local/troubleshooting` (TroubleshootingHTML.h)~~
 - ~~[P1] **Scanner device ID on web UI** — display the scanner's device ID on the landing page so users can find it for middleware config~~
 - ~~[P1] **Unified installer** — `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware~~
 - [P1] **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
