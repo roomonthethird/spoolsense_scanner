@@ -43,8 +43,8 @@
 - ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
 - ~~[P1] **Web-based config** — add a protected config page at `spoolsense.local/config` to replace BLE-based configuration; allow WiFi/MQTT/Spoolman settings to be changed without reflashing~~
 - [P1] **Troubleshooting page** — add a page at `spoolsense.local/troubleshooting` for verifying scanner setup. Tests: Spoolman connectivity (GET /api/v1/info), MQTT broker connectivity (connect + publish test), WiFi signal strength (RSSI), NFC reader status (PN5180 firmware version, RF state), free heap/uptime. Display scanner device ID prominently so users can find it for middleware config. Show pass/fail for each test with actionable error messages.
-- [P1] **Scanner device ID on web UI** — display the scanner's device ID (used for MQTT topic and middleware config) on the landing page, config page, or a dedicated setup page so users can easily find it during installation without needing serial access
-- [P1] **Unified installer** — a `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware: asks board type, WiFi, MQTT, Spoolman URL, toolhead mode, etc.; generates `UserConfig.h` for the scanner and the middleware config YAML; flashes firmware via esptool; validates connectivity end-to-end. Goal: new user runs one command and is fully operational without editing any files manually.
+- ~~[P1] **Scanner device ID on web UI** — display the scanner's device ID on the landing page so users can find it for middleware config~~
+- ~~[P1] **Unified installer** — `spoolsense-installer` repo under the SpoolSense org; interactive CLI that covers both scanner and middleware~~
 - [P1] **Tag writer auto-populate** — when a tag with existing data is placed on the reader, auto-fill the writer form fields with the tag's current values (material, color, weight, manufacturer, etc.); lets users scan a tag to check its contents and overwrite individual fields
 
 ### Tag Writer Enhancements
@@ -72,7 +72,7 @@
 - [P1] **Preserve existing extra fields on update** — Spoolman's API replaces the entire `extra` object on update rather than merging; sync logic must read existing extra fields first, merge in updated values, then write the combined set to avoid clobbering fields set by other systems (e.g. `active_toolhead` set by the middleware)
 
 ### AFC Integration
-- [P1] **Direct AFC lane control from tag data** — use AFC's SET_COLOR, SET_MATERIAL, SET_WEIGHT commands to pass tag data directly to AFC without requiring Spoolman. Enables Spoolman-optional operation. With Spoolman: SET_SPOOL_ID (full integration) + SET_COLOR (immediate LED). Without Spoolman: SET_COLOR + SET_MATERIAL + SET_WEIGHT from tag data only. Middleware change — scanner already provides all data via MQTT. Ref: https://www.armoredturtle.xyz/docs/afc-klipper-add-on/klipper/internal/spool.html
+- ~~[P1] **Direct AFC lane control from tag data** — implemented in middleware v1.5.0. SET_COLOR, SET_MATERIAL, SET_WEIGHT sent from tag data without Spoolman. Works with afc_stage (shared scanner) and afc_lane (per-lane scanner).~~
 
 ### Architecture / Overlap to Resolve
 - [P1] **Skip redundant Spoolman syncs** — every tag placement triggers a PATCH even if nothing changed. Add local cache: if UID + weight + material match last sync, skip the API call. Cache invalidated by middleware MQTT write commands or 2-hour TTL. See `docs/deep-thoughts.md` for design questions around cache invalidation and source-of-truth ownership.
@@ -80,6 +80,9 @@
 - [P2] **Scanner vs middleware sync architecture review** — deep dive needed into who owns what. Scanner creates spools, middleware updates weight, both can PATCH Spoolman. Risk of duplicate work, race conditions, and conflicting sources of truth. See `docs/deep-thoughts.md` for full analysis.
 
 ## Completed
+- **Scanner device ID on web UI** — device ID displayed on landing page
+- **Unified installer** — `spoolsense-installer` repo with interactive CLI for scanner + middleware setup
+- **Direct AFC lane control from tag data** — middleware v1.5.0 sends SET_COLOR/SET_MATERIAL/SET_WEIGHT without Spoolman
 - **NTAG215 / UID-only tags** — ISO14443A detection via PN5180ISO14443, UID published as `GENERIC_TAG_DETECTED`, LCD shows "Generic Tag / UID scan only"
 - **Tag classification model** — `TagProtocol`, `TagKind`, `TagScanResult` with UID-length heuristic
 - **LED FreeRTOS task** — non-blocking flash (3 white flashes on scan), persistent filament color after tag removal, breathing animation for low spool (≤100g)
