@@ -899,11 +899,15 @@ void WebServerManager::handleApiWriteTag() {
         return;
     }
 
-    // Parse color
+    // Parse color — only when explicitly provided, reject invalid
     uint8_t color[4] = {0};
-    const char* colorStr = doc["color"] | "";
-    if (!parseHexColor(colorStr, color)) {
-        // Non-fatal — color stays zero if not provided or invalid
+    bool hasValidColor = false;
+    if (doc.containsKey("color")) {
+        const char* colorStr = doc["color"] | "";
+        if (parseHexColor(colorStr, color)) {
+            hasValidColor = true;
+        }
+        // If color key present but invalid, skip — don't write zeros
     }
 
     // Parse material type — accept either integer or string name
@@ -945,8 +949,8 @@ void WebServerManager::handleApiWriteTag() {
         NFCManager::getInstance().enqueueWrite(req);
     }
 
-    // 3. Color (only if explicitly provided)
-    if (doc.containsKey("color")) {
+    // 3. Color (only if explicitly provided and valid hex)
+    if (hasValidColor) {
         req.request_id = base_id + 2;
         req.type = NFCWriteType::CHANGE_COLOR;
         memcpy(req.data.new_color, color, 4);
