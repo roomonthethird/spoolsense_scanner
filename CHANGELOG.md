@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.5.3] - 2026-03-24 — NFC+ Registration, Material Auto-fill, Web UI Polish
+
+### Added
+- NFC+ Registration page at /register/uid — register plain NFC tags in Spoolman using UID as identifier. No data written to the tag.
+- Shared material auto-fill — selecting a material auto-fills nozzle temps (±10°C), bed temps (±5°C), and density across all writer pages
+- Type-to-search for material and brand fields on all writer pages (replaces dropdowns). TigerTag API expands options when reachable, hardcoded fallback for offline use.
+- OpenTag3D logo on landing page card
+- NFC+ nav link added to all pages
+- NFC+ Registration card on landing page
+
+### Fixed
+- Nav bar: all links present on all pages with consistent ordering
+- Nav bar: flex-wrap prevents links from being hidden on narrow screens
+- Landing page: added missing OpenTag3D, Troubleshooting, and NFC+ cards
+- Landing page: real logos for OpenPrintTag, TigerTag, OpenTag3D cards
+
+---
+
 ## [1.5.2] - 2026-03-23 — Troubleshooting & TigerTag API
 
 ### Added
