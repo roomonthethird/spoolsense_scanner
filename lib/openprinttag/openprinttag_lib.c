@@ -682,6 +682,10 @@ static opt_error_t update_region_field(opt_tag_t *tag, opt_region_info_t *region
 
     /* Check if it fits */
     if (new_offset > region->size) {
+#ifdef DEBUG
+        printf("[OPT] Region overflow: key=%d new_offset=%zu region_size=%u\n",
+               (int)update->key, new_offset, (unsigned)region->size);
+#endif
         return OPT_ERR_REGION_OVERFLOW;
     }
 
