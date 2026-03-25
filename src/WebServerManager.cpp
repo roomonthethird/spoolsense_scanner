@@ -899,11 +899,15 @@ void WebServerManager::handleApiWriteTag() {
         return;
     }
 
-    // Parse color
+    // Parse color — only when explicitly provided, reject invalid
     uint8_t color[4] = {0};
-    const char* colorStr = doc["color"] | "";
-    if (!parseHexColor(colorStr, color)) {
-        // Non-fatal — color stays zero if not provided or invalid
+    bool hasValidColor = false;
+    if (doc.containsKey("color")) {
+        const char* colorStr = doc["color"] | "";
+        if (parseHexColor(colorStr, color)) {
+            hasValidColor = true;
+        }
+        // If color key present but invalid, skip — don't write zeros
     }
 
     // Parse material type — accept either integer or string name
@@ -929,35 +933,45 @@ void WebServerManager::handleApiWriteTag() {
     req.suppress_sync = 1;  // batch write — suppress individual Spoolman syncs
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
 
-    // 1. Material type
-    req.request_id = base_id;
-    req.type = NFCWriteType::CHANGE_FILAMENT_TYPE;
-    req.data.new_material_type = mat_type;
-    NFCManager::getInstance().enqueueWrite(req);
+    // 1. Material type (only if explicitly provided)
+    if (doc.containsKey("material_type")) {
+        req.request_id = base_id;
+        req.type = NFCWriteType::CHANGE_FILAMENT_TYPE;
+        req.data.new_material_type = mat_type;
+        NFCManager::getInstance().enqueueWrite(req);
+    }
 
-    // 2. Initial weight
-    req.request_id = base_id + 1;
-    req.type = NFCWriteType::SET_INITIAL_WEIGHT;
-    req.data.consumed_weight = initial_weight_g;  // consumed_weight field reused for initial
-    NFCManager::getInstance().enqueueWrite(req);
+    // 2. Initial weight (only if explicitly provided)
+    if (doc.containsKey("initial_weight_g")) {
+        req.request_id = base_id + 1;
+        req.type = NFCWriteType::SET_INITIAL_WEIGHT;
+        req.data.consumed_weight = initial_weight_g;
+        NFCManager::getInstance().enqueueWrite(req);
+    }
 
-    // 3. Color
-    req.request_id = base_id + 2;
-    req.type = NFCWriteType::CHANGE_COLOR;
-    memcpy(req.data.new_color, color, 4);
-    NFCManager::getInstance().enqueueWrite(req);
+    // 3. Color (only if explicitly provided and valid hex)
+    if (hasValidColor) {
+        req.request_id = base_id + 2;
+        req.type = NFCWriteType::CHANGE_COLOR;
+        memcpy(req.data.new_color, color, 4);
+        NFCManager::getInstance().enqueueWrite(req);
+    }
 
-    // 4. Manufacturer
-    req.request_id = base_id + 3;
-    req.type = NFCWriteType::SET_BRAND_NAME;
-    strncpy(req.data.brand_name, mfr, sizeof(req.data.brand_name) - 1);
-    NFCManager::getInstance().enqueueWrite(req);
+    // 4. Manufacturer (only if explicitly provided and non-empty)
+    if (doc.containsKey("manufacturer") && mfr[0] != '\0') {
+        req.request_id = base_id + 3;
+        req.type = NFCWriteType::SET_BRAND_NAME;
+        strncpy(req.data.brand_name, mfr, sizeof(req.data.brand_name) - 1);
+        NFCManager::getInstance().enqueueWrite(req);
+    }
 
-    // 5. Consumed weight (sets remaining)
-    req.request_id = base_id + 4;
-    req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
-    req.data.consumed_weight = consumed_g;
-    NFCManager::getInstance().enqueueWrite(req);
+    // 5. Consumed weight (only if both remaining_g and initial_weight_g provided)
+    if (doc.containsKey("remaining_g") && doc.containsKey("initial_weight_g")) {
+        req.request_id = base_id + 4;
+        req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
+        req.data.consumed_weight = consumed_g;
+        NFCManager::getInstance().enqueueWrite(req);
+    }
 
     // 6. Spoolman ID (optional)
     if (spoolman_id > 0) {

@@ -571,6 +571,15 @@ ISO15693ErrorCode PN5180ISO15693::newpasswordICODESLIX2(uint8_t *newpassword, ui
  *   -1 = No card detected
  *   >0 = Error code
  */
+// Reset transceiver to idle and clear all IRQ flags. Called on every error
+// path to ensure clean state for the next command. Leaves transceiver in idle
+// (not transceive) — the next sendData() sets transceive mode.
+void PN5180ISO15693::cleanupTransceiver() {
+  writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFF8);  // force idle
+  vTaskDelay(1);
+  clearIRQStatus(0x000FFFFF);  // clear all IRQ flags
+}
+
 ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmdLen, uint8_t **resultPtr) {
 #ifdef DEBUG
   PN5180DEBUG(F("Issue Command 0x"));
@@ -579,24 +588,36 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
 #endif
 
   // Clear stale IRQ bits from any previous command before starting a new transaction.
-  // RX_SOF_DET_IRQ_STAT and RX_IRQ_STAT are sticky and must be cleared explicitly;
-  // otherwise the post-send checks below can fire on leftover state from the prior command
-  // (e.g. getInventory) and cause readSingleBlock to fail or return garbage.
   clearIRQStatus(0xffffffff);
 
   sendData(cmd, cmdLen);
-  delay(10);
+  vTaskDelay(pdMS_TO_TICKS(10));  // yield to scheduler instead of blocking
   uint32_t status = getIRQStatus();
+
+  // Check for general protocol errors before proceeding
+  if (status & GENERAL_ERROR_IRQ_STAT) {
+    cleanupTransceiver();
+    return ISO15693_EC_UNKNOWN_ERROR;
+  }
+
   if (0 == (status & RX_SOF_DET_IRQ_STAT)) {
+    cleanupTransceiver();
     return EC_NO_CARD;
   }
+
   unsigned long rxStart = millis();
   while (0 == (status & RX_IRQ_STAT)) {
     if (millis() - rxStart > 1000) {
       PN5180DEBUG(F("TIMEOUT waiting for RX_IRQ after SOF detected\n"));
+      cleanupTransceiver();
       return ISO15693_EC_UNKNOWN_ERROR;
     }
-    delay(1);  // tueddy fork: reduced from 10ms — cuts per-block write overhead significantly
+    // Check for general error during RX wait — fail fast instead of 1s timeout
+    if (status & GENERAL_ERROR_IRQ_STAT) {
+      cleanupTransceiver();
+      return ISO15693_EC_UNKNOWN_ERROR;
+    }
+    vTaskDelay(1);  // yield to scheduler instead of blocking
     status = getIRQStatus();
   }
 
@@ -615,6 +636,7 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
  *resultPtr = readData(len);
   if (0L == *resultPtr) {
     PN5180DEBUG(F("*** ERROR in readData!\n"));
+    cleanupTransceiver();
     return ISO15693_EC_UNKNOWN_ERROR;
   }
 
@@ -629,7 +651,7 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
 
   uint32_t irqStatus = getIRQStatus();
   if (0 == (RX_SOF_DET_IRQ_STAT & irqStatus)) { // no card detected
-     clearIRQStatus(TX_IRQ_STAT | IDLE_IRQ_STAT);
+     cleanupTransceiver();
      return EC_NO_CARD;
   }
 
@@ -643,6 +665,7 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
     PN5180DEBUG(strerror((ISO15693ErrorCode)errorCode));
     PN5180DEBUG("\n");
 
+    cleanupTransceiver();
     if (errorCode >= 0xA0) { // custom command error codes
       return ISO15693_EC_CUSTOM_CMD_ERROR;
     }
@@ -655,7 +678,7 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
   }
 #endif
 
-  clearIRQStatus(RX_SOF_DET_IRQ_STAT | IDLE_IRQ_STAT | TX_IRQ_STAT | RX_IRQ_STAT);
+  clearIRQStatus(0x000FFFFF);  // clear ALL IRQ flags after successful command
   return ISO15693_EC_OK;
 }
 

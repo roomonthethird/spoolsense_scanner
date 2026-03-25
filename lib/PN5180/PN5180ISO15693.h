@@ -43,6 +43,7 @@ public:
                  int8_t SCKpin = -1, int8_t MISOpin = -1, int8_t MOSIpin = -1);
 
 private:
+  void cleanupTransceiver();
   ISO15693ErrorCode issueISO15693Command(uint8_t *cmd, uint8_t cmdLen, uint8_t **resultPtr);
 public:
   ISO15693ErrorCode getInventory(uint8_t *uid);

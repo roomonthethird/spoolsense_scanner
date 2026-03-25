@@ -74,6 +74,7 @@ enum PN5180TransceiveStat {
 #define TX_RFOFF_IRQ_STAT   (1<<8)  // RF Field OFF in PCD IRQ
 #define TX_RFON_IRQ_STAT    (1<<9)  // RF Field ON in PCD IRQ
 #define RX_SOF_DET_IRQ_STAT (1<<14) // RF SOF Detection IRQ
+#define GENERAL_ERROR_IRQ_STAT (1<<17) // General error IRQ (protocol/parameter errors)
 
 class PN5180 {
 private:

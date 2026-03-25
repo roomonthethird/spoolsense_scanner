@@ -52,8 +52,12 @@ opt_error_t HardwareNFCConnection::halWritePage(void* ctx, uint8_t page, const u
     if (err != ISO15693_EC_OK) {
         Serial.printf("HardwareNFC: writeSingleBlock failed on page %d: %s (0x%02X)\n",
                  page, self->nfc_->strerror(err), (int)err);
+        vTaskDelay(pdMS_TO_TICKS(5));  // yield even on failure to prevent starvation on retries
         return OPT_ERR_NFC_WRITE;
     }
+    // Yield to FreeRTOS scheduler between block writes to prevent
+    // RTOS starvation that causes NFC connection drops after ~5 blocks
+    vTaskDelay(pdMS_TO_TICKS(5));
     return OPT_OK;
 }
 
