@@ -146,7 +146,7 @@ void NFCManager::startScanTask() {
     xTaskCreatePinnedToCore(
         scanTaskFunc,
         "NFCScanTask",
-        4096,
+        6144,
         this,
         1,
         &scanTaskHandle,

@@ -313,16 +313,23 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         char colorHex[8];
         snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
                  s.primary_color[0], s.primary_color[1], s.primary_color[2]);
-        char json[384];
-        snprintf(json, sizeof(json),
+        char json[512];
+        int len = snprintf(json, sizeof(json),
                  "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":true,"
                  "\"material_type\":\"%s\","
                  "\"material_name\":\"%s\",\"color\":\"%s\",\"manufacturer\":\"%s\","
                  "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
-                 "\"blank\":false}",
+                 "\"blank\":false",
                  s.spool_id, s.material_name, s.material_name, colorHex,
                  s.manufacturer, s.kg_remaining * 1000.0f, s.initial_weight_g,
                  s.spoolman_id);
+        if (s.min_print_temp != 0) len += snprintf(json + len, sizeof(json) - len, ",\"min_print_temp\":%d", s.min_print_temp);
+        if (s.max_print_temp != 0) len += snprintf(json + len, sizeof(json) - len, ",\"max_print_temp\":%d", s.max_print_temp);
+        if (s.min_bed_temp != 0)   len += snprintf(json + len, sizeof(json) - len, ",\"min_bed_temp\":%d", s.min_bed_temp);
+        if (s.max_bed_temp != 0)   len += snprintf(json + len, sizeof(json) - len, ",\"max_bed_temp\":%d", s.max_bed_temp);
+        if (s.density > 0.0f)      len += snprintf(json + len, sizeof(json) - len, ",\"density\":%.2f", s.density);
+        if (s.diameter > 0.0f)     len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
+        snprintf(json + len, sizeof(json) - len, "}");
         publishToHA("tag/state", json, true);
     }
 
