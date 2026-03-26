@@ -121,6 +121,28 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           </section>
 
           <section>
+            <h2 class="section-title">PrusaLink</h2>
+            <div class="hint" style="margin-bottom:12px">Connect to a Prusa printer for automatic filament tracking. Get the API key from your printer's web interface.</div>
+            <div class="toggle-row" style="margin-bottom:14px">
+              <span class="toggle-label">Enable PrusaLink</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="prusalink_on" />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div id="prusalink_fields" style="display:none">
+              <div class="field">
+                <label for="prusalink_url">PrusaLink URL</label>
+                <input id="prusalink_url" type="text" placeholder="http://192.168.1.100" />
+              </div>
+              <div class="field">
+                <label for="prusalink_api_key">API Key</label>
+                <input id="prusalink_api_key" type="password" placeholder="Enter PrusaLink API key" />
+              </div>
+            </div>
+          </section>
+
+          <section>
             <h2 class="section-title">Automation</h2>
             <div class="field">
               <label for="auto_mode">Mode</label>
@@ -181,6 +203,10 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       maybeSetValue('spoolman_url', cfg.spoolman_url);
       maybeSetValue('auto_mode', cfg.auto_mode);
       document.getElementById('spoolman_on').checked = !!cfg.spoolman_on;
+      document.getElementById('prusalink_on').checked = !!cfg.prusalink_on;
+      maybeSetValue('prusalink_url', cfg.prusalink_url);
+      if (cfg.prusalink_key_set) document.getElementById('prusalink_api_key').placeholder = '(set) Leave blank to keep';
+      document.getElementById('prusalink_fields').style.display = cfg.prusalink_on ? '' : 'none';
       document.getElementById('lcd_enabled').checked = !!cfg.lcd_enabled;
       document.getElementById('led_enabled').checked = !!cfg.led_enabled;
       // Password placeholders
@@ -191,6 +217,11 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
     // Show/hide Spoolman URL based on toggle
     document.getElementById('spoolman_on').addEventListener('change', function() {
       document.getElementById('spoolman_url_field').style.display = this.checked ? '' : 'none';
+    });
+
+    // Show/hide PrusaLink fields based on toggle
+    document.getElementById('prusalink_on').addEventListener('change', function() {
+      document.getElementById('prusalink_fields').style.display = this.checked ? '' : 'none';
     });
 
     document.getElementById('configForm').addEventListener('submit', function(e) {
@@ -211,7 +242,10 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         spoolman_url: document.getElementById('spoolman_url').value.trim(),
         auto_mode: parseInt(document.getElementById('auto_mode').value) || 0,
         lcd_enabled: document.getElementById('lcd_enabled').checked ? 1 : 0,
-        led_enabled: document.getElementById('led_enabled').checked ? 1 : 0
+        led_enabled: document.getElementById('led_enabled').checked ? 1 : 0,
+        prusalink_on: document.getElementById('prusalink_on').checked ? 1 : 0,
+        prusalink_url: document.getElementById('prusalink_url').value.trim(),
+        prusalink_api_key: document.getElementById('prusalink_api_key').value
       };
 
       fetch('/api/config', {

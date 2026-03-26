@@ -37,6 +37,7 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 * **MQTT Integration:** Publishes spool state to MQTT for use by the SpoolSense middleware or any MQTT subscriber. Includes optional Home Assistant auto-discovery.
 * **Automatic Spoolman Registration:** When a tagged spool is scanned, the scanner automatically creates or updates the spool entry in Spoolman — no manual data entry needed. If a tag is re-written with different filament, the old spool is automatically archived and a new one created. Requires the `nfc_id` extra field in Spoolman (the [installer](https://github.com/SpoolSense/spoolsense-installer) can create this for you).
 * **Device ID on Landing Page:** The scanner's unique device ID is displayed prominently on the home page for easy middleware configuration.
+* **PrusaLink Integration (Experimental):** Automatic print monitoring and filament tracking for Prusa printers via PrusaLink API. Pre-print filament mismatch and temperature warnings. Multi-tool XL support. Enable via web config at `spoolsense.local/config`. **Looking for testers — if you have a Prusa printer, please try it and report issues.**
 * **LCD Display (optional):** Displays device status, NFC scan results, and system information.
 * **Status LED:** Visual feedback for boot, WiFi, tag detection, write progress, and filament color display.
 

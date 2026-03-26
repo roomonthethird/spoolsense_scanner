@@ -34,6 +34,7 @@ public:
     void flashParseFailed();    // 1× red 100ms
     void flashWriteSuccess();   // 1× green 100ms
     void flashWriteFailure();   // 1× red 100ms
+    void flashWarning();        // 3× yellow 150ms on/off
 
     void setFilamentColorFromHex(const char* hex);
 
@@ -54,6 +55,7 @@ private:
         PARSE_FAILED,   // 1× red 100ms
         WRITE_SUCCESS,  // 1× green 100ms
         WRITE_FAILURE,  // 1× red 100ms
+        WARNING,        // 3× yellow 150ms on/off
     };
 
     struct FlashReq {

@@ -195,6 +195,10 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
         case AppMessageType::HA_UPDATE_REMAINING:
             handleHAUpdateRemaining(msg);
             break;
+
+        case AppMessageType::PRINTER_WARNING:
+            handlePrinterWarning(msg);
+            break;
     }
 }
 
@@ -227,23 +231,44 @@ void ApplicationManager::handlePrintStarted(const AppMessage& msg) {
 }
 
 void ApplicationManager::handlePrintEnded(const AppMessage& msg) {
-    Serial.printf("EVENT: PrintEnded - job_id=%d, filament=%.2fg, canceled=%s\n",
-        msg.payload.printEnded.job_id,
-        msg.payload.printEnded.filament_used_grams,
-        msg.payload.printEnded.canceled ? "true" : "false");
+    const auto& pe = msg.payload.printEnded;
+    Serial.printf("EVENT: PrintEnded - job_id=%d, filament=%.2fg, canceled=%s, tools=%d\n",
+        pe.job_id, pe.filament_used_grams,
+        pe.canceled ? "true" : "false", pe.tool_count);
+
+    if (pe.tool_count > 1) {
+        for (int i = 0; i < pe.tool_count; i++) {
+            Serial.printf("  Tool %d: %.2fg\n", i, pe.filament_per_tool[i]);
+        }
+    }
 
     if (currentState == AppState::MONITORING_PRINT) {
-        finishPrint(msg.payload.printEnded.filament_used_grams, msg.payload.printEnded.canceled);
+        finishPrint(pe.filament_used_grams, pe.canceled);
     }
     currentState = AppState::IDLE;
 
-    // Publish printer state to HA
+    // Publish printer state to HA — include per-tool data if multi-head
     {
-        char json[128];
-        snprintf(json, sizeof(json),
-                 "{\"state\":\"idle\",\"last_job_id\":%d,\"filament_used_g\":%.1f}",
-                 msg.payload.printEnded.job_id,
-                 msg.payload.printEnded.filament_used_grams);
+        char json[384];
+        int n = snprintf(json, sizeof(json),
+                 "{\"state\":\"idle\",\"last_job_id\":%d,\"filament_used_g\":%.1f",
+                 pe.job_id, pe.filament_used_grams);
+
+        if (pe.tool_count > 1 && n > 0 && static_cast<size_t>(n) < sizeof(json) - 2) {
+            n += snprintf(json + n, sizeof(json) - n, ",\"tool_count\":%d,\"per_tool\":[", pe.tool_count);
+            for (int i = 0; i < pe.tool_count && static_cast<size_t>(n) < sizeof(json) - 10; i++) {
+                if (i > 0) json[n++] = ',';
+                n += snprintf(json + n, sizeof(json) - n, "%.1f", pe.filament_per_tool[i]);
+            }
+            if (static_cast<size_t>(n) < sizeof(json) - 2) {
+                json[n++] = ']';
+            }
+        }
+
+        if (static_cast<size_t>(n) < sizeof(json) - 2) {
+            json[n++] = '}';
+            json[n] = '\0';
+        }
         publishToHA("printer/state", json, true);
     }
 }
@@ -788,6 +813,43 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
     SpoolmanManager::getInstance().enqueueSync(req);
 }
 #endif
+
+void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
+    const auto& w = msg.payload.printerWarning;
+    Serial.printf("EVENT: PrinterWarning type=%s expected=%s actual=%s\n",
+                  w.warning_type, w.expected, w.actual);
+
+    // Show on LCD
+    if (lcdManager) {
+        if (strcmp(w.warning_type, "filament_mismatch") == 0) {
+            char line2[17];
+            snprintf(line2, sizeof(line2), "%.3s!=%.3s WRONG!", w.expected, w.actual);
+            lcdManager->updateScreen("WRONG FILAMENT!", line2);
+        } else if (strcmp(w.warning_type, "temp_exceeds_max") == 0) {
+            char line2[17];
+            snprintf(line2, sizeof(line2), "%.0fC>%dC max", w.gcode_temp, w.tag_max_temp);
+            lcdManager->updateScreen("TEMP WARNING!", line2);
+        }
+    }
+
+#ifdef ENABLE_STATUS_LED
+    extern LEDManager ledManager;
+    ledManager.flashWarning();
+#endif
+
+    // Publish to HA
+    char json[192];
+    if (strcmp(w.warning_type, "filament_mismatch") == 0) {
+        snprintf(json, sizeof(json),
+                 "{\"warning\":\"%s\",\"expected\":\"%s\",\"loaded\":\"%s\"}",
+                 w.warning_type, w.expected, w.actual);
+    } else {
+        snprintf(json, sizeof(json),
+                 "{\"warning\":\"%s\",\"gcode_temp\":%.0f,\"tag_max\":%d}",
+                 w.warning_type, w.gcode_temp, w.tag_max_temp);
+    }
+    publishToHA("printer/warning", json, false);
+}
 
 void ApplicationManager::publishToHA(const char* topicSuffix, const char* payload, bool retained) {
 #ifndef NATIVE_TEST

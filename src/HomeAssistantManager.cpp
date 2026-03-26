@@ -2,6 +2,7 @@
 #include "ApplicationManager.h"
 #include "ConfigurationManager.h"
 #include "ConversionUtils.h"
+#include "LEDManager.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
@@ -609,6 +610,25 @@ void HomeAssistantManager::publishDiscovery() {
         }
     }
 
+    // Printer warning sensor (filament mismatch, temp warnings from PrusaLink)
+    {
+        char payload[512];
+        int written = snprintf(payload, sizeof(payload),
+                               "{\"name\":\"Printer Warning\","
+                               "\"uniq_id\":\"spoolsense_%s_printer_warning\","
+                               "\"stat_t\":\"%s/printer/warning\","
+                               "\"val_tpl\":\"{{ value_json.warning }}\","
+                               "\"json_attr_t\":\"%s/printer/warning\","
+                               "\"avty_t\":\"%s/availability\","
+                               "\"ic\":\"mdi:alert-circle\","
+                               "\"ent_cat\":\"diagnostic\","
+                               "\"dev\":{\"ids\":[\"spoolsense_%s\"]}}",
+                               deviceId_, baseTopic, baseTopic, baseTopic, deviceId_);
+        if (written >= 0 && written < (int)sizeof(payload)) {
+            publishDiscoveryPayload("sensor", "printer_warning", payload);
+        }
+    }
+
     // Remove stale retained discovery configs from previous read entities.
     removeLegacyEntity("binary_sensor", "tag_present");
     removeLegacyEntity("sensor", "spool_uid");
@@ -810,6 +830,20 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         strncpy(command, commandPath, sizeof(command) - 1);
     }
     if (strcmp(command, "response") == 0) {
+        return;
+    }
+
+    // set_color: set the LED to a specific color from Spoolman lookup
+    // No tag required — this is sent by the middleware for UID-only tags
+    if (strcmp(command, "set_color") == 0) {
+        if (strlen(payload) == 6) {
+            uint8_t r, g, b;
+            if (sscanf(payload, "%2hhx%2hhx%2hhx", &r, &g, &b) == 3) {
+                Serial.printf("HomeAssistantManager: set_color #%s → RGB(%d,%d,%d)\n", payload, r, g, b);
+                extern LEDManager ledManager;
+                ledManager.showFilamentColor(r, g, b);
+            }
+        }
         return;
     }
 
