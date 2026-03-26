@@ -2,6 +2,7 @@
 #include "ApplicationManager.h"
 #include "ConfigurationManager.h"
 #include "ConversionUtils.h"
+#include "LEDManager.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
@@ -829,6 +830,20 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         strncpy(command, commandPath, sizeof(command) - 1);
     }
     if (strcmp(command, "response") == 0) {
+        return;
+    }
+
+    // set_color: set the LED to a specific color from Spoolman lookup
+    // No tag required — this is sent by the middleware for UID-only tags
+    if (strcmp(command, "set_color") == 0) {
+        if (strlen(payload) == 6) {
+            uint8_t r, g, b;
+            if (sscanf(payload, "%2hhx%2hhx%2hhx", &r, &g, &b) == 3) {
+                Serial.printf("HomeAssistantManager: set_color #%s → RGB(%d,%d,%d)\n", payload, r, g, b);
+                extern LEDManager ledManager;
+                ledManager.showFilamentColor(r, g, b);
+            }
+        }
         return;
     }
 
