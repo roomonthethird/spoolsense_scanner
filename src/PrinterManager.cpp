@@ -287,18 +287,24 @@ void PrinterManager::checkFilamentMismatch() {
             uint8_t tagMaterial = 0;
             opt_get_material_type(&spool.tag_data, &tagMaterial);
 
+            // Map openprinttag enum to PrusaLink filament_type strings
             const char* tagMaterialStr = nullptr;
             switch (tagMaterial) {
-                case 1: tagMaterialStr = "PLA"; break;
-                case 2: tagMaterialStr = "PETG"; break;
-                case 3: tagMaterialStr = "ABS"; break;
-                case 4: tagMaterialStr = "ASA"; break;
-                case 5: tagMaterialStr = "TPU"; break;
-                case 6: tagMaterialStr = "PA"; break;
-                case 7: tagMaterialStr = "PC"; break;
-                case 8: tagMaterialStr = "PVA"; break;
-                case 9: tagMaterialStr = "HIPS"; break;
-                case 10: tagMaterialStr = "PP"; break;
+                case OPT_MATERIAL_TYPE_PLA:  tagMaterialStr = "PLA"; break;
+                case OPT_MATERIAL_TYPE_PETG: tagMaterialStr = "PETG"; break;
+                case OPT_MATERIAL_TYPE_TPU:  tagMaterialStr = "TPU"; break;
+                case OPT_MATERIAL_TYPE_ABS:  tagMaterialStr = "ABS"; break;
+                case OPT_MATERIAL_TYPE_ASA:  tagMaterialStr = "ASA"; break;
+                case OPT_MATERIAL_TYPE_PC:   tagMaterialStr = "PC"; break;
+                case OPT_MATERIAL_TYPE_PCTG: tagMaterialStr = "PCTG"; break;
+                case OPT_MATERIAL_TYPE_PP:   tagMaterialStr = "PP"; break;
+                case OPT_MATERIAL_TYPE_PA6:  tagMaterialStr = "PA"; break;
+                case OPT_MATERIAL_TYPE_PA11: tagMaterialStr = "PA"; break;
+                case OPT_MATERIAL_TYPE_PA12: tagMaterialStr = "PA"; break;
+                case OPT_MATERIAL_TYPE_PA66: tagMaterialStr = "PA"; break;
+                case OPT_MATERIAL_TYPE_HIPS: tagMaterialStr = "HIPS"; break;
+                case OPT_MATERIAL_TYPE_PVA:  tagMaterialStr = "PVA"; break;
+                case OPT_MATERIAL_TYPE_PET:  tagMaterialStr = "PET"; break;
                 default: tagMaterialStr = nullptr; break;
             }
 

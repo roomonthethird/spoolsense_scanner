@@ -60,7 +60,7 @@ struct AppMessage {
             float filament_used_grams;
             bool canceled;
             int tool_count;
-            float filament_per_tool[5];
+            float filament_per_tool[IPrinterStrategy::MAX_TOOLS];
         } printEnded;
         PrinterWarningPayload printerWarning;
     } payload;
@@ -238,7 +238,7 @@ private:
         if (!strategy_) return;
         int tc = strategy_->getToolCount();
         if (tc > 0) {
-            if (tc > 5) tc = 5;
+            if (tc > IPrinterStrategy::MAX_TOOLS) tc = IPrinterStrategy::MAX_TOOLS;
             cachedToolCount_ = tc;
             for (int i = 0; i < tc; i++) {
                 cachedFilamentPerTool_[i] = strategy_->getFilamentForTool(i);
@@ -252,7 +252,7 @@ private:
     float lastProgressPercent_ = 0.0f;
     uint8_t missingJobPollCount_ = 0;
     int cachedToolCount_ = 0;
-    float cachedFilamentPerTool_[5] = {0};
+    float cachedFilamentPerTool_[IPrinterStrategy::MAX_TOOLS] = {0};
     IPrinterStrategy* strategy_ = nullptr;
 };
 
@@ -481,18 +481,39 @@ bool test_single_tool_has_zero_tool_count() {
 
 bool test_multi_tool_per_tool_data() {
     reset();
-    // Set per-tool data on mock
+    float perTool[] = {15.0f, 20.0f, 10.0f};
     mock.setPrinting(200, 45.0f);
-    // MockPrinterStrategy doesn't have per-tool setters yet,
-    // but the IPrinterStrategy interface defaults return 0 tool count.
-    // For this test, we verify that with 0 tools, no per-tool data is sent.
-    pm.poll();
+    mock.setPerToolData(3, perTool);
+    pm.poll();  // start → caches per-tool data
 
     mock.setFinished(100.0f);
-    pm.poll();
+    pm.poll();  // finish → emits cached per-tool in PRINT_ENDED
 
-    TEST_ASSERT_EQ(capturedToolCounts[0], 0);
+    TEST_ASSERT_EQ(capturedToolCounts[0], 3);
     TEST_ASSERT_FLOAT_NEAR(capturedFilament[0], 45.0f, 0.01f);
+    TEST_ASSERT_FLOAT_NEAR(capturedPerTool[0][0], 15.0f, 0.01f);
+    TEST_ASSERT_FLOAT_NEAR(capturedPerTool[0][1], 20.0f, 0.01f);
+    TEST_ASSERT_FLOAT_NEAR(capturedPerTool[0][2], 10.0f, 0.01f);
+    return true;
+}
+
+bool test_multi_tool_cached_on_job_replaced() {
+    reset();
+    float perTool1[] = {10.0f, 5.0f};
+    mock.setPrinting(100, 15.0f);
+    mock.setPerToolData(2, perTool1);
+    pm.poll();  // start job 100, cache [10, 5]
+
+    // Replace with new job that has different per-tool data
+    float perTool2[] = {30.0f};
+    mock.setPrinting(200, 30.0f);
+    mock.setPerToolData(1, perTool2);
+    pm.poll();  // should end 100 with cached [10, 5], start 200
+
+    // PRINT_ENDED for job 100 should use cached data, not new job's
+    TEST_ASSERT_EQ(capturedToolCounts[0], 2);
+    TEST_ASSERT_FLOAT_NEAR(capturedPerTool[0][0], 0.0f, 0.01f);  // 0% progress on job 100
+    TEST_ASSERT_FLOAT_NEAR(capturedPerTool[0][1], 0.0f, 0.01f);
     return true;
 }
 
@@ -542,6 +563,7 @@ int main() {
     RUN_TEST(test_zero_filament_no_deferred);
     RUN_TEST(test_single_tool_has_zero_tool_count);
     RUN_TEST(test_multi_tool_per_tool_data);
+    RUN_TEST(test_multi_tool_cached_on_job_replaced);
     RUN_TEST(test_no_strategy_does_nothing);
     RUN_TEST(test_paused_starts_tracking);
 

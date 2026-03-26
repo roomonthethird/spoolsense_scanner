@@ -77,6 +77,18 @@ public:
         deferredFilamentG_ = grams;
     }
 
+    void setPerToolData(int count, const float* grams) {
+        toolCount_ = (count > MAX_TOOLS) ? MAX_TOOLS : count;
+        for (int i = 0; i < toolCount_; i++) {
+            filamentPerTool_[i] = grams[i];
+        }
+    }
+
+    int getToolCount() const override { return toolCount_; }
+    float getFilamentForTool(int idx) const override {
+        return (idx >= 0 && idx < toolCount_) ? filamentPerTool_[idx] : 0.0f;
+    }
+
     int updateCalled_ = 0;
     int deferredCalled_ = 0;
 
@@ -92,4 +104,6 @@ public:
     float expectedBedTemp_ = 0.0f;
     int deferredJobId_ = -1;
     float deferredFilamentG_ = 0.0f;
+    int toolCount_ = 0;
+    float filamentPerTool_[MAX_TOOLS] = {0};
 };
