@@ -954,8 +954,16 @@ void WebServerManager::handleApiWriteTag() {
         fields.initial_weight_g = initial_weight_g;
     }
 
-    if (doc.containsKey("remaining_g") && doc.containsKey("initial_weight_g")) {
-        float consumed_g = initial_weight_g - remaining_g;
+    if (doc.containsKey("remaining_g")) {
+        // Use provided initial_weight_g, or read from existing tag if not specified
+        float base_weight = initial_weight_g;
+        if (!doc.containsKey("initial_weight_g")) {
+            CurrentSpoolState state;
+            if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
+                opt_get_actual_full_weight(&state.tag_data, &base_weight);
+            }
+        }
+        float consumed_g = base_weight - remaining_g;
         if (consumed_g < 0.0f) consumed_g = 0.0f;
         fields.has_consumed_weight = true;
         fields.consumed_weight = consumed_g;
@@ -1014,7 +1022,12 @@ void WebServerManager::handleApiWriteTag() {
     req.type = NFCWriteType::WRITE_ATOMIC;
     req.suppress_sync = 0;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
-    NFCManager::getInstance().enqueueWrite(req);
+
+    if (!NFCManager::getInstance().enqueueWrite(req)) {
+        NFCManager::getInstance().setAtomicWriteFields(AtomicWriteFields{});  // clear stale sidecar
+        sendError(503, "Write queue full");
+        return;
+    }
 
     _server.send(200, "application/json", "{\"success\":true}");
 }
