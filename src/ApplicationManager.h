@@ -2,6 +2,7 @@
 #define APPLICATION_MANAGER_H
 
 #include <cstdint>
+#include "IPrinterStrategy.h"  // for MAX_TOOLS constant
 
 #ifdef NATIVE_TEST
   #include "platform/NativePlatform.h"
@@ -120,7 +121,7 @@ struct AppMessage {
             bool canceled;
             // Per-tool data for XL multi-head (0 = single tool / unknown)
             int tool_count;
-            float filament_per_tool[5];
+            float filament_per_tool[IPrinterStrategy::MAX_TOOLS];
         } printEnded;
         SpoolDetectedPayload spoolDetected;
         SpoolUpdatedPayload spoolUpdated;

@@ -22,16 +22,21 @@ void PrinterManager::begin() {
     lastProgressPercent_ = 0.0f;
     missingJobPollCount_ = 0;
     mismatchWarned_ = false;
+    tempWarned_ = false;
+    validationPending_ = true;
+    cachedToolCount_ = 0;
+    memset(cachedFilamentPerTool_, 0, sizeof(cachedFilamentPerTool_));
     Serial.println("PrinterManager: Initialized");
 }
 
+// Fix #6: Check xTaskCreate return value
 void PrinterManager::startPollingTask() {
     if (pollingTaskHandle_) {
         Serial.println("PrinterManager: Polling task already running");
         return;
     }
 
-    xTaskCreate(
+    BaseType_t result = xTaskCreate(
         pollingTaskFunc,
         "PrinterPoll",
         POLLING_TASK_STACK,
@@ -39,7 +44,13 @@ void PrinterManager::startPollingTask() {
         POLLING_TASK_PRIORITY,
         &pollingTaskHandle_
     );
-    Serial.println("PrinterManager: Polling task started");
+
+    if (result == pdPASS) {
+        Serial.println("PrinterManager: Polling task started");
+    } else {
+        pollingTaskHandle_ = nullptr;
+        Serial.println("PrinterManager: ERROR — failed to create polling task");
+    }
 }
 
 void PrinterManager::pollingTaskFunc(void* param) {
@@ -57,7 +68,7 @@ void PrinterManager::setStrategy(IPrinterStrategy* strat) {
 }
 
 bool PrinterManager::isConnected() const {
-    return strategy_ && strategy_->isConnected();
+    return strategy_ != nullptr && strategy_->isConnected();
 }
 
 // ---------------------------------------------------------------------------
@@ -100,13 +111,14 @@ void PrinterManager::poll() {
 
     if (state_ == PrinterState::IDLE) {
         if (strcmp(jobState, "PRINTING") == 0 || strcmp(jobState, "PAUSED") == 0) {
-            handleJobDetected(jobId, totalFilamentG);
+            // Fix #2: Pass current progress so we don't lose it on mid-print detect
+            handleJobDetected(jobId, totalFilamentG, progress);
         }
     } else if (state_ == PrinterState::TRACKING) {
         // Job replaced?
         if (jobId != currentJobId_) {
             resolveAndSendJobEnd(currentJobId_, lastProgressPercent_, false, "job_replaced");
-            handleJobDetected(jobId, totalFilamentG);
+            handleJobDetected(jobId, totalFilamentG, progress);
             return;
         }
 
@@ -114,6 +126,14 @@ void PrinterManager::poll() {
 
         if (totalFilamentG > 0) {
             currentJobTotalFilamentG_ = totalFilamentG;
+        }
+
+        // Fix #1: Keep per-tool cache updated while tracking
+        cachePerToolData();
+
+        // Fix #3: Retry validation while tracking if it was pending
+        if (validationPending_) {
+            checkFilamentMismatch();
         }
 
         if (strcmp(jobState, "FINISHED") == 0) {
@@ -128,27 +148,53 @@ void PrinterManager::poll() {
 // handleJobDetected — IDLE → TRACKING
 // ---------------------------------------------------------------------------
 
-void PrinterManager::handleJobDetected(int jobId, float totalFilamentG) {
+// Fix #2: Accept initial progress so mid-print detection doesn't lose it
+void PrinterManager::handleJobDetected(int jobId, float totalFilamentG, float progressPercent) {
     state_ = PrinterState::TRACKING;
     currentJobId_ = jobId;
     currentJobTotalFilamentG_ = totalFilamentG;
-    lastProgressPercent_ = 0.0f;
+    lastProgressPercent_ = progressPercent;
     missingJobPollCount_ = 0;
     mismatchWarned_ = false;
+    tempWarned_ = false;
+    validationPending_ = true;
+
+    // Fix #1: Cache per-tool data at job start
+    cachePerToolData();
 
     AppMessage msg;
     msg.type = AppMessageType::PRINT_STARTED;
     msg.payload.printStarted.job_id = jobId;
     ApplicationManager::getInstance().sendMessage(msg);
 
-    Serial.printf("PrinterManager: Tracking job %d (filament: %.2fg)\n", jobId, totalFilamentG);
+    Serial.printf("PrinterManager: Tracking job %d (filament: %.2fg, progress: %.1f%%)\n",
+                  jobId, totalFilamentG, progressPercent);
 
     if (totalFilamentG <= 0) {
         Serial.printf("PrinterManager: WARNING — no filament metadata for job %d\n", jobId);
     }
 
-    // Check filament match on first detection
+    // Fix #3: Try validation now, but don't give up if spool isn't ready
     checkFilamentMismatch();
+}
+
+// ---------------------------------------------------------------------------
+// cachePerToolData — snapshot per-tool totals from strategy
+// ---------------------------------------------------------------------------
+
+void PrinterManager::cachePerToolData() {
+    if (!strategy_) return;
+
+    int toolCount = strategy_->getToolCount();
+    if (toolCount > 0) {
+        if (toolCount > IPrinterStrategy::MAX_TOOLS) {
+            toolCount = IPrinterStrategy::MAX_TOOLS;
+        }
+        cachedToolCount_ = toolCount;
+        for (int i = 0; i < toolCount; i++) {
+            cachedFilamentPerTool_[i] = strategy_->getFilamentForTool(i);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +209,7 @@ void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
                   jobId, reason, progressPercent, currentJobTotalFilamentG_);
 
     // Try deferred filament lookup if we have no data
-    if (currentJobTotalFilamentG_ <= 0.0f && strategy_ && allowDeferred) {
+    if (currentJobTotalFilamentG_ <= 0.0f && strategy_ != nullptr && allowDeferred) {
         float deferred = strategy_->fetchDeferredFilament(jobId);
         if (deferred > 0.0f) {
             currentJobTotalFilamentG_ = deferred;
@@ -180,15 +226,13 @@ void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
     msg.payload.printEnded.filament_used_grams = filamentUsed;
     msg.payload.printEnded.canceled = canceled;
 
-    // Populate per-tool data (XL multi-head)
-    msg.payload.printEnded.tool_count = 0;
-    if (strategy_ && strategy_->getToolCount() > 0) {
-        int tc = strategy_->getToolCount();
-        if (tc > 5) tc = 5;
-        msg.payload.printEnded.tool_count = tc;
-        for (int i = 0; i < tc; i++) {
+    // Fix #1: Use cached per-tool data instead of reading from strategy
+    // (strategy may already have the replacement job's data on job_replaced path)
+    if (cachedToolCount_ > 0) {
+        msg.payload.printEnded.tool_count = cachedToolCount_;
+        for (int i = 0; i < cachedToolCount_; i++) {
             msg.payload.printEnded.filament_per_tool[i] =
-                (progressPercent / 100.0f) * strategy_->getFilamentForTool(i);
+                (progressPercent / 100.0f) * cachedFilamentPerTool_[i];
         }
     }
 
@@ -203,6 +247,10 @@ void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
     lastProgressPercent_ = 0.0f;
     missingJobPollCount_ = 0;
     mismatchWarned_ = false;
+    tempWarned_ = false;
+    validationPending_ = true;
+    cachedToolCount_ = 0;
+    memset(cachedFilamentPerTool_, 0, sizeof(cachedFilamentPerTool_));
 }
 
 void PrinterManager::handleJobDisappeared() {
@@ -215,78 +263,94 @@ void PrinterManager::handleJobDisappeared() {
 
 // ---------------------------------------------------------------------------
 // checkFilamentMismatch — compare gcode metadata vs NFC tag
+// Fix #3: Retries during tracking, separate flags for mismatch vs temp
 // ---------------------------------------------------------------------------
 
 void PrinterManager::checkFilamentMismatch() {
-    if (!strategy_ || mismatchWarned_) return;
-
-    const char* expected = strategy_->getExpectedFilamentType();
-    if (expected[0] == '\0') return;  // no metadata available
+    if (!strategy_) return;
 
     // Get current spool from NFCManager
     CurrentSpoolState spool;
     if (!NFCManager::getInstance().getCurrentSpoolState(spool)) return;
-    if (!spool.present || !spool.tag_data_valid) return;
-
-    // Get material type from tag
-    uint8_t tagMaterial = 0;
-    opt_get_material_type(&spool.tag_data, &tagMaterial);
-    if (tagMaterial == 0) return;  // unknown material on tag
-
-    // Map tag material type to string for comparison
-    const char* tagMaterialStr = nullptr;
-    switch (tagMaterial) {
-        case 1: tagMaterialStr = "PLA"; break;
-        case 2: tagMaterialStr = "PETG"; break;
-        case 3: tagMaterialStr = "ABS"; break;
-        case 4: tagMaterialStr = "ASA"; break;
-        case 5: tagMaterialStr = "TPU"; break;
-        case 6: tagMaterialStr = "PA"; break;   // Nylon
-        case 7: tagMaterialStr = "PC"; break;
-        case 8: tagMaterialStr = "PVA"; break;
-        case 9: tagMaterialStr = "HIPS"; break;
-        case 10: tagMaterialStr = "PP"; break;
-        default: return;  // unknown type, skip check
+    if (!spool.present || !spool.tag_data_valid) {
+        // Spool not ready yet — leave validationPending_ true so we retry next poll
+        return;
     }
 
-    // Case-insensitive prefix match (gcode may say "PLA" or "PETG CF", tag says "PLA")
-    if (strncasecmp(expected, tagMaterialStr, strlen(tagMaterialStr)) != 0) {
-        mismatchWarned_ = true;
-        Serial.printf("PrinterManager: FILAMENT MISMATCH — gcode expects '%s', tag has '%s'\n",
-                      expected, tagMaterialStr);
+    // Spool data is available — we won't need to retry
+    validationPending_ = false;
 
-        AppMessage warn;
-        warn.type = AppMessageType::PRINTER_WARNING;
-        memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
-        strncpy(warn.payload.printerWarning.warning_type, "filament_mismatch",
-                sizeof(warn.payload.printerWarning.warning_type) - 1);
-        strncpy(warn.payload.printerWarning.expected, expected,
-                sizeof(warn.payload.printerWarning.expected) - 1);
-        strncpy(warn.payload.printerWarning.actual, tagMaterialStr,
-                sizeof(warn.payload.printerWarning.actual) - 1);
-        ApplicationManager::getInstance().sendMessage(warn);
-    } else {
-        Serial.printf("PrinterManager: Filament OK — gcode '%s' matches tag '%s'\n",
-                      expected, tagMaterialStr);
+    // --- Filament type mismatch check ---
+    if (!mismatchWarned_) {
+        const char* expected = strategy_->getExpectedFilamentType();
+        if (expected[0] != '\0') {
+            uint8_t tagMaterial = 0;
+            opt_get_material_type(&spool.tag_data, &tagMaterial);
+
+            const char* tagMaterialStr = nullptr;
+            switch (tagMaterial) {
+                case 1: tagMaterialStr = "PLA"; break;
+                case 2: tagMaterialStr = "PETG"; break;
+                case 3: tagMaterialStr = "ABS"; break;
+                case 4: tagMaterialStr = "ASA"; break;
+                case 5: tagMaterialStr = "TPU"; break;
+                case 6: tagMaterialStr = "PA"; break;
+                case 7: tagMaterialStr = "PC"; break;
+                case 8: tagMaterialStr = "PVA"; break;
+                case 9: tagMaterialStr = "HIPS"; break;
+                case 10: tagMaterialStr = "PP"; break;
+                default: tagMaterialStr = nullptr; break;
+            }
+
+            if (tagMaterialStr != nullptr) {
+                if (strncasecmp(expected, tagMaterialStr, strlen(tagMaterialStr)) != 0) {
+                    mismatchWarned_ = true;
+                    Serial.printf("PrinterManager: FILAMENT MISMATCH — gcode expects '%s', tag has '%s'\n",
+                                  expected, tagMaterialStr);
+
+                    AppMessage warn;
+                    warn.type = AppMessageType::PRINTER_WARNING;
+                    memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
+                    strncpy(warn.payload.printerWarning.warning_type, "filament_mismatch",
+                            sizeof(warn.payload.printerWarning.warning_type) - 1);
+                    strncpy(warn.payload.printerWarning.expected, expected,
+                            sizeof(warn.payload.printerWarning.expected) - 1);
+                    strncpy(warn.payload.printerWarning.actual, tagMaterialStr,
+                            sizeof(warn.payload.printerWarning.actual) - 1);
+                    ApplicationManager::getInstance().sendMessage(warn);
+                } else {
+                    mismatchWarned_ = true;  // matched — don't check again
+                    Serial.printf("PrinterManager: Filament OK — gcode '%s' matches tag '%s'\n",
+                                  expected, tagMaterialStr);
+                }
+            }
+        }
     }
 
-    // Temperature range check
-    float gcodeNozzle = strategy_->getExpectedNozzleTemp();
-    if (gcodeNozzle > 0.0f && spool.tag_data_valid) {
-        int16_t tagMaxTemp = 0;
-        opt_get_max_print_temp(&spool.tag_data, &tagMaxTemp);
-        if (tagMaxTemp > 0 && gcodeNozzle > static_cast<float>(tagMaxTemp) + 10.0f) {
-            Serial.printf("PrinterManager: TEMP WARNING — gcode %.0fC exceeds tag max %dC\n",
-                          gcodeNozzle, tagMaxTemp);
+    // --- Temperature range check (independent from filament type) ---
+    if (!tempWarned_) {
+        float gcodeNozzle = strategy_->getExpectedNozzleTemp();
+        if (gcodeNozzle > 0.0f) {
+            int16_t tagMaxTemp = 0;
+            opt_get_max_print_temp(&spool.tag_data, &tagMaxTemp);
+            if (tagMaxTemp > 0) {
+                if (gcodeNozzle > static_cast<float>(tagMaxTemp) + 10.0f) {
+                    tempWarned_ = true;
+                    Serial.printf("PrinterManager: TEMP WARNING — gcode %.0fC exceeds tag max %dC\n",
+                                  gcodeNozzle, tagMaxTemp);
 
-            AppMessage warn;
-            warn.type = AppMessageType::PRINTER_WARNING;
-            memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
-            strncpy(warn.payload.printerWarning.warning_type, "temp_exceeds_max",
-                    sizeof(warn.payload.printerWarning.warning_type) - 1);
-            warn.payload.printerWarning.gcode_temp = gcodeNozzle;
-            warn.payload.printerWarning.tag_max_temp = tagMaxTemp;
-            ApplicationManager::getInstance().sendMessage(warn);
+                    AppMessage warn;
+                    warn.type = AppMessageType::PRINTER_WARNING;
+                    memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
+                    strncpy(warn.payload.printerWarning.warning_type, "temp_exceeds_max",
+                            sizeof(warn.payload.printerWarning.warning_type) - 1);
+                    warn.payload.printerWarning.gcode_temp = gcodeNozzle;
+                    warn.payload.printerWarning.tag_max_temp = tagMaxTemp;
+                    ApplicationManager::getInstance().sendMessage(warn);
+                } else {
+                    tempWarned_ = true;  // within range — don't check again
+                }
+            }
         }
     }
 }

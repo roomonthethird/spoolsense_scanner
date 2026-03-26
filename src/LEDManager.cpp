@@ -209,6 +209,14 @@ void LEDManager::requestFlash(FlashType type) {
             setPixelColor(255, 0, 0);
             delay(100);
             break;
+        case FlashType::WARNING:
+            for (int i = 0; i < 3; i++) {
+                setPixelColor(255, 180, 0);
+                delay(150);
+                setPixelOff();
+                delay(150);
+            }
+            break;
         default:
             break;
     }

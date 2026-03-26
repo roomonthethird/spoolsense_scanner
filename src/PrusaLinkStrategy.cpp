@@ -37,14 +37,14 @@ void PrusaLinkStrategy::update() {
         mutexHeld = true;
     }
 
-    // Fetch printer info once (MMU, nozzle diameter)
-    if (!infoFetched_) {
-        fetchInfo();
-    }
-
-    // Fetch status first, then job details if active
-    if (fetchStatus() && hasJob_) {
-        fetchJob();
+    // Fetch status first. Once reachable, fetch static info once.
+    if (fetchStatus()) {
+        if (!infoFetched_) {
+            fetchInfo();
+        }
+        if (hasJob_) {
+            fetchJob();
+        }
     }
 
     if (mutexHeld) {
@@ -276,18 +276,20 @@ float PrusaLinkStrategy::fetchDeferredFilament(int expectedJobId) {
     const char* baseUrl = cfg.getPrusaLinkURL();
     const char* apiKey = cfg.getPrusaLinkAPIKey();
 
-    bool mutexHeld = false;
-    if (httpMutex_) {
-        if (xSemaphoreTake(httpMutex_, pdMS_TO_TICKS(10000)) != pdTRUE) return 0.0f;
-        mutexHeld = true;
-    }
-
     float result = 0.0f;
 
-    // Retry up to 3 times with backoff — job metadata may appear after completion
+    // Fix #4: Acquire/release mutex per attempt so we don't block HTTP
+    // traffic during backoff delays
     for (int attempt = 1; attempt <= 3; attempt++) {
         if (attempt > 1) {
             vTaskDelay(pdMS_TO_TICKS(attempt * 1000));
+        }
+
+        // Acquire mutex for this attempt only
+        if (httpMutex_ != nullptr) {
+            if (xSemaphoreTake(httpMutex_, pdMS_TO_TICKS(10000)) != pdTRUE) {
+                continue;
+            }
         }
 
         char url[URL_BUF];
@@ -307,20 +309,20 @@ float PrusaLinkStrategy::fetchDeferredFilament(int expectedJobId) {
 
             StaticJsonDocument<256> doc;
             if (!deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter))) {
-                float g = doc["file"]["meta"]["filament used [g]"] | 0.0f;
-                if (g > 0.0f) {
-                    result = g;
+                float filGrams = doc["file"]["meta"]["filament used [g]"] | 0.0f;
+                if (filGrams > 0.0f) {
+                    result = filGrams;
                     Serial.printf("PrusaLink: Deferred filament for job %d: %.2fg\n", expectedJobId, result);
                     http.end();
+                    if (httpMutex_ != nullptr) xSemaphoreGive(httpMutex_);
                     break;
                 }
             }
         }
         http.end();
-    }
 
-    if (mutexHeld) {
-        xSemaphoreGive(httpMutex_);
+        // Release mutex before backoff delay
+        if (httpMutex_ != nullptr) xSemaphoreGive(httpMutex_);
     }
     return result;
 }

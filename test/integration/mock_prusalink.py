@@ -148,6 +148,18 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send_json(200, resp)
 
+        elif self.path.startswith("/api/v1/job/"):
+            try:
+                requested_id = int(self.path.rsplit("/", 1)[1])
+            except ValueError:
+                self.send_error(400, "Invalid job id")
+                return
+            resp = mock.job_response()
+            if resp is None or requested_id != mock.job_id:
+                self.send_error(404)
+            else:
+                self._send_json(200, resp)
+
         elif self.path == "/api/v1/info":
             self._send_json(200, {
                 "mmu": False,

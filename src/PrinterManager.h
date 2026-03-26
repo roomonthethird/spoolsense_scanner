@@ -28,10 +28,11 @@ private:
 
     static void pollingTaskFunc(void* param);
 
-    void handleJobDetected(int jobId, float totalFilamentG);
+    void handleJobDetected(int jobId, float totalFilamentG, float progressPercent);
     void resolveAndSendJobEnd(int jobId, float progressPercent, bool allowDeferred, const char* reason);
     void handleJobDisappeared();
     void checkFilamentMismatch();
+    void cachePerToolData();
 
     PrinterState state_ = PrinterState::IDLE;
     int currentJobId_ = -1;
@@ -39,6 +40,12 @@ private:
     float lastProgressPercent_ = 0.0f;
     uint8_t missingJobPollCount_ = 0;
     bool mismatchWarned_ = false;
+    bool tempWarned_ = false;
+    bool validationPending_ = true;
+
+    // Cached per-tool data for the active job (not read from strategy at end time)
+    int cachedToolCount_ = 0;
+    float cachedFilamentPerTool_[IPrinterStrategy::MAX_TOOLS] = {0};
 
     IPrinterStrategy* strategy_ = nullptr;
 

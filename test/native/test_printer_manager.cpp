@@ -160,16 +160,17 @@ public:
 
         if (state_ == PrinterState::IDLE) {
             if (strcmp(jobState, "PRINTING") == 0 || strcmp(jobState, "PAUSED") == 0) {
-                handleJobDetected(jobId, totalFilamentG);
+                handleJobDetected(jobId, totalFilamentG, progress);
             }
         } else if (state_ == PrinterState::TRACKING) {
             if (jobId != currentJobId_) {
                 resolveAndSendJobEnd(currentJobId_, lastProgressPercent_, false, "job_replaced");
-                handleJobDetected(jobId, totalFilamentG);
+                handleJobDetected(jobId, totalFilamentG, progress);
                 return;
             }
             lastProgressPercent_ = progress;
             if (totalFilamentG > 0) currentJobTotalFilamentG_ = totalFilamentG;
+            cachePerToolData();
 
             if (strcmp(jobState, "FINISHED") == 0) {
                 resolveAndSendJobEnd(jobId, 100.0f, true, "finished");
@@ -180,12 +181,13 @@ public:
     }
 
 private:
-    void handleJobDetected(int jobId, float totalFilamentG) {
+    void handleJobDetected(int jobId, float totalFilamentG, float progressPercent) {
         state_ = PrinterState::TRACKING;
         currentJobId_ = jobId;
         currentJobTotalFilamentG_ = totalFilamentG;
-        lastProgressPercent_ = 0.0f;
+        lastProgressPercent_ = progressPercent;
         missingJobPollCount_ = 0;
+        cachePerToolData();
 
         AppMessage msg;
         msg.type = AppMessageType::PRINT_STARTED;
@@ -207,14 +209,12 @@ private:
         msg.payload.printEnded.filament_used_grams = filamentUsed;
         msg.payload.printEnded.canceled = (progressPercent < 100.0f);
 
-        // Per-tool data
-        if (strategy_ && strategy_->getToolCount() > 0) {
-            int tc = strategy_->getToolCount();
-            if (tc > 5) tc = 5;
-            msg.payload.printEnded.tool_count = tc;
-            for (int i = 0; i < tc; i++) {
+        // Per-tool data (from cache, not live strategy)
+        if (cachedToolCount_ > 0) {
+            msg.payload.printEnded.tool_count = cachedToolCount_;
+            for (int i = 0; i < cachedToolCount_; i++) {
                 msg.payload.printEnded.filament_per_tool[i] =
-                    (progressPercent / 100.0f) * strategy_->getFilamentForTool(i);
+                    (progressPercent / 100.0f) * cachedFilamentPerTool_[i];
             }
         }
 
@@ -225,6 +225,8 @@ private:
         currentJobTotalFilamentG_ = 0.0f;
         lastProgressPercent_ = 0.0f;
         missingJobPollCount_ = 0;
+        cachedToolCount_ = 0;
+        memset(cachedFilamentPerTool_, 0, sizeof(cachedFilamentPerTool_));
     }
 
     void handleJobDisappeared() {
@@ -232,11 +234,25 @@ private:
         resolveAndSendJobEnd(currentJobId_, progress, true, "job_disappeared");
     }
 
+    void cachePerToolData() {
+        if (!strategy_) return;
+        int tc = strategy_->getToolCount();
+        if (tc > 0) {
+            if (tc > 5) tc = 5;
+            cachedToolCount_ = tc;
+            for (int i = 0; i < tc; i++) {
+                cachedFilamentPerTool_[i] = strategy_->getFilamentForTool(i);
+            }
+        }
+    }
+
     PrinterState state_ = PrinterState::IDLE;
     int currentJobId_ = -1;
     float currentJobTotalFilamentG_ = 0.0f;
     float lastProgressPercent_ = 0.0f;
     uint8_t missingJobPollCount_ = 0;
+    int cachedToolCount_ = 0;
+    float cachedFilamentPerTool_[5] = {0};
     IPrinterStrategy* strategy_ = nullptr;
 };
 
