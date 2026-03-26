@@ -24,10 +24,17 @@
 - [P3] **Bambu Lab spool tags (Phase 2)** — best-effort metadata decode from unencrypted public pages. Community reverse engineering suggests some material/color bytes may be in the clear area. Fragile and undocumented.
 
 ### PN5180 Library
+- [P1] **FreeRTOS yields in SPI waits** — replace all `delay()` with `vTaskDelay()` in PN5180 library; blocking delays starve WiFi/RTOS tasks and are the most likely cause of NFC connection drops after ~5 sequential writes. See `pn5180-sequential-write-drop-analysis.md` for full comparison with 5180-research library.
+- [P1] **IRQ cleanup after every operation** — current lib clears IRQs at start of `issueISO15693Command` but not after completion; stale flags accumulate and cause false "no card" errors; change to `clearIRQStatus(0x000FFFFF)` on all exit paths
+- [P1] **Transceiver idle reset between writes** — add `SYSTEM_CONFIG & 0xFFFFFFF8` after each write to prevent stale transceiver state; research lib does this on every error path
+- [P1] **GENERAL_ERROR_IRQ_STAT checking** — add to read/write paths and RX wait loop; currently ignored, causing 1s timeout instead of fast fail on protocol errors
 - [P2] **`readData` buffer overload** — tueddy/hyutrn forks add `readData(int len, uint8_t *buffer)` which writes into a caller-provided buffer instead of heap-allocating; reduces heap churn on a memory-constrained device
+- [P2] **RF field on retry** — research lib retries 3x with 10ms delays and checks `RF_ACTIVE_ERROR`; current lib single attempt only
+- [P2] **Phase 1 ACK validation in mifareBlockWrite16** — current lib does no validation on the Phase 1 ACK; sends data to a card that may have already NAKed
+- [P2] **RX_PROTOCOL_ERROR + RX_DATA_INTEGRITY_ERROR checks on read** — research lib checks RX_STATUS bits 16-17; current lib only checks byte count
 - [P3] **`getInventoryMultiple()` research** — tueddy/hyutrn forks implement multi-tag inventory with 16-slot collision handling; investigate whether a scanner positioned between two spools could read both simultaneously; would need physical testing to determine if PN5180 RF field geometry supports it in practice
 - [P3] **`isCardPresent()` for ISO14443** — tueddy/hyutrn forks add a simple boolean card-presence check for Type A tags; could simplify and clean up the generic tag detection path
-- [P2] **Consider upgrading to hyutrn fork** — actively maintained (v2.3.7, Sept 2025), FreeRTOS-aware (reduced blocking delays), ~500 bytes smaller, fixes unknown manufacturer ID 0xFF; same API as tueddy so migration path is straightforward but requires constructor and call-site updates
+- [P3] **Consider upgrading to hyutrn fork** — actively maintained (v2.3.7, Sept 2025), FreeRTOS-aware (reduced blocking delays), ~500 bytes smaller, fixes unknown manufacturer ID 0xFF; same API as tueddy so migration path is straightforward but requires constructor and call-site updates
 
 ### Performance
 - [P2] **Instrument the write path** — add timing logs for each phase: format duration, number of blocks written, total write time, verify duration; output something like `format=320ms blocks=11 write=1840ms verify=410ms`; needed before any optimization to know where time is actually spent
@@ -35,10 +42,31 @@
 - [P3] **Blank vs. existing tag write time** — format step adds writes before the payload even starts; profile separately to understand if slow writes are blank-tag-only or affect rewrites too
 - [P3] **Write Multiple Blocks investigation** — check whether the SLIX2 tags in use support ISO15693 Write Multiple Blocks (command 0x24); if so, batching block writes could reduce round-trips; note: many tags do not support this command so verify against tag datasheet first
 
+### PrusaLink Integration (PR #35, feature/prusalink-integration)
+- ~~[P1] **Core PrusaLink polling** — PrusaLinkStrategy polls /api/v1/status + /api/v1/job + /api/v1/info; PrinterManager FreeRTOS task with IDLE/TRACKING state machine; filament deduction through existing PRINT_ENDED pipeline~~
+- ~~[P1] **Pre-print validation** — filament type mismatch + nozzle temp exceeds tag max warnings via PRINTER_WARNING message → LCD + LED yellow flash + HA MQTT~~
+- ~~[P1] **Per-tool XL support** — per-tool filament arrays parsed from gcode metadata, published to HA for multi-tool deduction~~
+- ~~[P1] **MMU detection** — auto-detected from /api/v1/info endpoint~~
+- ~~[P1] **Web config** — PrusaLink enable toggle, URL, API key in config page with NVS persistence~~
+- ~~[P1] **HA discovery** — printer_warning diagnostic sensor auto-discovered~~
+- ~~[P1] **Tests** — 17 native unit tests + mock PrusaLink server + 4 integration test scenarios~~
+- [P2] **Spool-to-tool mapping** — let XL users assign which spool is on which tool for per-tool deduction; currently deducts total from the one spool on the reader
+- [P3] **bgcode fallback** — parse filament from bgcode file header when job metadata unavailable; most modern PrusaLink firmware includes metadata so low priority
+
 ### Firmware / Infrastructure
 - ~~[P1] **OTA firmware updates** — support over-the-air updates via WiFi so deployed scanners can be updated without USB reflash; ESP32 Arduino OTA is available~~
+- [P1] **WiFi reconnection** — no reconnection logic if WiFi drops after boot; all network features dead with no recovery path
+- [P1] **cmd[1] buffer overflow in mifareBlockWrite16** — `uint8_t cmd[1]` should be `cmd[2]`; stack buffer overflow writing blockno at index 1
+- [P1] **Mutex gaps on shared NFC state** — `addToRecentSpools()` and `sendSpoolUpdatedMessage()` read `currentSpool.tag_data` without holding `tagMutex`; CBOR pointers can go stale if HTTP task triggers `requestCurrentSpool()` concurrently
+- [P2] **ESP.restart() during NFC write** — web config save and OTA can restart mid-write, corrupting tag; should suspend scan task and drain write queue first
 - [P2] **MQTT reconnect robustness** — audit whether `HomeAssistantManager` cleanly handles broker drops and reconnects in long-running deployments; verify subscriptions are re-established after reconnect
+- [P2] **NFC scan task stack** — currently 6144 bytes; `update_region_field` in openprinttag_lib.c puts 512 bytes on stack; bump to 8192 for safety margin
+- [P2] **HA publish queue silent drops** — queue depth is 6 with zero wait; messages silently dropped when full during network blips
+- [P2] **Spoolman HTTP connection reuse** — every API call creates/destroys a TCP connection; use `http.setReuse(true)` or persistent WiFiClient
 - [P3] **Configurable log verbosity** — add `LOG_LEVEL` define to `UserConfig.h` (e.g. DEBUG/INFO/WARN) to reduce serial noise in production without losing full output for debugging
+- [P3] **volatile bool for cross-core stop flags** — `HomeAssistantManager::stopRequested_` should be `std::atomic<bool>`
+- [P3] **NTP retry** — if NTP fails at boot, `time(nullptr)` returns epoch 0 for the rest of the session; retry in loop()
+- [P3] **CI / GitHub Actions** — add workflow to build firmware + run native tests on PRs; enables "require status checks" branch protection
 
 ### Web / UI
 - ~~**Status page** — add a landing page at `http://spoolsense.local/` showing current spool, WiFi signal, MQTT status, uptime, and free heap; makes the device debuggable without serial access~~
@@ -52,7 +80,7 @@
 - ~~**Tag reader view** — scan any tag, auto-detect the format (OpenPrintTag, OpenTag3D, TigerTag, UID-only), display all data in a clean read-only view; foundation for auto-populate and format-specific writing~~
 - ~~[P3] **OpenTag3D writer** — write OpenTag3D tags from the web UI; same NDEF + CBOR pattern as OpenPrintTag but with OpenTag3D MIME type and version handling; depends on OpenTag3D reader support~~
 - ~~**TigerTag writer** — write TigerTag format to NTAG213 tags from the web UI; fixed byte layout, no CBOR; unsigned only (ECDSA signing requires TigerTag private key); depends on TigerTag reader support~~
-- [P1] **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself
+- ~~[P1] **UID-only Spoolman registration** — scan a plain UID tag (NTAG215 etc.), display the UID, offer a "Register in Spoolman" button that creates a spool entry with that UID as `nfc_id`; no data written to the tag itself~~
 - [P2] **TigerTag SpoolmanDB mapping** — TigerTag maintains a Spoolman-compatible materials database at https://github.com/TigerTag-Project/TigerTag-RFID-Guide/tree/main/SpoolmanDB; live API at `https://api.tigertag.io/api:tigertag/SpoolmanDB/materials` returns 100 materials with id/material/density/extruder_temp/bed_temp; the `id` field matches the `material_id` in the TigerTag binary format (e.g. 38219=PLA, density=1.24); simplest approach: document that users should import `materials.json` into Spoolman so filament matching from TigerTag scans just works; longer term: hardcode top ~20 material densities in firmware for offline use
 
 ### Hardware / Build
@@ -81,6 +109,10 @@
 - [P2] **Scanner vs middleware sync architecture review** — deep dive needed into who owns what. Scanner creates spools, middleware updates weight, both can PATCH Spoolman. Risk of duplicate work, race conditions, and conflicting sources of truth. See `docs/deep-thoughts.md` for full analysis.
 
 ## Completed
+- **PrusaLink integration** — PR #35, full print monitoring + filament deduction + pre-print validation + per-tool XL + MMU detection + web config + HA discovery + 17 unit tests
+- **Community usermods directory** — `usermods/` with Jim's ESP32-S3-Zero + PN5180 enclosure; CODEOWNERS for contributor ownership
+- **NFC+ UID Registration** — register plain NFC tags in Spoolman using UID as identifier, web UI at `spoolsense.local`
+- **PN5180 library analysis** — full comparison with 5180-research library documented in `pn5180-sequential-write-drop-analysis.md`; root cause analysis for sequential write drops identified (FreeRTOS starvation, stale IRQs, no transceiver cleanup)
 - **Scanner device ID on web UI** — device ID displayed on landing page
 - **Unified installer** — `spoolsense-installer` repo with interactive CLI for scanner + middleware setup
 - **Direct AFC lane control from tag data** — middleware v1.5.0 sends SET_COLOR/SET_MATERIAL/SET_WEIGHT without Spoolman
