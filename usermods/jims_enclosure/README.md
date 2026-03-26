@@ -1,6 +1,6 @@
 # Jim's Scanner Enclosure v2
 
-A 3-piece enclosure for the SpoolSense scanner.
+A 3-piece enclosure for the SpoolSense scanner designed for the **ESP32-S3-Zero + PN5180** hardware configuration.
 
 ## Parts
 

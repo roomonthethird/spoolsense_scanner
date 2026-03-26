@@ -6,7 +6,7 @@ Community-contributed modifications for the SpoolSense scanner. Each subdirector
 
 | Mod | Author | Description |
 |-----|--------|-------------|
-| [jims_enclosure](jims_enclosure/) | Jim | 3-piece scanner enclosure (base, middle, inset) |
+| [jims_enclosure](jims_enclosure/) | Jim | 3-piece scanner enclosure for ESP32-S3-Zero + PN5180 |
 
 ## Contributing
 

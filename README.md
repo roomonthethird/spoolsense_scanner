@@ -112,13 +112,13 @@ Our first community-designed scanner case is available in the [usermods/](usermo
 
 | Design | Author | Description |
 |--------|--------|-------------|
-| [Jim's Enclosure v2](usermods/jims_enclosure/) | Jim | 3-piece scanner enclosure (base, middle, inset) |
+| [Jim's Enclosure v2](usermods/jims_enclosure/) | Jim | 3-piece enclosure for ESP32-S3-Zero + PN5180 |
 
 Have a design? See the [usermods contributing guide](usermods/README.md) to add yours.
 
 ### Designs Still Needed
 
-- **Standalone scanner case (ESP32-S3-Zero + AITRIP PN5180)** — smaller footprint variant
+- **Standalone scanner case (ESP32-WROOM-32 + PN5180)** — wall or desk mount with flat NFC placement area
 - **BoxTurtle AFC lane mount** — bracket or tray that positions the PN5180 antenna alongside an AFC BoxTurtle lane for tags on loaded spools
 
 If you have a design, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files, or submit a PR to `usermods/`.
