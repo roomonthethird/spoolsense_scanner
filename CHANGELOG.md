@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Atomic OpenPrintTag write** — /api/write-tag now builds a fresh CBOR tag and writes all fields in a single NFC pass (~5s vs ~25s). Eliminates sequential write drops, scan loop race conditions, and CBOR re-encoding overflow. Existing field values are preserved when not specified.
+
+### Fixed
+- Buffer overflow in mifareBlockWrite16 — cmd[1] wrote past 1-byte array (undefined behavior)
+- Mutex-less tag_data reads — sendSpoolUpdatedMessage and processWriteQueue now hold tagMutex when reading currentSpool
+- ESP.restart() during NFC write — scan task is now paused before restart to prevent tag corruption
+- NFCScanTask stack bumped 6144→8192 bytes
+
+---
+
 ## [1.5.5] - 2026-03-26
 
 ### Added

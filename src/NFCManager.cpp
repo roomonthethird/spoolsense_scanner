@@ -146,7 +146,7 @@ void NFCManager::startScanTask() {
     xTaskCreatePinnedToCore(
         scanTaskFunc,
         "NFCScanTask",
-        6144,
+        8192,
         this,
         1,
         &scanTaskHandle,
@@ -1315,9 +1315,11 @@ void NFCManager::processWriteQueue() {
             suppressReDetectionUid_[0] = '\0';
             batchHadSuppressSync_ = false;
 
-            // Send SpoolDetected to notify listeners (tests, MQTT, LCD) of final state.
-            // The suppress_spoolman_sync flag prevents Spoolman sync for write_spoolman_spool batches.
-            sendSpoolDetectedMessage(hadSuppressSync);
+            // Send SpoolDetected under mutex — sendSpoolDetectedMessage reads currentSpool.tag_data
+            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                sendSpoolDetectedMessage(hadSuppressSync);
+                xSemaphoreGive(tagMutex);
+            }
         }
     }
 }
@@ -1630,6 +1632,139 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         return ok;
     }
 
+    // Handle WRITE_ATOMIC — build complete CBOR map from sidecar fields, write once
+    if (request.type == NFCWriteType::WRITE_ATOMIC) {
+        if (!atomicWriteFields_.pending) {
+            Serial.println("NFCManager: WRITE_ATOMIC - no atomic fields pending");
+            return false;
+        }
+
+        // Validate and snapshot under mutex
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
+            atomicWriteFields_.pending = false;
+            return false;
+        }
+        if (!currentSpool.tag_data_valid) {
+            xSemaphoreGive(tagMutex);
+            atomicWriteFields_.pending = false;
+            return false;
+        }
+        if (request.expected_spool_id[0] != '\0' &&
+            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+            Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
+                request.expected_spool_id, currentSpool.spool_id);
+            xSemaphoreGive(tagMutex);
+            atomicWriteFields_.pending = false;
+            return false;
+        }
+        // Read defaults from the existing tag for any fields not provided
+        const AtomicWriteFields& f = atomicWriteFields_;
+        uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
+        uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
+        float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
+        float    cur_consumed = 0.0f;   opt_get_consumed_weight(&currentSpool.tag_data, &cur_consumed);
+        char     cur_brand[33] = {0};   opt_get_brand_name(&currentSpool.tag_data, cur_brand, sizeof(cur_brand));
+        float    cur_density = 0.0f;    opt_get_density(&currentSpool.tag_data, &cur_density);
+        float    cur_diameter = 0.0f;   opt_get_filament_diameter(&currentSpool.tag_data, &cur_diameter);
+        char     cur_mat_name[33] = {0}; opt_get_material_name(&currentSpool.tag_data, cur_mat_name, sizeof(cur_mat_name));
+        int32_t  cur_sm_id = -1;        opt_get_gp_spoolman_id(&currentSpool.tag_data, &cur_sm_id);
+        int16_t  cur_min_pt = 0, cur_max_pt = 0, cur_pre_t = 0, cur_min_bt = 0, cur_max_bt = 0;
+        opt_get_min_print_temp(&currentSpool.tag_data, &cur_min_pt);
+        opt_get_max_print_temp(&currentSpool.tag_data, &cur_max_pt);
+        opt_get_preheat_temp(&currentSpool.tag_data, &cur_pre_t);
+        opt_get_min_bed_temp(&currentSpool.tag_data, &cur_min_bt);
+        opt_get_max_bed_temp(&currentSpool.tag_data, &cur_max_bt);
+        xSemaphoreGive(tagMutex);
+
+        // Build a FRESH tag from scratch — avoids CBOR re-encoding overflow
+        // that happens when updating fields in an existing map
+        opt_init(&writeScratchTag_);
+        opt_error_t err = opt_format_empty_tag(&writeScratchTag_, 312, 32);
+        if (err != OPT_OK) {
+            Serial.printf("NFCManager: WRITE_ATOMIC format failed: %s\n", opt_error_str(err));
+            atomicWriteFields_.pending = false;
+            return false;
+        }
+
+        // Set material class (required by spec)
+        opt_set_material_class(&writeScratchTag_, OPT_MATERIAL_CLASS_FFF);
+
+        // Apply each field: use provided value if has_*, else use existing tag default
+        #define ATOMIC_SET(name, call) do { \
+            err = (call); \
+            if (err != OPT_OK) { \
+                Serial.printf("NFCManager: WRITE_ATOMIC " name " failed: %s\n", opt_error_str(err)); \
+            } \
+        } while(0)
+
+        ATOMIC_SET("material_type",  opt_set_material_type(&writeScratchTag_, f.has_material_type ? f.material_type : cur_mat_type));
+        ATOMIC_SET("color",          opt_set_primary_color(&writeScratchTag_, f.has_color ? f.color : cur_color));
+        ATOMIC_SET("initial_weight", opt_set_actual_full_weight(&writeScratchTag_, f.has_initial_weight ? f.initial_weight_g : cur_full_wt));
+        ATOMIC_SET("consumed_weight",opt_set_consumed_weight(&writeScratchTag_, f.has_consumed_weight ? f.consumed_weight : cur_consumed));
+        if (f.has_brand_name || cur_brand[0] != '\0')
+            ATOMIC_SET("brand_name", opt_set_brand_name(&writeScratchTag_, f.has_brand_name ? f.brand_name : cur_brand));
+        if (f.has_density || cur_density > 0.0f)
+            ATOMIC_SET("density",    opt_set_density(&writeScratchTag_, f.has_density ? f.density : cur_density));
+        if (f.has_diameter || cur_diameter > 0.0f)
+            ATOMIC_SET("diameter",   opt_set_filament_diameter(&writeScratchTag_, f.has_diameter ? f.diameter_mm : cur_diameter));
+        if (f.has_material_name || cur_mat_name[0] != '\0')
+            ATOMIC_SET("material_name", opt_set_material_name(&writeScratchTag_, f.has_material_name ? f.material_name : cur_mat_name));
+        if (f.has_min_print_temp || cur_min_pt != 0)
+            ATOMIC_SET("min_print_temp", opt_set_min_print_temp(&writeScratchTag_, f.has_min_print_temp ? f.min_print_temp : cur_min_pt));
+        if (f.has_max_print_temp || cur_max_pt != 0)
+            ATOMIC_SET("max_print_temp", opt_set_max_print_temp(&writeScratchTag_, f.has_max_print_temp ? f.max_print_temp : cur_max_pt));
+        if (f.has_preheat_temp || cur_pre_t != 0)
+            ATOMIC_SET("preheat_temp",   opt_set_preheat_temp(&writeScratchTag_, f.has_preheat_temp ? f.preheat_temp : cur_pre_t));
+        if (f.has_min_bed_temp || cur_min_bt != 0)
+            ATOMIC_SET("min_bed_temp",   opt_set_min_bed_temp(&writeScratchTag_, f.has_min_bed_temp ? f.min_bed_temp : cur_min_bt));
+        if (f.has_max_bed_temp || cur_max_bt != 0)
+            ATOMIC_SET("max_bed_temp",   opt_set_max_bed_temp(&writeScratchTag_, f.has_max_bed_temp ? f.max_bed_temp : cur_max_bt));
+        // Spoolman ID goes in aux region
+        int32_t sm_id = f.has_spoolman_id ? f.spoolman_id : cur_sm_id;
+        if (sm_id > 0)
+            ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
+        #undef ATOMIC_SET
+        atomicWriteFields_.pending = false;
+
+        // Single-pass NFC write — no sequential drops, no scan loop race
+        Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
+        opt_nfc_hal_t* hal = connection_->getHal();
+        err = opt_write_to_nfc(&writeScratchTag_, hal);
+        if (err != OPT_OK) {
+            Serial.printf("NFCManager: WRITE_ATOMIC NFC write failed: %s\n", opt_error_str(err));
+            return false;
+        }
+
+        // Verify with retries (same pattern as formatNewSpool)
+        const int maxRetries = 3;
+        for (int retry = 0; retry < maxRetries; retry++) {
+            vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
+            err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
+            if (err == OPT_OK) {
+                err = opt_parse_ndef(&writeScratchTag_);
+                if (err == OPT_OK) break;
+            }
+            Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
+        }
+
+        // Commit to shared state under mutex
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
+            return false;
+        }
+        currentSpool.tag_data = writeScratchTag_;
+        currentSpool.tag_data_valid = true;
+        currentSpool.blank_tag_present = false;
+        currentSpool.kind = TagKind::OpenPrintTag;
+        addToRecentSpools();
+        sendSpoolDetectedMessage();
+        xSemaphoreGive(tagMutex);
+
+        Serial.println("NFCManager: WRITE_ATOMIC complete");
+        return true;
+    }
+
     // For non-FORMAT writes: take mutex to validate + modify in-memory data, then release for NFC I/O
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         Serial.println("NFCManager: executeWrite - could not acquire tagMutex");
@@ -1795,10 +1930,13 @@ void NFCManager::sendSpoolUpdatedMessage(uint32_t request_id, NFCWriteType type,
     msg.payload.spoolUpdated.success = success;
     msg.payload.spoolUpdated.suppress_sync = 0;  // Default: allow sync
 
-    // Get remaining weight from tag data
+    // Get remaining weight from tag data under mutex to prevent torn reads
     float remaining_grams = 0;
-    if (currentSpool.tag_data_valid) {
-        opt_get_remaining_weight(&currentSpool.tag_data, &remaining_grams);
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        if (currentSpool.tag_data_valid) {
+            opt_get_remaining_weight(&currentSpool.tag_data, &remaining_grams);
+        }
+        xSemaphoreGive(tagMutex);
     }
     msg.payload.spoolUpdated.kg_remaining = remaining_grams / 1000.0f;
 

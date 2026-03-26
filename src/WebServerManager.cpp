@@ -533,9 +533,13 @@ void WebServerManager::handleApiPostConfig() {
         return;
     }
 
-    Serial.println("WebServerManager: Config saved, rebooting in 3 seconds...");
+    Serial.println("WebServerManager: Config saved, rebooting...");
     _server.send(200, "application/json", "{\"success\":true}");
-    delay(3000);
+
+    // Suspend scan task to prevent new NFC writes, then wait for any
+    // in-progress write to finish before restarting (#27)
+    NFCManager::getInstance().pauseScanTask();
+    delay(500);
     ESP.restart();
 }
 
@@ -596,7 +600,8 @@ void WebServerManager::handleApiUploadFirmwareComplete() {
     } else {
         _server.send(200, "application/json", "{\"success\":true}");
         Serial.println("OTA: Rebooting...");
-        delay(1000);
+        // Scan task already paused during upload; wait for any in-flight NFC I/O (#27)
+        delay(500);
         ESP.restart();
     }
 }
@@ -930,107 +935,86 @@ void WebServerManager::handleApiWriteTag() {
     float remaining_g      = doc["remaining_g"] | 0.0f;
     int32_t spoolman_id    = doc["spoolman_id"] | -1;
 
-    float consumed_g = initial_weight_g - remaining_g;
-    if (consumed_g < 0.0f) consumed_g = 0.0f;
+    // Build atomic write fields — all provided fields written in a single NFC pass
+    AtomicWriteFields fields;
+    memset(&fields, 0, sizeof(fields));
 
-    uint32_t base_id = millis();
-    NFCWriteRequest req;
-    memset(&req, 0, sizeof(req));
-    req.suppress_sync = 1;  // batch write — suppress individual Spoolman syncs
-    strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
-
-    // 1. Material type (only if explicitly provided)
     if (doc.containsKey("material_type")) {
-        req.request_id = base_id;
-        req.type = NFCWriteType::CHANGE_FILAMENT_TYPE;
-        req.data.new_material_type = mat_type;
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_material_type = true;
+        fields.material_type = mat_type;
     }
 
-    // 2. Initial weight (only if explicitly provided)
-    if (doc.containsKey("initial_weight_g")) {
-        req.request_id = base_id + 1;
-        req.type = NFCWriteType::SET_INITIAL_WEIGHT;
-        req.data.consumed_weight = initial_weight_g;
-        NFCManager::getInstance().enqueueWrite(req);
-    }
-
-    // 3. Color (only if explicitly provided and valid hex)
     if (hasValidColor) {
-        req.request_id = base_id + 2;
-        req.type = NFCWriteType::CHANGE_COLOR;
-        memcpy(req.data.new_color, color, 4);
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_color = true;
+        memcpy(fields.color, color, 4);
     }
 
-    // 4. Manufacturer (only if explicitly provided and non-empty)
-    if (doc.containsKey("manufacturer") && mfr[0] != '\0') {
-        req.request_id = base_id + 3;
-        req.type = NFCWriteType::SET_BRAND_NAME;
-        strncpy(req.data.brand_name, mfr, sizeof(req.data.brand_name) - 1);
-        NFCManager::getInstance().enqueueWrite(req);
+    if (doc.containsKey("initial_weight_g")) {
+        fields.has_initial_weight = true;
+        fields.initial_weight_g = initial_weight_g;
     }
 
-    // 5. Consumed weight (only if both remaining_g and initial_weight_g provided)
     if (doc.containsKey("remaining_g") && doc.containsKey("initial_weight_g")) {
-        req.request_id = base_id + 4;
-        req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
-        req.data.consumed_weight = consumed_g;
-        NFCManager::getInstance().enqueueWrite(req);
+        float consumed_g = initial_weight_g - remaining_g;
+        if (consumed_g < 0.0f) consumed_g = 0.0f;
+        fields.has_consumed_weight = true;
+        fields.consumed_weight = consumed_g;
     }
 
-    // 6. Spoolman ID (optional)
+    if (doc.containsKey("manufacturer") && mfr[0] != '\0') {
+        fields.has_brand_name = true;
+        strncpy(fields.brand_name, mfr, sizeof(fields.brand_name) - 1);
+    }
+
     if (spoolman_id > 0) {
-        req.request_id = base_id + 5;
-        req.type = NFCWriteType::WRITE_SPOOLMAN_ID;
-        req.data.spoolman_id = spoolman_id;
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_spoolman_id = true;
+        fields.spoolman_id = spoolman_id;
     }
 
-    // 7. Density (optional)
     float density = doc["density"] | 0.0f;
     if (density > 0.0f) {
-        req.request_id = base_id + 6;
-        req.type = NFCWriteType::SET_DENSITY;
-        req.data.float_value = density;
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_density = true;
+        fields.density = density;
     }
 
-    // 8. Diameter (optional)
     float diameter_mm = doc["diameter_mm"] | 0.0f;
     if (diameter_mm > 0.0f) {
-        req.request_id = base_id + 7;
-        req.type = NFCWriteType::SET_DIAMETER;
-        req.data.float_value = diameter_mm;
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_diameter = true;
+        fields.diameter_mm = diameter_mm;
     }
 
-    // 9. Custom material name (optional)
     const char* mat_name = doc["material_name"] | "";
     if (mat_name[0] != '\0') {
-        req.request_id = base_id + 8;
-        req.type = NFCWriteType::SET_MATERIAL_NAME;
-        strncpy(req.data.material_name, mat_name, sizeof(req.data.material_name) - 1);
-        NFCManager::getInstance().enqueueWrite(req);
+        fields.has_material_name = true;
+        strncpy(fields.material_name, mat_name, sizeof(fields.material_name) - 1);
     }
 
-    // 10-14. Temperatures (optional, 0 = not set)
-    struct { const char* key; NFCWriteType type; uint32_t id; } temps[] = {
-        { "min_print_temp", NFCWriteType::SET_MIN_PRINT_TEMP, base_id + 9  },
-        { "max_print_temp", NFCWriteType::SET_MAX_PRINT_TEMP, base_id + 10 },
-        { "preheat_temp",   NFCWriteType::SET_PREHEAT_TEMP,   base_id + 11 },
-        { "min_bed_temp",   NFCWriteType::SET_MIN_BED_TEMP,   base_id + 12 },
-        { "max_bed_temp",   NFCWriteType::SET_MAX_BED_TEMP,   base_id + 13 },
+    struct { const char* key; bool AtomicWriteFields::*has; int16_t AtomicWriteFields::*val; } temps[] = {
+        { "min_print_temp", &AtomicWriteFields::has_min_print_temp, &AtomicWriteFields::min_print_temp },
+        { "max_print_temp", &AtomicWriteFields::has_max_print_temp, &AtomicWriteFields::max_print_temp },
+        { "preheat_temp",   &AtomicWriteFields::has_preheat_temp,   &AtomicWriteFields::preheat_temp   },
+        { "min_bed_temp",   &AtomicWriteFields::has_min_bed_temp,   &AtomicWriteFields::min_bed_temp   },
+        { "max_bed_temp",   &AtomicWriteFields::has_max_bed_temp,   &AtomicWriteFields::max_bed_temp   },
     };
     for (const auto& entry : temps) {
         int v = doc[entry.key] | 0;
         if (v != 0) {
-            req.request_id = entry.id;
-            req.type = entry.type;
-            req.data.temp_celsius = static_cast<int16_t>(v);
-            NFCManager::getInstance().enqueueWrite(req);
+            fields.*entry.has = true;
+            fields.*entry.val = static_cast<int16_t>(v);
         }
     }
+
+    fields.pending = true;
+    NFCManager::getInstance().setAtomicWriteFields(fields);
+
+    // Enqueue single atomic write request
+    NFCWriteRequest req;
+    memset(&req, 0, sizeof(req));
+    req.request_id = millis();
+    req.type = NFCWriteType::WRITE_ATOMIC;
+    req.suppress_sync = 0;
+    strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
+    NFCManager::getInstance().enqueueWrite(req);
 
     _server.send(200, "application/json", "{\"success\":true}");
 }
