@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.5] - 2026-03-26
+
+### Added
+- **PrusaLink integration (experimental)** — automatic print monitoring and filament weight deduction via PrusaLink API. PrinterManager FreeRTOS task with IDLE/TRACKING state machine. Pre-print validation warns on filament type mismatch and nozzle temp exceeding tag max. Per-tool XL multi-head filament tracking (up to 5 tools). Web config UI for PrusaLink enable toggle, URL, and API key. Looking for testers with Prusa printers.
+- **LED set_color command** — scanner LED now shows filament color from Spoolman when scanning UID-only tags. Receives color via MQTT `spoolsense/<id>/cmd/set_color`.
+
+---
+
 ## [1.5.4] - 2026-03-25
 
 ### Added
