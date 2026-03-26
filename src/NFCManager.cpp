@@ -1639,15 +1639,18 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
             return false;
         }
 
+        // Copy sidecar by value and clear pending immediately — prevents a
+        // concurrent HTTP call from overwriting fields mid-write
+        AtomicWriteFields f = atomicWriteFields_;
+        atomicWriteFields_.pending = false;
+
         // Validate and snapshot under mutex
         if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
             Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
-            atomicWriteFields_.pending = false;
             return false;
         }
         if (!currentSpool.tag_data_valid) {
             xSemaphoreGive(tagMutex);
-            atomicWriteFields_.pending = false;
             return false;
         }
         if (request.expected_spool_id[0] != '\0' &&
@@ -1655,11 +1658,9 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
             Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
                 request.expected_spool_id, currentSpool.spool_id);
             xSemaphoreGive(tagMutex);
-            atomicWriteFields_.pending = false;
             return false;
         }
         // Read defaults from the existing tag for any fields not provided
-        const AtomicWriteFields& f = atomicWriteFields_;
         uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
         uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
         float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
@@ -1725,7 +1726,6 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         if (sm_id > 0)
             ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
         #undef ATOMIC_SET
-        atomicWriteFields_.pending = false;
 
         // Single-pass NFC write — no sequential drops, no scan loop race
         Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
@@ -1736,19 +1736,24 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
             return false;
         }
 
-        // Verify with retries (same pattern as formatNewSpool)
+        // Verify with retries — re-read tag to confirm write succeeded
+        bool verified = false;
         const int maxRetries = 3;
         for (int retry = 0; retry < maxRetries; retry++) {
             vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
             err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
             if (err == OPT_OK) {
                 err = opt_parse_ndef(&writeScratchTag_);
-                if (err == OPT_OK) break;
+                if (err == OPT_OK) { verified = true; break; }
             }
             Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
         }
+        if (!verified) {
+            Serial.println("NFCManager: WRITE_ATOMIC verification failed — not committing");
+            return false;
+        }
 
-        // Commit to shared state under mutex
+        // Commit verified data to shared state under mutex
         if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
             Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
             return false;
