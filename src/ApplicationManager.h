@@ -2,6 +2,7 @@
 #define APPLICATION_MANAGER_H
 
 #include <cstdint>
+#include "IPrinterStrategy.h"  // for MAX_TOOLS constant
 
 #ifdef NATIVE_TEST
   #include "platform/NativePlatform.h"
@@ -23,6 +24,7 @@ enum class AppMessageType {
     TAG_REMOVED,            // Tag was present, now gone
     HA_WRITE_TAG,           // HA commands full tag write
     HA_UPDATE_REMAINING,    // HA commands remaining weight update
+    PRINTER_WARNING,        // Filament mismatch, temp out of range, etc.
 };
 
 enum class AutomationMode : uint8_t {
@@ -99,6 +101,14 @@ struct HAUpdateRemainingPayload {
     float remaining_g;
 };
 
+struct PrinterWarningPayload {
+    char warning_type[24];       // "filament_mismatch", "temp_exceeds_max"
+    char expected[32];           // What gcode expects
+    char actual[32];             // What tag has
+    float gcode_temp;            // Gcode nozzle temp (0 if N/A)
+    int16_t tag_max_temp;        // Tag max temp (0 if N/A)
+};
+
 struct AppMessage {
     AppMessageType type;
     union {
@@ -109,6 +119,9 @@ struct AppMessage {
             int job_id;
             float filament_used_grams;
             bool canceled;
+            // Per-tool data for XL multi-head (0 = single tool / unknown)
+            int tool_count;
+            float filament_per_tool[IPrinterStrategy::MAX_TOOLS];
         } printEnded;
         SpoolDetectedPayload spoolDetected;
         SpoolUpdatedPayload spoolUpdated;
@@ -118,6 +131,7 @@ struct AppMessage {
         TagRemovedPayload tagRemoved;
         HAWriteTagPayload haWriteTag;
         HAUpdateRemainingPayload haUpdateRemaining;
+        PrinterWarningPayload printerWarning;
     } payload;
 };
 
@@ -199,6 +213,7 @@ private:
     void handleTagRemoved(const AppMessage& msg);
     void handleHAWriteTag(const AppMessage& msg);
     void handleHAUpdateRemaining(const AppMessage& msg);
+    void handlePrinterWarning(const AppMessage& msg);
     void finishPrint(float gramsUsed, bool canceled);
     void enqueueSpoolmanSync(const SpoolDetectedPayload& spool);
     void publishToHA(const char* topicSuffix, const char* payload, bool retained);

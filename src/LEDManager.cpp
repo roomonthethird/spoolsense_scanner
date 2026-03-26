@@ -118,6 +118,11 @@ void LEDManager::flashWriteFailure() {
     requestFlash(FlashType::WRITE_FAILURE);
 }
 
+void LEDManager::flashWarning() {
+    if (!_initialized) return;
+    requestFlash(FlashType::WARNING);
+}
+
 // ---------------------------------------------------------------------------
 // Hex utility
 // ---------------------------------------------------------------------------
@@ -204,6 +209,14 @@ void LEDManager::requestFlash(FlashType type) {
             setPixelColor(255, 0, 0);
             delay(100);
             break;
+        case FlashType::WARNING:
+            for (int i = 0; i < 3; i++) {
+                setPixelColor(255, 180, 0);
+                delay(150);
+                setPixelOff();
+                delay(150);
+            }
+            break;
         default:
             break;
     }
@@ -241,6 +254,14 @@ void LEDManager::runFlash(FlashType type) {
         case FlashType::WRITE_FAILURE:
             setPixelColor(255, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
+            break;
+        case FlashType::WARNING:
+            for (int i = 0; i < 3; i++) {
+                setPixelColor(255, 180, 0);  // yellow/amber
+                vTaskDelay(pdMS_TO_TICKS(150));
+                setPixelOff();
+                vTaskDelay(pdMS_TO_TICKS(150));
+            }
             break;
         default:
             break;

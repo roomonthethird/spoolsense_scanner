@@ -474,7 +474,7 @@ void WebServerManager::handleApiGetConfig() {
     ConfigUpdate cfg;
     ConfigurationManager::getInstance().getCurrentConfig(cfg);
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
     doc["wifi_ssid"] = cfg.wifi_ssid;
     doc["wifi_pass_set"] = (cfg.wifi_pass[0] != '\0');
     doc["mqtt_host"] = cfg.mqtt_host;
@@ -486,6 +486,9 @@ void WebServerManager::handleApiGetConfig() {
     doc["auto_mode"] = cfg.auto_mode;
     doc["lcd_enabled"] = cfg.lcd_enabled;
     doc["led_enabled"] = cfg.led_enabled;
+    doc["prusalink_on"] = cfg.prusalink_on;
+    doc["prusalink_url"] = cfg.prusalink_url;
+    doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
 
     String body;
     serializeJson(doc, body);
@@ -516,6 +519,9 @@ void WebServerManager::handleApiPostConfig() {
     update.auto_mode = doc["auto_mode"] | (uint8_t)0;
     update.lcd_enabled = doc["lcd_enabled"] | (uint8_t)0;
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
+    update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
+    strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);
+    strncpy(update.prusalink_api_key, doc["prusalink_api_key"] | "", sizeof(update.prusalink_api_key) - 1);
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");

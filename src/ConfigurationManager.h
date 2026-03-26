@@ -20,6 +20,10 @@ struct ConfigUpdate {
     uint8_t auto_mode;
     uint8_t lcd_enabled;
     uint8_t led_enabled;
+    // PrusaLink integration
+    uint8_t prusalink_on;
+    char prusalink_url[128];
+    char prusalink_api_key[64];
 };
 
 class ConfigurationManager {
@@ -42,6 +46,11 @@ public:
     const char* getHAMqttUser() const;
     const char* getHAMqttPass() const;
     uint8_t getAutomationMode() const;
+
+    // PrusaLink configuration
+    bool isPrusaLinkEnabled() const;
+    const char* getPrusaLinkURL() const;
+    const char* getPrusaLinkAPIKey() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -70,6 +79,11 @@ private:
     char _haMqttUser[64];
     char _haMqttPass[64];
     uint8_t _automationMode;
+
+    // PrusaLink config
+    bool _prusaLinkEnabled = false;
+    char _prusaLinkUrl[128] = {0};
+    char _prusaLinkApiKey[64] = {0};
 
     bool _initialized = false;
 };

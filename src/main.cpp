@@ -8,6 +8,8 @@
 #include "HomeAssistantManager.h"
 #include "LCDManager.h"
 #include "WebServerManager.h"
+#include "PrinterManager.h"
+#include "PrusaLinkStrategy.h"
 #include "BoardPins.h"
 
 #ifdef ENABLE_LCD
@@ -21,6 +23,9 @@ LEDManager ledManager;
 
 // Global HTTP mutex for serializing WiFi HTTP requests
 SemaphoreHandle_t g_httpMutex = nullptr;
+
+// PrusaLink strategy (file-scope so it outlives setup)
+static PrusaLinkStrategy prusaLinkStrategy;
 
 #ifdef ENABLE_LCD
 // LCD I2C pins from BoardPins.h
@@ -194,6 +199,17 @@ void setup() {
                 static_cast<unsigned>(config.getHAMqttPort()),
                 strlen(config.getHAMqttUser()) > 0 ? "true" : "false");
   HomeAssistantManager::getInstance().startTask();
+
+  // Start PrusaLink printer polling (if configured)
+  if (ConfigurationManager::getInstance().isPrusaLinkEnabled()) {
+    PrinterManager::getInstance().begin();
+    prusaLinkStrategy.setHttpMutex(g_httpMutex);
+    PrinterManager::getInstance().setStrategy(&prusaLinkStrategy);
+    PrinterManager::getInstance().startPollingTask();
+    Serial.println("PrusaLink integration enabled");
+  } else {
+    Serial.println("PrusaLink integration disabled (not configured)");
+  }
 
 #ifdef ENABLE_LCD
   ApplicationManager::getInstance().showStatusOnLCD();
