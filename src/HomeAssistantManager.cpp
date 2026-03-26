@@ -609,6 +609,25 @@ void HomeAssistantManager::publishDiscovery() {
         }
     }
 
+    // Printer warning sensor (filament mismatch, temp warnings from PrusaLink)
+    {
+        char payload[512];
+        int written = snprintf(payload, sizeof(payload),
+                               "{\"name\":\"Printer Warning\","
+                               "\"uniq_id\":\"spoolsense_%s_printer_warning\","
+                               "\"stat_t\":\"%s/printer/warning\","
+                               "\"val_tpl\":\"{{ value_json.warning }}\","
+                               "\"json_attr_t\":\"%s/printer/warning\","
+                               "\"avty_t\":\"%s/availability\","
+                               "\"ic\":\"mdi:alert-circle\","
+                               "\"ent_cat\":\"diagnostic\","
+                               "\"dev\":{\"ids\":[\"spoolsense_%s\"]}}",
+                               deviceId_, baseTopic, baseTopic, baseTopic, deviceId_);
+        if (written >= 0 && written < (int)sizeof(payload)) {
+            publishDiscoveryPayload("sensor", "printer_warning", payload);
+        }
+    }
+
     // Remove stale retained discovery configs from previous read entities.
     removeLegacyEntity("binary_sensor", "tag_present");
     removeLegacyEntity("sensor", "spool_uid");

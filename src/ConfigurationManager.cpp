@@ -22,6 +22,9 @@ static const char* NVS_KEY_SPOOLMAN_URL   = "spoolman_url";
 static const char* NVS_KEY_AUTO_MODE      = "auto_mode";
 static const char* NVS_KEY_LCD_ON         = "lcd_on";
 static const char* NVS_KEY_LED_ON         = "led_on";
+static const char* NVS_KEY_PRUSALINK_ON   = "prusalink_on";
+static const char* NVS_KEY_PRUSALINK_URL  = "prusalink_url";
+static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
 
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
@@ -87,6 +90,11 @@ void ConfigurationManager::loadFromDeviceConfig() {
     _haMqttPass[sizeof(_haMqttPass) - 1] = '\0';
 
     _automationMode = cfg.automation_mode;
+
+    // PrusaLink defaults — not in DeviceConfig, disabled by default
+    _prusaLinkEnabled = false;
+    _prusaLinkUrl[0] = '\0';
+    _prusaLinkApiKey[0] = '\0';
 }
 
 #ifndef NATIVE_TEST
@@ -140,6 +148,18 @@ bool ConfigurationManager::loadFromNVS() {
     }
     if (prefs.isKey(NVS_KEY_AUTO_MODE)) {
         _automationMode = prefs.getUChar(NVS_KEY_AUTO_MODE, _automationMode);
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_PRUSALINK_ON)) {
+        _prusaLinkEnabled = prefs.getBool(NVS_KEY_PRUSALINK_ON, false);
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_PRUSALINK_URL)) {
+        prefs.getString(NVS_KEY_PRUSALINK_URL, _prusaLinkUrl, sizeof(_prusaLinkUrl));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_PRUSALINK_KEY)) {
+        prefs.getString(NVS_KEY_PRUSALINK_KEY, _prusaLinkApiKey, sizeof(_prusaLinkApiKey));
         anyOverride = true;
     }
 
@@ -196,6 +216,18 @@ uint8_t ConfigurationManager::getAutomationMode() const {
     return _automationMode;
 }
 
+bool ConfigurationManager::isPrusaLinkEnabled() const {
+    return _prusaLinkEnabled && _prusaLinkUrl[0] != '\0' && _prusaLinkApiKey[0] != '\0';
+}
+
+const char* ConfigurationManager::getPrusaLinkURL() const {
+    return _prusaLinkUrl;
+}
+
+const char* ConfigurationManager::getPrusaLinkAPIKey() const {
+    return _prusaLinkApiKey;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -207,6 +239,9 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.spoolman_on = _spoolmanEnabled ? 1 : 0;
     strncpy(out.spoolman_url, _spoolmanUrl, sizeof(out.spoolman_url) - 1);
     out.auto_mode = _automationMode;
+    out.prusalink_on = _prusaLinkEnabled ? 1 : 0;
+    strncpy(out.prusalink_url, _prusaLinkUrl, sizeof(out.prusalink_url) - 1);
+    strncpy(out.prusalink_api_key, _prusaLinkApiKey, sizeof(out.prusalink_api_key) - 1);
 #if defined(ENABLE_LCD) && ENABLE_LCD
     out.lcd_enabled = 1;
 #else
@@ -243,6 +278,11 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     prefs.putUChar(NVS_KEY_AUTO_MODE, update.auto_mode);
     prefs.putUChar(NVS_KEY_LCD_ON, update.lcd_enabled);
     prefs.putUChar(NVS_KEY_LED_ON, update.led_enabled);
+    prefs.putBool(NVS_KEY_PRUSALINK_ON, update.prusalink_on != 0);
+    prefs.putString(NVS_KEY_PRUSALINK_URL, update.prusalink_url);
+    if (update.prusalink_api_key[0] != '\0') {
+        prefs.putString(NVS_KEY_PRUSALINK_KEY, update.prusalink_api_key);
+    }
 
     prefs.end();
     Serial.println("ConfigurationManager: Config saved to NVS");
