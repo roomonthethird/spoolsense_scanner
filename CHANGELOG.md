@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.4] - 2026-03-25
+
+### Added
+- MQTT temp/density/diameter fields — scanner now publishes temperature, density, and diameter data from tags to MQTT
+
+### Fixed
+- OpenPrintTag write fix — /api/write-tag no longer overwrites existing tag data with defaults when only specific fields are sent
+- PN5180 FreeRTOS yields — replaced blocking delay() with vTaskDelay() in ISO15693 command handler, preventing NFC connection drops after ~5 writes
+- PN5180 IRQ cleanup — clear all IRQ flags on every exit path, prevents stale flag accumulation across sequential writes
+- PN5180 transceiver reset — cleanupTransceiver() helper forces idle state on all error paths with GENERAL_ERROR_IRQ_STAT detection
+- Invalid color skip — don't write zeros when color field is invalid hex
+- Nav bar — all links present on all pages, flex-wrap for narrow screens
+- Landing page — added missing cards and consistent ordering
+
+---
+
 ## [1.5.3] - 2026-03-24 — NFC+ Registration, Material Auto-fill, Web UI Polish
 
 ### Added

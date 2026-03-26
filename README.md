@@ -29,7 +29,8 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 ## Features
 
 * **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. UID-only tags and Bambu Lab tags are also detected for Spoolman registration.
-* **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format.
+* **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format. Material and brand fields are type-to-search with auto-fill for temperatures and density.
+* **NFC+ Registration:** Register plain NFC tags (NTAG215, etc.) in Spoolman using the tag's UID as identifier. No data written to the tag — fill in filament details in the web UI and create the Spoolman entry directly.
 * **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
 * **Web Configuration:** Change WiFi, MQTT, Spoolman, and hardware settings from the browser at `spoolsense.local/config`. Settings saved to NVS and persist across OTA updates.
 * **OTA Firmware Updates:** Check for updates from GitHub releases with release notes, one-click download and flash, or manual .bin upload. Dual partition layout with automatic rollback on failed update.
