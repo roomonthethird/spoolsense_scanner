@@ -28,6 +28,7 @@ enum class BoardProfile {
 struct PeripheralConfig {
     bool lcd_enabled;
     bool status_led_enabled;
+    bool keypad_enabled;
 };
 
 struct DeviceConfig {

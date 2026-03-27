@@ -486,6 +486,8 @@ void WebServerManager::handleApiGetConfig() {
     doc["auto_mode"] = cfg.auto_mode;
     doc["lcd_enabled"] = cfg.lcd_enabled;
     doc["led_enabled"] = cfg.led_enabled;
+    doc["keypad_enabled"] = cfg.keypad_enabled;
+    doc["moonraker_url"] = cfg.moonraker_url;
     doc["prusalink_on"] = cfg.prusalink_on;
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
@@ -498,7 +500,7 @@ void WebServerManager::handleApiGetConfig() {
 void WebServerManager::handleApiPostConfig() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1024> doc;
     DeserializationError err = deserializeJson(doc, _server.arg("plain"));
     if (err) {
         sendError(400, "Invalid JSON");
@@ -519,6 +521,8 @@ void WebServerManager::handleApiPostConfig() {
     update.auto_mode = doc["auto_mode"] | (uint8_t)0;
     update.lcd_enabled = doc["lcd_enabled"] | (uint8_t)0;
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
+    update.keypad_enabled = doc["keypad_enabled"] | (uint8_t)0;
+    strncpy(update.moonraker_url, doc["moonraker_url"] | "", sizeof(update.moonraker_url) - 1);
     update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
     strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);
     strncpy(update.prusalink_api_key, doc["prusalink_api_key"] | "", sizeof(update.prusalink_api_key) - 1);

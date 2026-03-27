@@ -11,6 +11,7 @@
 #include "WebServerManager.h"
 #include "PrinterManager.h"
 #include "PrusaLinkStrategy.h"
+#include "InputManager.h"
 #include "BoardPins.h"
 #include <Wire.h>
 
@@ -129,6 +130,10 @@ void setup() {
     lcdManager.setScreenTimeoutMs(config.getLcdTimeoutMs());
   }
 
+  if (config.isKeypadEnabled()) {
+    InputManager::getInstance().begin();
+  }
+
   // Initialize ApplicationManager (message queue) with LCD reference
   if (!ApplicationManager::getInstance().begin(config.isLcdEnabled() ? &lcdManager : nullptr)) {
     Serial.println("ApplicationManager init failed - halting");
@@ -221,6 +226,11 @@ void loop() {
 
   // Process HTTP requests for the tag writer web UI
   WebServerManager::getInstance().handleClient();
+
+  // Poll keypad for key presses (if enabled)
+  if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+    InputManager::getInstance().poll();
+  }
 
   // LCD and NFC scanning are handled by their own tasks
   delay(10);

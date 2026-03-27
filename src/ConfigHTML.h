@@ -121,6 +121,15 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           </section>
 
           <section>
+            <h2 class="section-title">Klipper / Moonraker</h2>
+            <div class="hint" style="margin-bottom:12px">Connect to a Klipper printer via Moonraker for keypad-based tool assignment (ASSIGN_SPOOL). Leave blank if not used.</div>
+            <div class="field">
+              <label for="moonraker_url">Moonraker URL</label>
+              <input id="moonraker_url" type="text" maxlength="127" placeholder="http://printer.local:7125" />
+            </div>
+          </section>
+
+          <section>
             <h2 class="section-title">PrusaLink</h2>
             <div class="hint" style="margin-bottom:12px">Connect to a Prusa printer for automatic filament tracking. Get the API key from your printer's web interface.</div>
             <div class="toggle-row" style="margin-bottom:14px">
@@ -155,7 +164,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 
           <section>
             <h2 class="section-title">Hardware</h2>
-            <div class="hint" style="margin-bottom:12px">LCD and LED settings are stored but require matching compile flags to take effect.</div>
+            <div class="hint" style="margin-bottom:12px">Enable or disable optional hardware peripherals. Changes take effect after reboot.</div>
             <div style="display:grid;gap:10px">
               <div class="toggle-row">
                 <span class="toggle-label">LCD Display</span>
@@ -168,6 +177,13 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                 <span class="toggle-label">Status LED</span>
                 <label class="toggle-switch">
                   <input type="checkbox" id="led_enabled" />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <span class="toggle-label">3x4 Matrix Keypad</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="keypad_enabled" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
@@ -209,6 +225,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('prusalink_fields').style.display = cfg.prusalink_on ? '' : 'none';
       document.getElementById('lcd_enabled').checked = !!cfg.lcd_enabled;
       document.getElementById('led_enabled').checked = !!cfg.led_enabled;
+      document.getElementById('keypad_enabled').checked = !!cfg.keypad_enabled;
+      maybeSetValue('moonraker_url', cfg.moonraker_url);
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
       if (cfg.mqtt_pass_set) document.getElementById('mqtt_pass').placeholder = '(set) Leave blank to keep';
@@ -243,6 +261,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         auto_mode: parseInt(document.getElementById('auto_mode').value) || 0,
         lcd_enabled: document.getElementById('lcd_enabled').checked ? 1 : 0,
         led_enabled: document.getElementById('led_enabled').checked ? 1 : 0,
+        keypad_enabled: document.getElementById('keypad_enabled').checked ? 1 : 0,
+        moonraker_url: document.getElementById('moonraker_url').value.trim(),
         prusalink_on: document.getElementById('prusalink_on').checked ? 1 : 0,
         prusalink_url: document.getElementById('prusalink_url').value.trim(),
         prusalink_api_key: document.getElementById('prusalink_api_key').value
