@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+---
+
+## [1.5.6] - 2026-03-27
+
 ### Changed
 
 - **Atomic OpenPrintTag write** — /api/write-tag now builds a fresh CBOR tag and writes all fields in a single NFC pass (~5s vs ~25s). Eliminates sequential write drops, scan loop race conditions, and CBOR re-encoding overflow. Existing field values are preserved when not specified.
