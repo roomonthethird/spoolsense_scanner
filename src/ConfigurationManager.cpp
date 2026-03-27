@@ -95,6 +95,10 @@ void ConfigurationManager::loadFromDeviceConfig() {
     _prusaLinkEnabled = false;
     _prusaLinkUrl[0] = '\0';
     _prusaLinkApiKey[0] = '\0';
+
+    // Optional hardware feature defaults from compile-time flags
+    _lcdEnabled = cfg.peripherals.lcd_enabled;
+    _ledEnabled = cfg.peripherals.status_led_enabled;
 }
 
 #ifndef NATIVE_TEST
@@ -160,6 +164,14 @@ bool ConfigurationManager::loadFromNVS() {
     }
     if (prefs.isKey(NVS_KEY_PRUSALINK_KEY)) {
         prefs.getString(NVS_KEY_PRUSALINK_KEY, _prusaLinkApiKey, sizeof(_prusaLinkApiKey));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_LCD_ON)) {
+        _lcdEnabled = prefs.getUChar(NVS_KEY_LCD_ON, _lcdEnabled ? 1 : 0) != 0;
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_LED_ON)) {
+        _ledEnabled = prefs.getUChar(NVS_KEY_LED_ON, _ledEnabled ? 1 : 0) != 0;
         anyOverride = true;
     }
 
@@ -228,6 +240,14 @@ const char* ConfigurationManager::getPrusaLinkAPIKey() const {
     return _prusaLinkApiKey;
 }
 
+bool ConfigurationManager::isLcdEnabled() const {
+    return _lcdEnabled;
+}
+
+bool ConfigurationManager::isLedEnabled() const {
+    return _ledEnabled;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -242,16 +262,8 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.prusalink_on = _prusaLinkEnabled ? 1 : 0;
     strncpy(out.prusalink_url, _prusaLinkUrl, sizeof(out.prusalink_url) - 1);
     strncpy(out.prusalink_api_key, _prusaLinkApiKey, sizeof(out.prusalink_api_key) - 1);
-#if defined(ENABLE_LCD) && ENABLE_LCD
-    out.lcd_enabled = 1;
-#else
-    out.lcd_enabled = 0;
-#endif
-#if defined(ENABLE_STATUS_LED) && ENABLE_STATUS_LED
-    out.led_enabled = 1;
-#else
-    out.led_enabled = 0;
-#endif
+    out.lcd_enabled = _lcdEnabled ? 1 : 0;
+    out.led_enabled = _ledEnabled ? 1 : 0;
 }
 
 #ifndef NATIVE_TEST

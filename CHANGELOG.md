@@ -4,6 +4,14 @@
 
 ---
 
+## [1.5.7] - 2026-03-27
+
+### Fixed
+
+- **NVS runtime feature toggling** — LCD and LED are now controlled at runtime via NVS (`lcd_on`, `led_on`) rather than compile-time `#ifdef` flags. A single firmware binary now correctly enables or disables hardware based on what the installer configured. `ConfigurationManager::begin()` moved before peripheral init so NVS values are available before hardware is initialized.
+
+---
+
 ## [1.5.6] - 2026-03-27
 
 ### Changed

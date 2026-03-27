@@ -1,9 +1,5 @@
 #include "ApplicationManager.h"
 #include "UserConfig.h"
-#ifdef NATIVE_TEST
-  // LED hardware not available in native tests
-  #undef ENABLE_STATUS_LED
-#endif
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"
@@ -11,12 +7,10 @@
   #include "SpoolmanManager.h"
   #include "ConfigurationManager.h"
   #include "HomeAssistantManager.h"
-  #include <Arduino.h>
-  #ifdef ENABLE_STATUS_LED
   #include "LEDManager.h"
-  extern LEDManager ledManager;
-  #endif
+  #include <Arduino.h>
   #include <WiFi.h>
+  extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
   #include "FakeLCDManager.h"
@@ -279,8 +273,8 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         msg.payload.spoolDetected.material_type,
         msg.payload.spoolDetected.kg_remaining);
     
-    #ifdef ENABLE_STATUS_LED
-    {
+    #ifndef NATIVE_TEST
+    if (ConfigurationManager::getInstance().isLedEnabled()) {
         // Set target first so task restores it after the flash
         float remaining_g = msg.payload.spoolDetected.kg_remaining * 1000.0f;
         if (msg.payload.spoolDetected.has_color) {
@@ -394,22 +388,24 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     bool spoolmanConfigured = false;
 #endif
 
-#ifdef ENABLE_STATUS_LED
-    // Set target first, then flash — task restores target after flash completes
-    if (state.tag_data_valid) {
-        uint8_t color[4] = {0};
-        if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
-            ledManager.showFilamentColor(color[0], color[1], color[2]);
+#ifndef NATIVE_TEST
+    if (ConfigurationManager::getInstance().isLedEnabled()) {
+        // Set target first, then flash — task restores target after flash completes
+        if (state.tag_data_valid) {
+            uint8_t color[4] = {0};
+            if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
+                ledManager.showFilamentColor(color[0], color[1], color[2]);
+            } else {
+                ledManager.showOff();
+            }
         } else {
             ledManager.showOff();
         }
-    } else {
-        ledManager.showOff();
-    }
-    if (msg.payload.spoolUpdated.success) {
-        ledManager.flashWriteSuccess();
-    } else {
-        ledManager.flashWriteFailure();
+        if (msg.payload.spoolUpdated.success) {
+            ledManager.flashWriteSuccess();
+        } else {
+            ledManager.flashWriteFailure();
+        }
     }
 #endif
 
@@ -495,9 +491,11 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
 void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: BlankTagDetected - spool_id=%s\n",
         msg.payload.blankTag.spool_id);
-#ifdef ENABLE_STATUS_LED
-    ledManager.showOff();          // target = OFF, restored after flash
-    ledManager.flashParseFailed();
+#ifndef NATIVE_TEST
+    if (ConfigurationManager::getInstance().isLedEnabled()) {
+        ledManager.showOff();          // target = OFF, restored after flash
+        ledManager.flashParseFailed();
+    }
 #endif
 
     pendingStatusAfterTagRemoved = false;
@@ -527,9 +525,11 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
 void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: GenericTagDetected - uid=%s\n",
         msg.payload.genericTag.spool_id);
-#ifdef ENABLE_STATUS_LED
-    ledManager.showOff();          // target = OFF, restored after flash
-    ledManager.flashTagDetected();
+#ifndef NATIVE_TEST
+    if (ConfigurationManager::getInstance().isLedEnabled()) {
+        ledManager.showOff();          // target = OFF, restored after flash
+        ledManager.flashTagDetected();
+    }
 #endif
 
     pendingStatusAfterTagRemoved = false;
@@ -832,9 +832,10 @@ void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
         }
     }
 
-#ifdef ENABLE_STATUS_LED
-    extern LEDManager ledManager;
-    ledManager.flashWarning();
+#ifndef NATIVE_TEST
+    if (ConfigurationManager::getInstance().isLedEnabled()) {
+        ledManager.flashWarning();
+    }
 #endif
 
     // Publish to HA

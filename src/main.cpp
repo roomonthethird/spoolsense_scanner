@@ -7,19 +7,12 @@
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
 #include "LCDManager.h"
+#include "LEDManager.h"
 #include "WebServerManager.h"
 #include "PrinterManager.h"
 #include "PrusaLinkStrategy.h"
 #include "BoardPins.h"
-
-#ifdef ENABLE_LCD
 #include <Wire.h>
-#endif
-
-#ifdef ENABLE_STATUS_LED
-#include "LEDManager.h"
-LEDManager ledManager;
-#endif
 
 // Global HTTP mutex for serializing WiFi HTTP requests
 SemaphoreHandle_t g_httpMutex = nullptr;
@@ -27,19 +20,20 @@ SemaphoreHandle_t g_httpMutex = nullptr;
 // PrusaLink strategy (file-scope so it outlives setup)
 static PrusaLinkStrategy prusaLinkStrategy;
 
-#ifdef ENABLE_LCD
-// LCD I2C pins from BoardPins.h
+// Always declared; only initialized if isLcdEnabled() at runtime
 LCDManager lcdManager(0x27, 16, 2);
-#endif
+
+// Always declared; only initialized if isLedEnabled() at runtime
+LEDManager ledManager;
 
 void initWiFi() {
   auto& config = ConfigurationManager::getInstance();
 
   if (strlen(config.getWiFiSSID()) == 0) {
     Serial.println("WiFi SSID not configured - skipping WiFi");
-#ifdef ENABLE_LCD
-    lcdManager.updateScreen("WiFi: no SSID", "Check UserConfig.h");
-#endif
+    if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("WiFi: no SSID", "Check UserConfig.h");
+    }
     delay(2000);
     return;
   }
@@ -47,9 +41,9 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
-#ifdef ENABLE_LCD
-  lcdManager.updateScreen("Connecting WiFi", "");
-#endif
+  if (config.isLcdEnabled()) {
+    lcdManager.updateScreen("Connecting WiFi", "");
+  }
 
   WiFi.begin(config.getWiFiSSID(), config.getWiFiPassword());
 
@@ -65,22 +59,22 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
-#ifdef ENABLE_LCD
-    lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
-#endif
+    if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
+    }
 
-#ifdef ENABLE_STATUS_LED
-    ledManager.showWifiConnected();  // network up — not yet fully initialized
-#endif
+    if (config.isLedEnabled()) {
+      ledManager.showWifiConnected();  // network up — not yet fully initialized
+    }
 
     Serial.println("Setting up NTP...");
     configTime(0, 0, "pool.ntp.org");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
       Serial.println("Failed to obtain time");
-#ifdef ENABLE_LCD
-      lcdManager.updateScreen("NTP FAILED", "");
-#endif
+      if (config.isLcdEnabled()) {
+        lcdManager.updateScreen("NTP FAILED", "");
+      }
     } else {
       Serial.println("Time obtained");
     }
@@ -90,13 +84,13 @@ void initWiFi() {
     Serial.println("");
     Serial.println("WiFi connection failed!");
 
-#ifdef ENABLE_LCD
-    lcdManager.updateScreen("WiFi FAILED", "");
-#endif
+    if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("WiFi FAILED", "");
+    }
 
-#ifdef ENABLE_STATUS_LED
-    ledManager.showWifiFailed();
-#endif
+    if (config.isLedEnabled()) {
+      ledManager.showWifiFailed();
+    }
 
     delay(2000);
   }
@@ -108,41 +102,35 @@ void setup() {
   delay(1000);
   Serial.println("=== Starting setup ===");
 
-#ifdef ENABLE_STATUS_LED
-  ledManager.begin(PIN_STATUS_LED);
-  ledManager.showBooting();
-#endif
-
-#ifdef ENABLE_LCD
-  // Initialize I2C with custom pins for LCD
-  Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
-  Serial.println("I2C initialized");
-
-  // Initialize LCD and start its task on core 0
-  lcdManager.begin();
-  lcdManager.startTask();
-  lcdManager.updateScreen("Initializing...", "");
-  Serial.println("LCD initialized");
-#endif
-
-  // Initialize ConfigurationManager FIRST (loads NVS)
+  // Initialize ConfigurationManager FIRST — reads NVS to determine which
+  // optional hardware features are enabled before initializing any peripherals
   if (!ConfigurationManager::getInstance().begin()) {
     Serial.println("ConfigurationManager init failed - halting");
-#ifdef ENABLE_LCD
-    lcdManager.updateScreen("Config FAILED", "");
-#endif
     while (1) { delay(1000); }
   }
-#ifdef ENABLE_LCD
-  lcdManager.setScreenTimeoutMs(ConfigurationManager::getInstance().getLcdTimeoutMs());
-#endif
+
+  auto& config = ConfigurationManager::getInstance();
+
+  if (config.isLedEnabled()) {
+    ledManager.begin(PIN_STATUS_LED);
+    ledManager.showBooting();
+  }
+
+  if (config.isLcdEnabled()) {
+    // Initialize I2C with custom pins for LCD
+    Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
+    Serial.println("I2C initialized");
+
+    lcdManager.begin();
+    lcdManager.startTask();
+    lcdManager.updateScreen("Initializing...", "");
+    Serial.println("LCD initialized");
+
+    lcdManager.setScreenTimeoutMs(config.getLcdTimeoutMs());
+  }
 
   // Initialize ApplicationManager (message queue) with LCD reference
-#ifdef ENABLE_LCD
-  if (!ApplicationManager::getInstance().begin(&lcdManager)) {
-#else
-  if (!ApplicationManager::getInstance().begin(nullptr)) {
-#endif
+  if (!ApplicationManager::getInstance().begin(config.isLcdEnabled() ? &lcdManager : nullptr)) {
     Serial.println("ApplicationManager init failed - halting");
     while (1) { delay(1000); }
   }
@@ -169,7 +157,7 @@ void setup() {
 
   // Load automation mode from config
   {
-    uint8_t mode = ConfigurationManager::getInstance().getAutomationMode();
+    uint8_t mode = config.getAutomationMode();
     ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
     Serial.printf("Automation mode: %s\n",
                   mode == 0 ? "SELF_DIRECTED" : "CONTROLLED_BY_HA");
@@ -178,9 +166,9 @@ void setup() {
   // Initialize NFCManager
   if (!NFCManager::getInstance().begin()) {
     Serial.println("NFCManager init failed - halting");
-#ifdef ENABLE_LCD
-    lcdManager.updateScreen("NFC FAILED", "");
-#endif
+    if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("NFC FAILED", "");
+    }
     while (1) { delay(1000); }
   }
 
@@ -191,7 +179,6 @@ void setup() {
   SpoolmanManager::getInstance().startTask();
 
   // Start HomeAssistantManager task
-  auto& config = ConfigurationManager::getInstance();
   Serial.printf("Setup: HA config before startTask: enabled=%s host='%s' host_len=%u port=%u user_set=%s\n",
                 config.getHAEnabled() ? "true" : "false",
                 config.getHAMqttHost(),
@@ -201,7 +188,7 @@ void setup() {
   HomeAssistantManager::getInstance().startTask();
 
   // Start PrusaLink printer polling (if configured)
-  if (ConfigurationManager::getInstance().isPrusaLinkEnabled()) {
+  if (config.isPrusaLinkEnabled()) {
     PrinterManager::getInstance().begin();
     prusaLinkStrategy.setHttpMutex(g_httpMutex);
     PrinterManager::getInstance().setStrategy(&prusaLinkStrategy);
@@ -211,14 +198,14 @@ void setup() {
     Serial.println("PrusaLink integration disabled (not configured)");
   }
 
-#ifdef ENABLE_LCD
-  ApplicationManager::getInstance().showStatusOnLCD();
-#endif
+  if (config.isLcdEnabled()) {
+    ApplicationManager::getInstance().showStatusOnLCD();
+  }
 
-#ifdef ENABLE_STATUS_LED
-  ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
-  ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
-#endif
+  if (config.isLedEnabled()) {
+    ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
+    ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
+  }
 
   // Start HTTP tag writer server (WiFi must be connected)
   if (WiFi.status() == WL_CONNECTED) {
