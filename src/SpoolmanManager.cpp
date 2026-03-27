@@ -1146,9 +1146,9 @@ void SpoolmanManager::taskLoop() {
 }
 
 bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails) {
-    char path[128];
-    snprintf(path, sizeof(path),
-             "/api/v1/spool?extra_field_name=nfc_id&extra_field_value=%s", uid);
+    // Spoolman does not filter by extra_field_value — fetch all spools and
+    // find the matching nfc_id in the response via parseSpoolIdByUuid.
+    const char* path = "/api/v1/spool";
 
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         Serial.println("SpoolmanManager: lookupSpoolByUid could not acquire HTTP mutex");

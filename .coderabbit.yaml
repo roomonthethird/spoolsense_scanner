@@ -61,3 +61,7 @@ reviews:
 knowledge_base:
   opt_out: false
 
+code_generation:
+  docstrings:
+    enabled: false
+

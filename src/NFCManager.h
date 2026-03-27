@@ -90,7 +90,7 @@ public:
 
     // Generic tag resolved Spoolman data (set after UID lookup, cleared on tag remove)
     void setGenericTagSpoolInfo(const GenericTagSpoolInfo& info);
-    void getGenericTagSpoolInfo(GenericTagSpoolInfo& out) const;
+    void getGenericTagSpoolInfo(GenericTagSpoolInfo& out);
     void clearGenericTagSpoolInfo();
 
     // Recent spools history (RAM only)

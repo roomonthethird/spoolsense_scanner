@@ -113,15 +113,26 @@ bool NFCManager::getLastOpenTag3DData(opentag3d_t& out) {
 }
 
 void NFCManager::setGenericTagSpoolInfo(const GenericTagSpoolInfo& info) {
-    lastGenericTagSpoolInfo_ = info;
+    if (tagMutex && xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        lastGenericTagSpoolInfo_ = info;
+        xSemaphoreGive(tagMutex);
+    }
 }
 
-void NFCManager::getGenericTagSpoolInfo(GenericTagSpoolInfo& out) const {
-    out = lastGenericTagSpoolInfo_;
+void NFCManager::getGenericTagSpoolInfo(GenericTagSpoolInfo& out) {
+    if (tagMutex && xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        out = lastGenericTagSpoolInfo_;
+        xSemaphoreGive(tagMutex);
+    } else {
+        out = {};
+    }
 }
 
 void NFCManager::clearGenericTagSpoolInfo() {
-    lastGenericTagSpoolInfo_ = {};
+    if (tagMutex && xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        lastGenericTagSpoolInfo_ = {};
+        xSemaphoreGive(tagMutex);
+    }
 }
 
 bool NFCManager::getPN5180FirmwareVersion(uint8_t fw[2]) const {
