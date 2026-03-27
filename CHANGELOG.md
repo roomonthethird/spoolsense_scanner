@@ -5,6 +5,7 @@
 ### Changed
 
 - **Atomic OpenPrintTag write** — /api/write-tag now builds a fresh CBOR tag and writes all fields in a single NFC pass (~5s vs ~25s). Eliminates sequential write drops, scan loop race conditions, and CBOR re-encoding overflow. Existing field values are preserved when not specified.
+- **Skip redundant Spoolman syncs** — sync state cache (per UID) skips PATCH requests when filament and weight haven't changed since the last sync. 2-hour TTL with automatic invalidation on tag re-use, archive, and middleware write commands. Reduces unnecessary Spoolman API traffic, especially in AFC setups.
 
 ### Fixed
 
