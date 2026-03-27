@@ -52,6 +52,10 @@ public:
     const char* getPrusaLinkURL() const;
     const char* getPrusaLinkAPIKey() const;
 
+    // Optional hardware features (compile-time default, overridable via NVS)
+    bool isLcdEnabled() const;
+    bool isLedEnabled() const;
+
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
     bool saveToNVS(const ConfigUpdate& update);
@@ -84,6 +88,10 @@ private:
     bool _prusaLinkEnabled = false;
     char _prusaLinkUrl[128] = {0};
     char _prusaLinkApiKey[64] = {0};
+
+    // Optional hardware features
+    bool _lcdEnabled = false;
+    bool _ledEnabled = false;
 
     bool _initialized = false;
 };
