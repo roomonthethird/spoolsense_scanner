@@ -15,6 +15,45 @@ reviews:
     base_branches:
       - ".*"
 
+  instructions: |
+    This is an ESP32 Arduino firmware project (C++17) using PlatformIO.
+    Target hardware: ESP32-S3-Zero and ESP32 DevKit/WROOM with PN5180 NFC reader.
+
+    ## Project-specific rules
+
+    **Memory — critical:**
+    - Flag any use of `new` or `malloc` — heap is limited (~200KB free at runtime)
+    - Flag `DynamicJsonDocument` — project uses `StaticJsonDocument` only
+    - Flag `String` concatenation in hot paths — prefer `snprintf` into fixed buffers
+
+    **Thread safety:**
+    - All code runs under FreeRTOS with multiple tasks (NFC scan, web server, MQTT, Spoolman)
+    - Flag any shared state access without mutex or `portENTER_CRITICAL`
+    - Flag direct member variable writes from web server handlers that are read by scan task
+
+    **NFC / hardware:**
+    - Tag format parsers belong in `lib/` (e.g. `lib/opentag3d/`, `lib/tigertag/`)
+    - New tag formats must add a `TagKind` enum value and handle it in NFCManager
+    - `StaticJsonDocument` size must be large enough for the actual payload — flag sizes under 512 bytes for complex nested responses
+
+    **Web UI:**
+    - HTML pages are PROGMEM strings in `src/*HTML.h` files — one file per page
+    - File naming: `<PageName>HTML.h` (e.g. `TroubleshootingHTML.h`, `TigerTagWriterHTML.h`)
+    - Nav links must be added to ALL pages when a new page is added
+
+    **Config:**
+    - All user-facing config must be in `include/UserConfig.h`
+    - No hardcoded WiFi credentials, MQTT passwords, or API keys anywhere
+    - Optional features (LCD, LED, TFT) must be gated with `#if defined(ENABLE_X) && ENABLE_X`
+
+    **Compile targets:**
+    - Changes must compile on both `esp32dev` and `esp32s3zero`
+    - PRs should note if only one target was tested
+
+    **Workflow:**
+    - PRs must target `dev` branch, not `main`
+    - `main` is production-only — merged from dev with version bumps
+
   path_filters:
     - "!.pio/**"
     - "!.vscode/**"
@@ -22,41 +61,3 @@ reviews:
 knowledge_base:
   opt_out: false
 
-instructions: |
-  This is an ESP32 Arduino firmware project (C++17) using PlatformIO.
-  Target hardware: ESP32-S3-Zero and ESP32 DevKit/WROOM with PN5180 NFC reader.
-
-  ## Project-specific rules
-
-  **Memory — critical:**
-  - Flag any use of `new` or `malloc` — heap is limited (~200KB free at runtime)
-  - Flag `DynamicJsonDocument` — project uses `StaticJsonDocument` only
-  - Flag `String` concatenation in hot paths — prefer `snprintf` into fixed buffers
-
-  **Thread safety:**
-  - All code runs under FreeRTOS with multiple tasks (NFC scan, web server, MQTT, Spoolman)
-  - Flag any shared state access without mutex or `portENTER_CRITICAL`
-  - Flag direct member variable writes from web server handlers that are read by scan task
-
-  **NFC / hardware:**
-  - Tag format parsers belong in `lib/` (e.g. `lib/opentag3d/`, `lib/tigertag/`)
-  - New tag formats must add a `TagKind` enum value and handle it in NFCManager
-  - `StaticJsonDocument` size must be large enough for the actual payload — flag sizes under 512 bytes for complex nested responses
-
-  **Web UI:**
-  - HTML pages are PROGMEM strings in `src/*HTML.h` files — one file per page
-  - File naming: `<PageName>HTML.h` (e.g. `TroubleshootingHTML.h`, `TigerTagWriterHTML.h`)
-  - Nav links must be added to ALL pages when a new page is added
-
-  **Config:**
-  - All user-facing config must be in `include/UserConfig.h`
-  - No hardcoded WiFi credentials, MQTT passwords, or API keys anywhere
-  - Optional features (LCD, LED, TFT) must be gated with `#if defined(ENABLE_X) && ENABLE_X`
-
-  **Compile targets:**
-  - Changes must compile on both `esp32dev` and `esp32s3zero`
-  - PRs should note if only one target was tested
-
-  **Workflow:**
-  - PRs must target `dev` branch, not `main`
-  - `main` is production-only — merged from dev with version bumps
