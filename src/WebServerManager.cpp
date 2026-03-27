@@ -834,6 +834,17 @@ void WebServerManager::handleApiStatus() {
                     if (ot3d.dry_time_hours > 0) otObj["dry_time_hours"] = ot3d.dry_time_hours;
                 }
             }
+        } else if (state.kind == TagKind::GenericUidTag) {
+            // Generic UID tag — include resolved Spoolman data if available
+            GenericTagSpoolInfo spoolInfo;
+            NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
+            if (spoolInfo.valid) {
+                doc["material_name"] = spoolInfo.material_type;
+                doc["manufacturer"] = spoolInfo.manufacturer;
+                doc["color"] = spoolInfo.color_hex;
+                doc["remaining_g"] = spoolInfo.remaining_weight_g;
+                doc["spoolman_id"] = spoolInfo.spoolman_id;
+            }
         } else if (state.tag_data_valid) {
             // OpenPrintTag — include OPT fields
             uint8_t mat_type = 0;

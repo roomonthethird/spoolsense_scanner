@@ -138,7 +138,12 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       var html = '';
       html += row('Format', tagKindLabel(s.tag_kind));
       html += row('UID', s.uid || '&mdash;');
-      if (!s.tag_data_valid) html += row('Data', 'No parseable data');
+      if (s.material_name) html += row('Material', s.material_name);
+      if (s.manufacturer)  html += row('Manufacturer', s.manufacturer);
+      if (s.color)         html += row('Color', '<span class="color-swatch" style="background:' + s.color + '"></span> ' + s.color);
+      if (s.remaining_g !== undefined) html += row('Remaining', s.remaining_g.toFixed(1) + ' g');
+      if (s.spoolman_id > 0) html += row('Spoolman ID', s.spoolman_id);
+      if (!s.material_name && !s.tag_data_valid) html += row('Data', 'No parseable data &mdash; scan in progress');
       return html;
     }
 

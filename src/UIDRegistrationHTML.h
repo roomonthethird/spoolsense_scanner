@@ -338,7 +338,7 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
         return;
       }
 
-      var materialTypeText = materialTypeEl.options[materialTypeEl.selectedIndex].text;
+      var materialTypeText = materialTypeEl.value || 'PLA';
       var materialName = readString('material_name');
       if (materialName) materialName = materialName.toUpperCase();
 
