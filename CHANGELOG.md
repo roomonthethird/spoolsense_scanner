@@ -13,6 +13,9 @@
 - Mutex-less tag_data reads — sendSpoolUpdatedMessage and processWriteQueue now hold tagMutex when reading currentSpool
 - ESP.restart() during NFC write — scan task is now paused before restart to prevent tag corruption
 - NFCScanTask stack bumped 6144→8192 bytes
+- Spoolman sync cache weight comparison uses epsilon (0.01g) instead of float == to prevent false misses from floating-point drift
+- Spoolman sync cache protected by dedicated FreeRTOS mutex — prevents races between syncSpool() task and ApplicationManager invalidation on middleware writes
+- spoolman_id included in sync cache hit check — prevents false cache hits when different spools share the same UID, filament, and weight within the TTL window
 
 ---
 
