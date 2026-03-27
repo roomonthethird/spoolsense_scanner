@@ -112,6 +112,18 @@ bool NFCManager::getLastOpenTag3DData(opentag3d_t& out) {
     return valid;
 }
 
+void NFCManager::setGenericTagSpoolInfo(const GenericTagSpoolInfo& info) {
+    lastGenericTagSpoolInfo_ = info;
+}
+
+void NFCManager::getGenericTagSpoolInfo(GenericTagSpoolInfo& out) const {
+    out = lastGenericTagSpoolInfo_;
+}
+
+void NFCManager::clearGenericTagSpoolInfo() {
+    lastGenericTagSpoolInfo_ = {};
+}
+
 bool NFCManager::getPN5180FirmwareVersion(uint8_t fw[2]) const {
 #ifndef NATIVE_TEST
     if (!connection_) return false;

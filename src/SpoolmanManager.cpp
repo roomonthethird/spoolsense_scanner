@@ -191,15 +191,16 @@ static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outI
         return false;
     }
 
+    // Collect all matching IDs and return the highest (most recently registered)
+    // to handle cases where multiple spools share the same UID.
     for (JsonObject spool : spools) {
         int id = spool["id"] | -1;
         const char* nfcId = spool["extra"]["nfc_id"] | "";
         if (id >= 0 && matchesUuid(nfcId, uuid)) {
-            outId = id;
-            return true;
+            if (id > outId) outId = id;
         }
     }
-    return false;
+    return outId >= 0;
 }
 
 static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSize) {
@@ -1101,22 +1102,82 @@ void SpoolmanManager::taskLoop() {
                 continue;
             }
 
-            Serial.printf("SpoolmanManager: Syncing spool %s\n", req.spool_id);
-            int resolvedSpoolmanId = -1;
-            bool success = syncSpool(req, resolvedSpoolmanId);
-
-            // Send result to ApplicationManager
             AppMessage msg;
             msg.type = AppMessageType::SPOOLMAN_SYNCED;
             strncpy(msg.payload.spoolmanSynced.spool_id, req.spool_id,
                     sizeof(msg.payload.spoolmanSynced.spool_id) - 1);
             msg.payload.spoolmanSynced.spool_id[sizeof(msg.payload.spoolmanSynced.spool_id) - 1] = '\0';
-            msg.payload.spoolmanSynced.success = success;
-            msg.payload.spoolmanSynced.kg_remaining = req.remaining_weight_g / 1000.0f;
-            msg.payload.spoolmanSynced.spoolman_id = resolvedSpoolmanId;
+            msg.payload.spoolmanSynced.is_uid_lookup = req.lookup_only;
+
+            if (req.lookup_only) {
+                Serial.printf("SpoolmanManager: UID lookup for %s\n", req.spool_id);
+                SpoolDetails details = {};
+                bool found = lookupSpoolByUid(req.spool_id, details);
+                msg.payload.spoolmanSynced.success = found;
+                msg.payload.spoolmanSynced.spoolman_id = found ? details.spoolman_id : -1;
+                msg.payload.spoolmanSynced.kg_remaining = found ? details.remaining_weight_g / 1000.0f : 0.0f;
+                strncpy(msg.payload.spoolmanSynced.material_name,
+                        found ? details.material_type : "",
+                        sizeof(msg.payload.spoolmanSynced.material_name) - 1);
+                msg.payload.spoolmanSynced.material_name[sizeof(msg.payload.spoolmanSynced.material_name) - 1] = '\0';
+                strncpy(msg.payload.spoolmanSynced.manufacturer,
+                        found ? details.manufacturer : "",
+                        sizeof(msg.payload.spoolmanSynced.manufacturer) - 1);
+                msg.payload.spoolmanSynced.manufacturer[sizeof(msg.payload.spoolmanSynced.manufacturer) - 1] = '\0';
+                strncpy(msg.payload.spoolmanSynced.color_hex,
+                        found ? details.color_hex : "",
+                        sizeof(msg.payload.spoolmanSynced.color_hex) - 1);
+                msg.payload.spoolmanSynced.color_hex[sizeof(msg.payload.spoolmanSynced.color_hex) - 1] = '\0';
+            } else {
+                Serial.printf("SpoolmanManager: Syncing spool %s\n", req.spool_id);
+                int resolvedSpoolmanId = -1;
+                bool success = syncSpool(req, resolvedSpoolmanId);
+                msg.payload.spoolmanSynced.success = success;
+                msg.payload.spoolmanSynced.kg_remaining = req.remaining_weight_g / 1000.0f;
+                msg.payload.spoolmanSynced.spoolman_id = resolvedSpoolmanId;
+                strncpy(msg.payload.spoolmanSynced.material_name, req.material_name,
+                        sizeof(msg.payload.spoolmanSynced.material_name) - 1);
+                msg.payload.spoolmanSynced.material_name[sizeof(msg.payload.spoolmanSynced.material_name) - 1] = '\0';
+            }
+
             ApplicationManager::getInstance().sendMessage(msg);
         }
     }
+}
+
+bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails) {
+    char path[128];
+    snprintf(path, sizeof(path),
+             "/api/v1/spool?extra_field_name=nfc_id&extra_field_value=%s", uid);
+
+    if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        Serial.println("SpoolmanManager: lookupSpoolByUid could not acquire HTTP mutex");
+        return false;
+    }
+
+    String response;
+    int code = httpGet(path, response);
+    if (code != 200) {
+        Serial.printf("SpoolmanManager: UID lookup HTTP %d for uid=%s\n", code, uid);
+        xSemaphoreGive(httpMutex_);
+        return false;
+    }
+
+    int spoolmanId = -1;
+    if (!parseSpoolIdByUuid(response.c_str(), uid, spoolmanId) || spoolmanId < 0) {
+        Serial.printf("SpoolmanManager: UID lookup — no match for uid=%s\n", uid);
+        xSemaphoreGive(httpMutex_);
+        return false;
+    }
+
+    bool ok = getSpoolDetails(spoolmanId, outDetails);
+    xSemaphoreGive(httpMutex_);
+
+    if (ok) {
+        Serial.printf("SpoolmanManager: UID lookup found spool %d — %s %.0fg\n",
+                      spoolmanId, outDetails.material_type, outDetails.remaining_weight_g);
+    }
+    return ok;
 }
 
 bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId) {
