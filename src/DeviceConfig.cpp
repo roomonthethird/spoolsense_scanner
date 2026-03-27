@@ -7,6 +7,9 @@
 #ifndef AUTOMATION_MODE
 #define AUTOMATION_MODE 0
 #endif
+#ifndef ENABLE_KEYPAD
+#define ENABLE_KEYPAD 0
+#endif
 
 static const DeviceConfig kDeviceConfig = {
     .device_name = DEVICE_NAME,
@@ -39,6 +42,7 @@ static const DeviceConfig kDeviceConfig = {
     .peripherals = {
         .lcd_enabled = ENABLE_LCD,
         .status_led_enabled = ENABLE_STATUS_LED,
+        .keypad_enabled = ENABLE_KEYPAD,
     },
 
     .automation_mode = AUTOMATION_MODE,

@@ -20,6 +20,9 @@ struct ConfigUpdate {
     uint8_t auto_mode;
     uint8_t lcd_enabled;
     uint8_t led_enabled;
+    uint8_t keypad_enabled;
+    // Klipper / Moonraker
+    char moonraker_url[128];
     // PrusaLink integration
     uint8_t prusalink_on;
     char prusalink_url[128];
@@ -47,6 +50,9 @@ public:
     const char* getHAMqttPass() const;
     uint8_t getAutomationMode() const;
 
+    // Klipper / Moonraker
+    const char* getMoonrakerURL() const;
+
     // PrusaLink configuration
     bool isPrusaLinkEnabled() const;
     const char* getPrusaLinkURL() const;
@@ -55,6 +61,7 @@ public:
     // Optional hardware features (compile-time default, overridable via NVS)
     bool isLcdEnabled() const;
     bool isLedEnabled() const;
+    bool isKeypadEnabled() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -84,6 +91,9 @@ private:
     char _haMqttPass[64];
     uint8_t _automationMode;
 
+    // Klipper / Moonraker
+    char _moonrakerUrl[128] = {0};
+
     // PrusaLink config
     bool _prusaLinkEnabled = false;
     char _prusaLinkUrl[128] = {0};
@@ -92,6 +102,7 @@ private:
     // Optional hardware features
     bool _lcdEnabled = false;
     bool _ledEnabled = false;
+    bool _keypadEnabled = false;
 
     bool _initialized = false;
 };

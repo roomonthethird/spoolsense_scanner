@@ -10,6 +10,7 @@
   #include "LEDManager.h"
   #include <Arduino.h>
   #include <WiFi.h>
+  #include <HTTPClient.h>
   extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
@@ -192,6 +193,18 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
 
         case AppMessageType::PRINTER_WARNING:
             handlePrinterWarning(msg);
+            break;
+
+        case AppMessageType::KEYPAD_DIGIT:
+            handleKeypadDigit(msg);
+            break;
+
+        case AppMessageType::KEYPAD_CONFIRM:
+            handleKeypadConfirm();
+            break;
+
+        case AppMessageType::KEYPAD_CANCEL:
+            handleKeypadCancel();
             break;
     }
 }
@@ -903,5 +916,108 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
     (void)topicSuffix;
     (void)payload;
     (void)retained;
+#endif
+}
+
+// ── Keypad handlers ─────────────────────────────────────────────────────────
+
+void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
+    char digit = msg.payload.keypadDigit.digit;
+    Serial.printf("EVENT: KeypadDigit - '%c'\n", digit);
+
+    if (keypadBufferLen_ < sizeof(keypadBuffer_) - 1) {
+        keypadBuffer_[keypadBufferLen_++] = digit;
+        keypadBuffer_[keypadBufferLen_] = '\0';
+    }
+
+    if (lcdManager) {
+        char line[17];
+        snprintf(line, sizeof(line), "Assign to: T%s", keypadBuffer_);
+        lcdManager->updateScreen(line, "# Confirm  * Clr");
+    }
+}
+
+void ApplicationManager::handleKeypadConfirm() {
+    Serial.println("EVENT: KeypadConfirm");
+
+    if (keypadBufferLen_ == 0) {
+        if (lcdManager) lcdManager->updateScreen("No tool entered", "Type number + #");
+        return;
+    }
+
+#ifndef NATIVE_TEST
+    // Check if a spool is currently detected
+    CurrentSpoolState state;
+    bool spoolPresent = NFCManager::getInstance().getCurrentSpoolState(state) && state.present;
+    if (!spoolPresent) {
+        if (lcdManager) lcdManager->updateScreen("No spool scanned", "Scan tag first");
+        keypadBuffer_[0] = '\0';
+        keypadBufferLen_ = 0;
+        return;
+    }
+#endif
+
+    sendAssignSpool(keypadBuffer_);
+
+    if (lcdManager) {
+        char line[17];
+        snprintf(line, sizeof(line), "Assigned T%s", keypadBuffer_);
+        lcdManager->updateScreen(line, "OK");
+    }
+
+    keypadBuffer_[0] = '\0';
+    keypadBufferLen_ = 0;
+}
+
+void ApplicationManager::handleKeypadCancel() {
+    Serial.println("EVENT: KeypadCancel");
+    keypadBuffer_[0] = '\0';
+    keypadBufferLen_ = 0;
+
+    if (lcdManager) {
+        lcdManager->updateScreen("Tool entry", "Cleared");
+    }
+}
+
+void ApplicationManager::sendAssignSpool(const char* toolNumber) {
+#ifndef NATIVE_TEST
+    const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
+    if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
+        Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
+        if (lcdManager) lcdManager->updateScreen("Moonraker URL", "Not configured");
+        return;
+    }
+
+    extern SemaphoreHandle_t g_httpMutex;
+    if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
+        return;
+    }
+
+    char url[192];
+    snprintf(url, sizeof(url), "%s/printer/gcode/script", moonrakerUrl);
+
+    char gcode[64];
+    snprintf(gcode, sizeof(gcode), "ASSIGN_SPOOL TOOL=T%s", toolNumber);
+
+    char postBody[96];
+    snprintf(postBody, sizeof(postBody), "{\"script\":\"%s\"}", gcode);
+
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(postBody);
+    http.end();
+
+    if (g_httpMutex) xSemaphoreGive(g_httpMutex);
+
+    Serial.printf("ApplicationManager: ASSIGN_SPOOL T%s — HTTP %d\n", toolNumber, code);
+
+    if (code != 200) {
+        if (lcdManager) lcdManager->updateScreen("Assign failed", "Check Moonraker");
+    }
+#else
+    (void)toolNumber;
 #endif
 }
