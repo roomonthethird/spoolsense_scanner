@@ -235,7 +235,7 @@ private:
     void handleKeypadDigit(const AppMessage& msg);
     void handleKeypadConfirm();
     void handleKeypadCancel();
-    void sendAssignSpool(const char* toolNumber);
+    bool sendAssignSpool(const char* toolNumber);
     void finishPrint(float gramsUsed, bool canceled);
     void enqueueSpoolmanSync(const SpoolDetectedPayload& spool);
     void publishToHA(const char* topicSuffix, const char* payload, bool retained);

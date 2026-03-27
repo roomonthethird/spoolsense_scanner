@@ -125,7 +125,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
             <div class="hint" style="margin-bottom:12px">Connect to a Klipper printer via Moonraker for keypad-based tool assignment (ASSIGN_SPOOL). Leave blank if not used.</div>
             <div class="field">
               <label for="moonraker_url">Moonraker URL</label>
-              <input id="moonraker_url" type="text" placeholder="http://192.168.1.72:7125" />
+              <input id="moonraker_url" type="text" maxlength="127" placeholder="http://printer.local:7125" />
             </div>
           </section>
 

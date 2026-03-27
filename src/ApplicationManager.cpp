@@ -957,12 +957,12 @@ void ApplicationManager::handleKeypadConfirm() {
     }
 #endif
 
-    sendAssignSpool(keypadBuffer_);
-
-    if (lcdManager) {
-        char line[17];
-        snprintf(line, sizeof(line), "Assigned T%s", keypadBuffer_);
-        lcdManager->updateScreen(line, "OK");
+    if (sendAssignSpool(keypadBuffer_)) {
+        if (lcdManager) {
+            char line[17];
+            snprintf(line, sizeof(line), "Assigned T%s", keypadBuffer_);
+            lcdManager->updateScreen(line, "OK");
+        }
     }
 
     keypadBuffer_[0] = '\0';
@@ -979,19 +979,20 @@ void ApplicationManager::handleKeypadCancel() {
     }
 }
 
-void ApplicationManager::sendAssignSpool(const char* toolNumber) {
+bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
 #ifndef NATIVE_TEST
     const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
     if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
         Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
         if (lcdManager) lcdManager->updateScreen("Moonraker URL", "Not configured");
-        return;
+        return false;
     }
 
     extern SemaphoreHandle_t g_httpMutex;
     if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
         Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
-        return;
+        if (lcdManager) lcdManager->updateScreen("Assign failed", "HTTP busy");
+        return false;
     }
 
     char url[192];
@@ -1005,6 +1006,8 @@ void ApplicationManager::sendAssignSpool(const char* toolNumber) {
 
     WiFiClient client;
     HTTPClient http;
+    http.setConnectTimeout(3000);
+    http.setTimeout(5000);
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     int code = http.POST(postBody);
@@ -1016,8 +1019,11 @@ void ApplicationManager::sendAssignSpool(const char* toolNumber) {
 
     if (code != 200) {
         if (lcdManager) lcdManager->updateScreen("Assign failed", "Check Moonraker");
+        return false;
     }
+    return true;
 #else
     (void)toolNumber;
+    return true;
 #endif
 }

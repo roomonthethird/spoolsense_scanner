@@ -500,7 +500,7 @@ void WebServerManager::handleApiGetConfig() {
 void WebServerManager::handleApiPostConfig() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<1024> doc;
     DeserializationError err = deserializeJson(doc, _server.arg("plain"));
     if (err) {
         sendError(400, "Invalid JSON");
