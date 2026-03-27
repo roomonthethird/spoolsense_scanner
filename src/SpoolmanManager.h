@@ -55,6 +55,14 @@ private:
         int32_t spoolman_id;
     };
 
+    struct SyncStateCache {
+        char spool_id[17];           // NFC tag UID
+        int32_t spoolman_id;         // resolved Spoolman spool ID
+        int32_t filament_id;         // resolved filament ID
+        float remaining_weight_g;    // last synced weight
+        uint32_t synced_at_ms;       // millis() when last synced
+    };
+
     SpoolmanManager() = default;
     SpoolmanManager(const SpoolmanManager&) = delete;
     SpoolmanManager& operator=(const SpoolmanManager&) = delete;
@@ -64,17 +72,23 @@ private:
     bool syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId);
     int32_t lookupCachedSpoolmanId(const char* spoolId) const;
     void storeCachedSpoolmanId(const char* spoolId, int32_t spoolmanId);
+    bool isSyncCacheHit(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
+    void storeSyncState(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
 
     QueueHandle_t syncQueue = nullptr;
     SemaphoreHandle_t httpMutex_ = nullptr;
     TaskHandle_t taskHandle = nullptr;
     SpoolIdCacheEntry spoolIdCache_[8] = {};
     uint8_t spoolIdCacheWriteIndex_ = 0;
+    SyncStateCache syncStateCache_[8] = {};
+    uint8_t syncStateCacheWriteIndex_ = 0;
+    SemaphoreHandle_t cacheMutex_ = nullptr;
 
     static constexpr size_t QUEUE_SIZE = 4;
     static constexpr size_t TASK_STACK_SIZE = 6144;
     static constexpr UBaseType_t TASK_PRIORITY = 1;
     static constexpr TickType_t HTTP_MUTEX_TIMEOUT = pdMS_TO_TICKS(10000);
+    static constexpr uint32_t SYNC_CACHE_TTL_MS = 2 * 60 * 60 * 1000;  // 2 hours
 };
 
 #endif // SPOOLMAN_MANAGER_H

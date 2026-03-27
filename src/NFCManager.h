@@ -14,6 +14,40 @@
 #include "TigerTagParser.h"
 #include "opentag3d_lib.h"
 
+// Sidecar for WRITE_ATOMIC: filled by HTTP handler, consumed by scan task.
+// All fields are optional — only those with has_* = true are applied.
+struct AtomicWriteFields {
+    bool has_material_type = false;
+    uint8_t material_type = 0;
+    bool has_color = false;
+    uint8_t color[4] = {0};
+    bool has_initial_weight = false;
+    float initial_weight_g = 0;
+    bool has_consumed_weight = false;
+    float consumed_weight = 0;
+    bool has_brand_name = false;
+    char brand_name[33] = {0};
+    bool has_spoolman_id = false;
+    int32_t spoolman_id = 0;
+    bool has_density = false;
+    float density = 0;
+    bool has_diameter = false;
+    float diameter_mm = 0;
+    bool has_material_name = false;
+    char material_name[33] = {0};
+    bool has_min_print_temp = false;
+    int16_t min_print_temp = 0;
+    bool has_max_print_temp = false;
+    int16_t max_print_temp = 0;
+    bool has_preheat_temp = false;
+    int16_t preheat_temp = 0;
+    bool has_min_bed_temp = false;
+    int16_t min_bed_temp = 0;
+    bool has_max_bed_temp = false;
+    int16_t max_bed_temp = 0;
+    volatile bool pending = false;
+};
+
 class NFCManager {
 public:
     static NFCManager& getInstance();
@@ -21,6 +55,7 @@ public:
     void startScanTask();                            // Start FreeRTOS scan task
     bool enqueueWrite(const NFCWriteRequest& req);   // Queue a write request
     bool enqueueRawWrite(const NFCWriteRequest& req, const uint8_t* data, size_t dataSize);
+    void setAtomicWriteFields(const AtomicWriteFields& fields) { atomicWriteFields_ = fields; }
     bool writeSpoolmanDataToTag(int32_t spoolman_id, const char* expected_spool_id = nullptr);
     bool isRequestCompleted(uint32_t request_id);    // Check if request done
     void requestCurrentSpool();                      // Clear dedup to resend current spool
@@ -107,6 +142,7 @@ private:
     bool rawWritePending_ = false;
     bool writeRawTag();
     opt_tag_t writeScratchTag_;   // Reused by scan task write path to avoid large stack frames
+    AtomicWriteFields atomicWriteFields_;  // Sidecar for WRITE_ATOMIC (filled by HTTP, consumed by scan task)
 
     // Write queue (FreeRTOS)
     QueueHandle_t writeQueue = nullptr;

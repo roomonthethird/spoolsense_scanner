@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased]
+
+---
+
+## [1.5.6] - 2026-03-27
+
+### Changed
+
+- **Atomic OpenPrintTag write** — /api/write-tag now builds a fresh CBOR tag and writes all fields in a single NFC pass (~5s vs ~25s). Eliminates sequential write drops, scan loop race conditions, and CBOR re-encoding overflow. Existing field values are preserved when not specified.
+- **Skip redundant Spoolman syncs** — sync state cache (per UID) skips PATCH requests when filament and weight haven't changed since the last sync. 2-hour TTL with automatic invalidation on tag re-use, archive, and middleware write commands. Reduces unnecessary Spoolman API traffic, especially in AFC setups.
+
+### Fixed
+
+- Buffer overflow in mifareBlockWrite16 — cmd[1] wrote past 1-byte array (undefined behavior)
+- Mutex-less tag_data reads — sendSpoolUpdatedMessage and processWriteQueue now hold tagMutex when reading currentSpool
+- ESP.restart() during NFC write — scan task is now paused before restart to prevent tag corruption
+- NFCScanTask stack bumped 6144→8192 bytes
+- Spoolman sync cache weight comparison uses epsilon (0.01g) instead of float == to prevent false misses from floating-point drift
+- Spoolman sync cache protected by dedicated FreeRTOS mutex — prevents races between syncSpool() task and ApplicationManager invalidation on middleware writes
+- spoolman_id included in sync cache hit check — prevents false cache hits when different spools share the same UID, filament, and weight within the TTL window
+
+---
+
 ## [1.5.5] - 2026-03-26
 
 ### Added
