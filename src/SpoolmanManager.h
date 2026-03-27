@@ -74,7 +74,6 @@ private:
     void storeCachedSpoolmanId(const char* spoolId, int32_t spoolmanId);
     bool isSyncCacheHit(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
     void storeSyncState(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
-    void invalidateSyncState(const char* spoolId);
 
     QueueHandle_t syncQueue = nullptr;
     SemaphoreHandle_t httpMutex_ = nullptr;

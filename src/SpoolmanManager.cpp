@@ -1088,22 +1088,6 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
     xSemaphoreGive(cacheMutex_);
 }
 
-void SpoolmanManager::invalidateSyncState(const char* spoolId) {
-    if (spoolId == nullptr || spoolId[0] == '\0') {
-        return;
-    }
-    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
-        return;
-    }
-    for (size_t i = 0; i < (sizeof(syncStateCache_) / sizeof(syncStateCache_[0])); ++i) {
-        if (strcmp(syncStateCache_[i].spool_id, spoolId) == 0) {
-            syncStateCache_[i].spool_id[0] = '\0';
-            break;
-        }
-    }
-    xSemaphoreGive(cacheMutex_);
-}
-
 void SpoolmanManager::taskFunc(void* param) {
     SpoolmanManager* self = static_cast<SpoolmanManager*>(param);
     self->taskLoop();
