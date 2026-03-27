@@ -27,6 +27,7 @@ struct SpoolmanSyncRequest {
     uint8_t dry_temp;            // Drying temp C (0 = not set)
     uint8_t dry_time_hours;      // Drying time hours (0 = not set)
     char tag_format[16];         // "OpenPrintTag", "TigerTag"
+    bool lookup_only;            // True = UID lookup only, do not sync/write
 };
 
 struct SpoolDetails {
@@ -70,6 +71,7 @@ private:
     static void taskFunc(void* param);
     void taskLoop();
     bool syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId);
+    bool lookupSpoolByUid(const char* uid, SpoolDetails& outDetails);
     int32_t lookupCachedSpoolmanId(const char* spoolId) const;
     void storeCachedSpoolmanId(const char* spoolId, int32_t spoolmanId);
     bool isSyncCacheHit(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);

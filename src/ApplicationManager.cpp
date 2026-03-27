@@ -539,10 +539,10 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
         lastDisplayedSpoolId[0] = '\0';
 
-        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", "Generic Tag", "UID scan only");
+        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
     }
 
-    // Publish generic tag state to HA
+    // Publish generic tag state to HA (pre-lookup)
     {
         char json[256];
         snprintf(json, sizeof(json),
@@ -553,6 +553,16 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
                  msg.payload.genericTag.spool_id);
         publishToHA("tag/state", json, true);
     }
+
+    // Trigger Spoolman UID lookup — result will arrive via SPOOLMAN_SYNCED
+#ifndef NATIVE_TEST
+    if (SpoolmanManager::getInstance().isConfigured()) {
+        SpoolmanSyncRequest req = {};
+        strncpy(req.spool_id, msg.payload.genericTag.spool_id, sizeof(req.spool_id) - 1);
+        req.lookup_only = true;
+        SpoolmanManager::getInstance().enqueueSync(req);
+    }
+#endif
 }
 
 void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
@@ -610,14 +620,31 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
         msg.payload.spoolmanSynced.success ? "true" : "false",
         msg.payload.spoolmanSynced.spoolman_id);
 
-    // Get current spool state for material name
     char materialName[32] = {0};
+    strncpy(materialName, msg.payload.spoolmanSynced.material_name, sizeof(materialName) - 1);
     float kgRemaining = msg.payload.spoolmanSynced.kg_remaining;
 
-    CurrentSpoolState state;
-    if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
-        opt_get_material_name(&state.tag_data, materialName, sizeof(materialName));
+#ifndef NATIVE_TEST
+    if (msg.payload.spoolmanSynced.is_uid_lookup && msg.payload.spoolmanSynced.success) {
+        // Validate the tag is still present and matches the lookup UID before
+        // writing — the tag may have been removed while the Spoolman request was in flight
+        CurrentSpoolState currentState;
+        bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(currentState)
+                               && currentState.present
+                               && currentState.kind == TagKind::GenericUidTag
+                               && strcmp(currentState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
+        if (tagStillPresent) {
+            GenericTagSpoolInfo info = {};
+            strncpy(info.material_type, msg.payload.spoolmanSynced.material_name, sizeof(info.material_type) - 1);
+            strncpy(info.manufacturer, msg.payload.spoolmanSynced.manufacturer, sizeof(info.manufacturer) - 1);
+            strncpy(info.color_hex, msg.payload.spoolmanSynced.color_hex, sizeof(info.color_hex) - 1);
+            info.remaining_weight_g = kgRemaining * 1000.0f;
+            info.spoolman_id = msg.payload.spoolmanSynced.spoolman_id;
+            info.valid = true;
+            NFCManager::getInstance().setGenericTagSpoolInfo(info);
+        }
     }
+#endif
 
     if (lcdManager) {
         if (msg.payload.spoolmanSynced.success) {
@@ -627,6 +654,8 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             snprintf(line2, sizeof(line2), "Remain: %.0fg",
                      kgRemaining * 1000.0f);
             lcdManager->updateScreen(line1, line2);
+        } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
+            lcdManager->updateScreen("Generic Tag", "Not in Spoolman");
         } else {
             char line1[17];
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
@@ -678,6 +707,9 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     // Clear displayed spool so next scan re-displays
     lastDisplayedSpoolId[0] = '\0';
     lastDisplayedBlankId[0] = '\0';
+#ifndef NATIVE_TEST
+    NFCManager::getInstance().clearGenericTagSpoolInfo();
+#endif
     tagRemovedAtMs = millis();
     pendingStatusAfterTagRemoved = true;
 

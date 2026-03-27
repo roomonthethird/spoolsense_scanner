@@ -1,6 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.8] - 2026-03-27
+
+### Fixed
+
+- **LCD Type field blank after Spoolman sync** — `material_name` is now carried in `SpoolmanSyncedPayload` instead of being re-read from NFC state after sync completes. Avoids blank Type when the tag briefly loses contact during the Spoolman HTTP request.
+- **NFC+ Register button silent failure** — fixed `TypeError` caused by calling `.options[selectedIndex]` on an `<input>` element (not a `<select>`). Registration now works correctly.
+- **Generic tag Spoolman lookup** — scanning a plain NFC tag (e.g. NTAG215) now triggers a Spoolman UID lookup via the `nfc_id` extra field. Material, manufacturer, color, and remaining weight are displayed on the LCD and populated in the reader page and `/api/status`.
+- **Duplicate UID handling** — when multiple Spoolman spools share the same `nfc_id`, the most recently registered spool (highest ID) is now used instead of the first match.
 
 ---
 

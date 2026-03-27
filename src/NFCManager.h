@@ -48,6 +48,15 @@ struct AtomicWriteFields {
     volatile bool pending = false;
 };
 
+struct GenericTagSpoolInfo {
+    char material_type[32];
+    char manufacturer[64];
+    char color_hex[8];
+    float remaining_weight_g;
+    int32_t spoolman_id;
+    bool valid;
+};
+
 class NFCManager {
 public:
     static NFCManager& getInstance();
@@ -78,6 +87,11 @@ public:
             while (xQueueReceive(writeQueue, &dummy, 0) == pdTRUE) {}
         }
     }
+
+    // Generic tag resolved Spoolman data (set after UID lookup, cleared on tag remove)
+    void setGenericTagSpoolInfo(const GenericTagSpoolInfo& info);
+    void getGenericTagSpoolInfo(GenericTagSpoolInfo& out);
+    void clearGenericTagSpoolInfo();
 
     // Recent spools history (RAM only)
     static constexpr size_t MAX_RECENT_SPOOLS = 10;
@@ -134,6 +148,9 @@ private:
     // Last parsed OpenTag3D data (retained for /api/status)
     opentag3d_t lastOpenTag3D_;
     bool lastOpenTag3DValid_ = false;
+
+    // Resolved Spoolman data for the current generic UID tag
+    GenericTagSpoolInfo lastGenericTagSpoolInfo_ = {};
 
     // Raw tag write sidecar buffer (filled by HTTP context, consumed by scan task)
     static constexpr size_t RAW_WRITE_BUFFER_SIZE = 320;
