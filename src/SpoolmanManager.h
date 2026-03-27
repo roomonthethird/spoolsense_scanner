@@ -72,7 +72,7 @@ private:
     bool syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId);
     int32_t lookupCachedSpoolmanId(const char* spoolId) const;
     void storeCachedSpoolmanId(const char* spoolId, int32_t spoolmanId);
-    bool isSyncCacheHit(const char* spoolId, int32_t filamentId, float remainingWeight) const;
+    bool isSyncCacheHit(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
     void storeSyncState(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight);
     void invalidateSyncState(const char* spoolId);
 
@@ -83,6 +83,7 @@ private:
     uint8_t spoolIdCacheWriteIndex_ = 0;
     SyncStateCache syncStateCache_[8] = {};
     uint8_t syncStateCacheWriteIndex_ = 0;
+    SemaphoreHandle_t syncCacheMutex_ = nullptr;
 
     static constexpr size_t QUEUE_SIZE = 4;
     static constexpr size_t TASK_STACK_SIZE = 6144;

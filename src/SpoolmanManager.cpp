@@ -912,6 +912,12 @@ bool SpoolmanManager::begin(SemaphoreHandle_t httpMutex) {
         return false;
     }
 
+    syncCacheMutex_ = xSemaphoreCreateMutex();
+    if (syncCacheMutex_ == nullptr) {
+        Serial.println("SpoolmanManager: Failed to create sync cache mutex");
+        return false;
+    }
+
     Serial.println("SpoolmanManager: Initialized");
     return true;
 }
@@ -999,10 +1005,14 @@ static inline bool weightEqual(float a, float b) {
     return fabsf(a - b) < WEIGHT_EPSILON;
 }
 
-bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t filamentId, float remainingWeight) const {
+bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight) {
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return false;
     }
+    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+        return false;
+    }
+    bool hit = false;
     for (size_t i = 0; i < (sizeof(syncStateCache_) / sizeof(syncStateCache_[0])); ++i) {
         if (syncStateCache_[i].spool_id[0] == '\0') {
             continue;
@@ -1013,21 +1023,26 @@ bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t filamentId, fl
         // Check TTL
         uint32_t elapsed = millis() - syncStateCache_[i].synced_at_ms;
         if (elapsed > SYNC_CACHE_TTL_MS) {
-            return false;
+            break;
         }
-        // Check if data matches
-        if (syncStateCache_[i].filament_id == filamentId &&
+        // Check if data matches (including spoolman_id)
+        if (syncStateCache_[i].spoolman_id == spoolmanId &&
+            syncStateCache_[i].filament_id == filamentId &&
             weightEqual(syncStateCache_[i].remaining_weight_g, remainingWeight)) {
             Serial.printf("SpoolmanManager: Sync cache hit for %s — skipping redundant update\n", spoolId);
-            return true;
+            hit = true;
         }
-        return false;
+        break;
     }
-    return false;
+    xSemaphoreGive(syncCacheMutex_);
+    return hit;
 }
 
 void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, int32_t filamentId, float remainingWeight) {
     if (spoolId == nullptr || spoolId[0] == '\0' || spoolmanId <= 0) {
+        return;
+    }
+    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;
     }
     // Update existing entry if present
@@ -1037,6 +1052,7 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
             syncStateCache_[i].filament_id = filamentId;
             syncStateCache_[i].remaining_weight_g = remainingWeight;
             syncStateCache_[i].synced_at_ms = millis();
+            xSemaphoreGive(syncCacheMutex_);
             return;
         }
     }
@@ -1049,18 +1065,23 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
     slot.remaining_weight_g = remainingWeight;
     slot.synced_at_ms = millis();
     syncStateCacheWriteIndex_ = (syncStateCacheWriteIndex_ + 1) % (sizeof(syncStateCache_) / sizeof(syncStateCache_[0]));
+    xSemaphoreGive(syncCacheMutex_);
 }
 
 void SpoolmanManager::invalidateSyncState(const char* spoolId) {
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return;
     }
+    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+        return;
+    }
     for (size_t i = 0; i < (sizeof(syncStateCache_) / sizeof(syncStateCache_[0])); ++i) {
         if (strcmp(syncStateCache_[i].spool_id, spoolId) == 0) {
             syncStateCache_[i].spool_id[0] = '\0';
-            return;
+            break;
         }
     }
+    xSemaphoreGive(syncCacheMutex_);
 }
 
 void SpoolmanManager::taskFunc(void* param) {
@@ -1128,7 +1149,7 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
                 // Fall through to slow path to create a new spool
             } else {
                 // Check sync cache — skip PATCH if nothing changed
-                if (isSyncCacheHit(req.spool_id, filamentId, req.remaining_weight_g)) {
+                if (isSyncCacheHit(req.spool_id, preferredSpoolmanId, filamentId, req.remaining_weight_g)) {
                     resolvedSpoolmanId = preferredSpoolmanId;
                     xSemaphoreGive(httpMutex_);
                     return true;
@@ -1164,7 +1185,7 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
                 // Fall through to slow path to create a new spool
             } else {
                 // Check sync cache — skip PATCH if nothing changed
-                if (isSyncCacheHit(req.spool_id, filamentId, req.remaining_weight_g)) {
+                if (isSyncCacheHit(req.spool_id, existingSpoolId, filamentId, req.remaining_weight_g)) {
                     resolvedSpoolmanId = existingSpoolId;
                     xSemaphoreGive(httpMutex_);
                     return true;
@@ -1225,7 +1246,7 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
             success = (spoolId >= 0);
         } else {
             // Check sync cache — skip PATCH if nothing changed
-            if (isSyncCacheHit(req.spool_id, filamentId, req.remaining_weight_g)) {
+            if (isSyncCacheHit(req.spool_id, spoolId, filamentId, req.remaining_weight_g)) {
                 resolvedSpoolmanId = spoolId;
                 xSemaphoreGive(httpMutex_);
                 return true;
