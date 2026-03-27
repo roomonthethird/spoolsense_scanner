@@ -912,9 +912,9 @@ bool SpoolmanManager::begin(SemaphoreHandle_t httpMutex) {
         return false;
     }
 
-    syncCacheMutex_ = xSemaphoreCreateMutex();
-    if (syncCacheMutex_ == nullptr) {
-        Serial.println("SpoolmanManager: Failed to create sync cache mutex");
+    cacheMutex_ = xSemaphoreCreateMutex();
+    if (cacheMutex_ == nullptr) {
+        Serial.println("SpoolmanManager: Failed to create cache mutex");
         return false;
     }
 
@@ -955,25 +955,35 @@ int32_t SpoolmanManager::lookupCachedSpoolmanId(const char* spoolId) const {
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return -1;
     }
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+        return -1;
+    }
+    int32_t spoolmanId = -1;
     for (size_t i = 0; i < (sizeof(spoolIdCache_) / sizeof(spoolIdCache_[0])); ++i) {
         if (spoolIdCache_[i].spool_id[0] == '\0') {
             continue;
         }
         if (strcmp(spoolIdCache_[i].spool_id, spoolId) == 0 && spoolIdCache_[i].spoolman_id > 0) {
-            return spoolIdCache_[i].spoolman_id;
+            spoolmanId = spoolIdCache_[i].spoolman_id;
+            break;
         }
     }
-    return -1;
+    xSemaphoreGive(cacheMutex_);
+    return spoolmanId;
 }
 
 void SpoolmanManager::storeCachedSpoolmanId(const char* spoolId, int32_t spoolmanId) {
     if (spoolId == nullptr || spoolId[0] == '\0' || spoolmanId <= 0) {
         return;
     }
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+        return;
+    }
 
     for (size_t i = 0; i < (sizeof(spoolIdCache_) / sizeof(spoolIdCache_[0])); ++i) {
         if (strcmp(spoolIdCache_[i].spool_id, spoolId) == 0) {
             spoolIdCache_[i].spoolman_id = spoolmanId;
+            xSemaphoreGive(cacheMutex_);
             return;
         }
     }
@@ -983,10 +993,14 @@ void SpoolmanManager::storeCachedSpoolmanId(const char* spoolId, int32_t spoolma
     slot.spool_id[sizeof(slot.spool_id) - 1] = '\0';
     slot.spoolman_id = spoolmanId;
     spoolIdCacheWriteIndex_ = (spoolIdCacheWriteIndex_ + 1) % (sizeof(spoolIdCache_) / sizeof(spoolIdCache_[0]));
+    xSemaphoreGive(cacheMutex_);
 }
 
 void SpoolmanManager::invalidateCachedSpoolmanId(const char* spoolId) {
     if (spoolId == nullptr || spoolId[0] == '\0') {
+        return;
+    }
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;
     }
     for (size_t i = 0; i < (sizeof(spoolIdCache_) / sizeof(spoolIdCache_[0])); ++i) {
@@ -996,7 +1010,13 @@ void SpoolmanManager::invalidateCachedSpoolmanId(const char* spoolId) {
         }
     }
     // Also invalidate sync state cache to force a fresh PATCH on next scan
-    invalidateSyncState(spoolId);
+    for (size_t i = 0; i < (sizeof(syncStateCache_) / sizeof(syncStateCache_[0])); ++i) {
+        if (strcmp(syncStateCache_[i].spool_id, spoolId) == 0) {
+            syncStateCache_[i].spool_id[0] = '\0';
+            break;
+        }
+    }
+    xSemaphoreGive(cacheMutex_);
 }
 
 static constexpr float WEIGHT_EPSILON = 0.01f;  // 0.01g tolerance
@@ -1009,7 +1029,7 @@ bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t spoolmanId, in
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return false;
     }
-    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
         return false;
     }
     bool hit = false;
@@ -1034,7 +1054,7 @@ bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t spoolmanId, in
         }
         break;
     }
-    xSemaphoreGive(syncCacheMutex_);
+    xSemaphoreGive(cacheMutex_);
     return hit;
 }
 
@@ -1042,7 +1062,7 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
     if (spoolId == nullptr || spoolId[0] == '\0' || spoolmanId <= 0) {
         return;
     }
-    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;
     }
     // Update existing entry if present
@@ -1052,7 +1072,7 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
             syncStateCache_[i].filament_id = filamentId;
             syncStateCache_[i].remaining_weight_g = remainingWeight;
             syncStateCache_[i].synced_at_ms = millis();
-            xSemaphoreGive(syncCacheMutex_);
+            xSemaphoreGive(cacheMutex_);
             return;
         }
     }
@@ -1065,14 +1085,14 @@ void SpoolmanManager::storeSyncState(const char* spoolId, int32_t spoolmanId, in
     slot.remaining_weight_g = remainingWeight;
     slot.synced_at_ms = millis();
     syncStateCacheWriteIndex_ = (syncStateCacheWriteIndex_ + 1) % (sizeof(syncStateCache_) / sizeof(syncStateCache_[0]));
-    xSemaphoreGive(syncCacheMutex_);
+    xSemaphoreGive(cacheMutex_);
 }
 
 void SpoolmanManager::invalidateSyncState(const char* spoolId) {
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return;
     }
-    if (xSemaphoreTake(syncCacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
+    if (xSemaphoreTake(cacheMutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;
     }
     for (size_t i = 0; i < (sizeof(syncStateCache_) / sizeof(syncStateCache_[0])); ++i) {
@@ -1081,7 +1101,7 @@ void SpoolmanManager::invalidateSyncState(const char* spoolId) {
             break;
         }
     }
-    xSemaphoreGive(syncCacheMutex_);
+    xSemaphoreGive(cacheMutex_);
 }
 
 void SpoolmanManager::taskFunc(void* param) {

@@ -83,7 +83,7 @@ private:
     uint8_t spoolIdCacheWriteIndex_ = 0;
     SyncStateCache syncStateCache_[8] = {};
     uint8_t syncStateCacheWriteIndex_ = 0;
-    SemaphoreHandle_t syncCacheMutex_ = nullptr;
+    SemaphoreHandle_t cacheMutex_ = nullptr;
 
     static constexpr size_t QUEUE_SIZE = 4;
     static constexpr size_t TASK_STACK_SIZE = 6144;
