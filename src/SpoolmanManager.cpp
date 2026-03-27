@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include <Arduino.h>
+#include <cmath>
 #include "openprinttag_lib.h"
 
 static constexpr size_t JSON_SMALL_CAPACITY = 256;
@@ -992,6 +993,12 @@ void SpoolmanManager::invalidateCachedSpoolmanId(const char* spoolId) {
     invalidateSyncState(spoolId);
 }
 
+static constexpr float WEIGHT_EPSILON = 0.01f;  // 0.01g tolerance
+
+static inline bool weightEqual(float a, float b) {
+    return fabsf(a - b) < WEIGHT_EPSILON;
+}
+
 bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t filamentId, float remainingWeight) const {
     if (spoolId == nullptr || spoolId[0] == '\0') {
         return false;
@@ -1010,7 +1017,7 @@ bool SpoolmanManager::isSyncCacheHit(const char* spoolId, int32_t filamentId, fl
         }
         // Check if data matches
         if (syncStateCache_[i].filament_id == filamentId &&
-            syncStateCache_[i].remaining_weight_g == remainingWeight) {
+            weightEqual(syncStateCache_[i].remaining_weight_g, remainingWeight)) {
             Serial.printf("SpoolmanManager: Sync cache hit for %s — skipping redundant update\n", spoolId);
             return true;
         }
