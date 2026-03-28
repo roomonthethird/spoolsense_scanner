@@ -64,7 +64,9 @@ bool HardwareNFCConnectionPN532::begin() {
 void HardwareNFCConnectionPN532::reset() {
     if (pn532_) {
         pn532_->begin();
-        pn532_->SAMConfig();
+        if (!pn532_->SAMConfig()) {
+            Serial.println("PN532: SAMConfig failed during reset");
+        }
     }
 }
 
@@ -80,7 +82,7 @@ bool HardwareNFCConnectionPN532::hardwareReset() {
         pn532_->begin();
         uint32_t ver = pn532_->getFirmwareVersion();
         if (!ver) return false;
-        pn532_->SAMConfig();
+        if (!pn532_->SAMConfig()) return false;
     }
     return true;
 }
