@@ -73,7 +73,10 @@ void ApplicationManager::processMessages() {
     if (pendingStatusAfterTagRemoved) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - tagRemovedAtMs);
         if (elapsedMs >= TAG_REMOVED_STATUS_DELAY_MS) {
-            showStatusOnLCD();
+            // Don't overwrite LCD if user is typing a tool number
+            if (keypadBufferLen_ == 0) {
+                showStatusOnLCD();
+            }
             pendingStatusAfterTagRemoved = false;
         }
     }
@@ -86,7 +89,11 @@ void ApplicationManager::processMessages() {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", delayedDisplayMaterialName);
-            snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
+            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+                snprintf(line2, sizeof(line2), "%.0fg Tool#? #", delayedDisplayKgRemaining * 1000.0f);
+            } else {
+                snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
+            }
             lcdManager->updateScreen(line1, line2);
 
             pendingTypeRemainDisplay = false;
@@ -95,6 +102,7 @@ void ApplicationManager::processMessages() {
                          delayedDisplayMaterialName, delayedDisplayKgRemaining * 1000.0f);
         }
     }
+
 }
 
 void ApplicationManager::showStatusOnLCD() {
@@ -664,8 +672,13 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", materialName);
-            snprintf(line2, sizeof(line2), "Remain: %.0fg",
-                     kgRemaining * 1000.0f);
+            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+                snprintf(line2, sizeof(line2), "%.0fg Tool#? #",
+                         kgRemaining * 1000.0f);
+            } else {
+                snprintf(line2, sizeof(line2), "Remain: %.0fg",
+                         kgRemaining * 1000.0f);
+            }
             lcdManager->updateScreen(line1, line2);
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
             lcdManager->updateScreen("Generic Tag", "Not in Spoolman");
@@ -924,6 +937,7 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
 void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
     char digit = msg.payload.keypadDigit.digit;
     Serial.printf("EVENT: KeypadDigit - '%c'\n", digit);
+    pendingKeypadPrompt = false;  // Cancel prompt — user is already typing
 
     if (keypadBufferLen_ < sizeof(keypadBuffer_) - 1) {
         keypadBuffer_[keypadBufferLen_++] = digit;
@@ -933,7 +947,7 @@ void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
     if (lcdManager) {
         char line[17];
         snprintf(line, sizeof(line), "Assign to: T%s", keypadBuffer_);
-        lcdManager->updateScreen(line, "# Confirm  * Clr");
+        lcdManager->updateScreen(line, "# Confirm  * Clr", "", "");
     }
 }
 
@@ -946,10 +960,11 @@ void ApplicationManager::handleKeypadConfirm() {
     }
 
 #ifndef NATIVE_TEST
-    // Check if a spool is currently detected
+    // Check if a spool was recently scanned (doesn't need to still be on the reader)
     CurrentSpoolState state;
-    bool spoolPresent = NFCManager::getInstance().getCurrentSpoolState(state) && state.present;
-    if (!spoolPresent) {
+    bool hasScannedSpool = NFCManager::getInstance().getCurrentSpoolState(state) &&
+                           (state.present || state.spool_id[0] != '\0');
+    if (!hasScannedSpool) {
         if (lcdManager) lcdManager->updateScreen("No spool scanned", "Scan tag first");
         keypadBuffer_[0] = '\0';
         keypadBufferLen_ = 0;
