@@ -72,8 +72,8 @@ public:
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
     bool getLastOpenTag3DData(opentag3d_t& out);
-    // Returns PN5180 firmware version. fw[0]=minor, fw[1]=major. Returns false if not available.
-    bool getPN5180FirmwareVersion(uint8_t fw[2]) const;
+    // Returns reader identification string (e.g. "PN5180 v3.4", "PN532 v1.6")
+    bool getNfcReaderInfo(char* buf, size_t len) const;
     void pauseScanTask();
     void resumeScanTask();
 

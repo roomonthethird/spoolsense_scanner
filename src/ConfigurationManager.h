@@ -27,6 +27,8 @@ struct ConfigUpdate {
     uint8_t prusalink_on;
     char prusalink_url[128];
     char prusalink_api_key[64];
+    // NFC reader selection
+    char nfc_reader[8];  // "pn5180" or "pn532"
 };
 
 class ConfigurationManager {
@@ -57,6 +59,9 @@ public:
     bool isPrusaLinkEnabled() const;
     const char* getPrusaLinkURL() const;
     const char* getPrusaLinkAPIKey() const;
+
+    // NFC reader selection (NVS, default "pn5180")
+    const char* getNfcReader() const;
 
     // Optional hardware features (compile-time default, overridable via NVS)
     bool isLcdEnabled() const;
@@ -98,6 +103,9 @@ private:
     bool _prusaLinkEnabled = false;
     char _prusaLinkUrl[128] = {0};
     char _prusaLinkApiKey[64] = {0};
+
+    // NFC reader selection
+    char _nfcReader[8] = "pn5180";
 
     // Optional hardware features
     bool _lcdEnabled = false;

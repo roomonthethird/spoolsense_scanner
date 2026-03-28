@@ -187,6 +187,13 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                   <span class="toggle-track"></span>
                 </label>
               </div>
+              <div class="toggle-row">
+                <span class="toggle-label">NFC Reader</span>
+                <select id="nfc_reader" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
+                  <option value="pn5180">PN5180 (ISO15693 + ISO14443A)</option>
+                  <option value="pn532">PN532 (ISO14443A only)</option>
+                </select>
+              </div>
             </div>
           </section>
 
@@ -226,6 +233,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('lcd_enabled').checked = !!cfg.lcd_enabled;
       document.getElementById('led_enabled').checked = !!cfg.led_enabled;
       document.getElementById('keypad_enabled').checked = !!cfg.keypad_enabled;
+      if (cfg.nfc_reader) document.getElementById('nfc_reader').value = cfg.nfc_reader;
       maybeSetValue('moonraker_url', cfg.moonraker_url);
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
@@ -262,6 +270,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         lcd_enabled: document.getElementById('lcd_enabled').checked ? 1 : 0,
         led_enabled: document.getElementById('led_enabled').checked ? 1 : 0,
         keypad_enabled: document.getElementById('keypad_enabled').checked ? 1 : 0,
+        nfc_reader: document.getElementById('nfc_reader').value,
         moonraker_url: document.getElementById('moonraker_url').value.trim(),
         prusalink_on: document.getElementById('prusalink_on').checked ? 1 : 0,
         prusalink_url: document.getElementById('prusalink_url').value.trim(),
