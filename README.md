@@ -28,7 +28,9 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 
 ## Features
 
-* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. UID-only tags and Bambu Lab tags are also detected for Spoolman registration.
+* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. NFC+ (UID-only) tags and Bambu Lab tags are also detected for Spoolman registration.
+* **Dual NFC Reader Support:** PN5180 (ISO15693 + ISO14443A, all tag formats) and PN532 (ISO14443A only). Selected at runtime via NVS — both compiled into a single binary.
+* **3x4 Matrix Keypad (optional):** Scan a spool, type a tool number, press # to assign via Moonraker's ASSIGN_SPOOL macro. For toolchanger and multi-tool setups.
 * **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format. Material and brand fields are type-to-search with auto-fill for temperatures and density.
 * **NFC+ Registration:** Register plain NFC tags (NTAG215, etc.) in Spoolman using the tag's UID as identifier. No data written to the tag — fill in filament details in the web UI and create the Spoolman entry directly.
 * **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
@@ -98,24 +100,23 @@ Once the scanner is running, open **`http://spoolsense.local`** in your browser.
 # Hardware Setup
 
 ## Hardware Needed
-*   NFC Reader/Writer: PN5180 NFC module (ISO 15693 + ISO 14443A) — [AITRIP PN5180](https://www.amazon.com/dp/B0BXY1Y7PX) (tested)
-*   ESP32: One of the following supported boards:
-    - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://www.amazon.com/dp/B0C9THDPXP). Primary development board.
-    - **ESP32-S3-Zero** — Smaller form factor with onboard WS2812 RGB LED and USB-C (no external UART chip needed).
+*   NFC Reader (one of):
+    - **PN5180** (recommended) — ISO15693 + ISO14443A, all tag formats — [AITRIP PN5180](https://www.amazon.com/dp/B0BXY1Y7PX) (tested)
+    - **PN532** — ISO14443A only (no SLIX2/OpenPrintTag on ISO15693). Cheaper and smaller.
+*   ESP32 (one of):
+    - **ESP32-WROOM** — [Freenove ESP32-WROOM](https://www.amazon.com/dp/B0C9THDPXP) (tested). Recommended if using LCD + keypad.
+    - **ESP32-S3-Zero / S3-Zero-M** — Smaller form factor with onboard WS2812 RGB LED. M variant has pre-soldered pin headers.
 *   USB-C cable
-*   Jumper wires: male-to-female Dupont wires (9)
+*   Jumper wires: female-to-female Dupont wires (8 minimum, more if adding extras)
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional)
 *   Status LED: SK6812 RGBW (WROOM, optional external) or onboard WS2812 RGB (S3-Zero, built in)
+*   3x4 Matrix Keypad: [membrane keypad](https://www.amazon.com/dp/B0DZ26VVR7) (optional, for toolchanger tool assignment)
 
-## Community Enclosures
+## Enclosures
 
-Our first community-designed scanner case is available in the [usermods/](usermods/) directory:
+As of March 2026 only a few printable cases exist. We need the community's help! If you design one, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files.
 
-| Design | Author | Description |
-|--------|--------|-------------|
-| [Jim's Enclosure v2](usermods/jims_enclosure/) | Jim | 3-piece enclosure for ESP32-S3-Zero + PN5180 |
-
-Have a design? See the [usermods contributing guide](usermods/README.md) to add yours.
+See [spoolsense.org/contributing/enclosure-design](https://spoolsense.org/contributing/enclosure-design/) for design guidelines and what's needed.
 
 ### Designs Still Needed
 
