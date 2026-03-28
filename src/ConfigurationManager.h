@@ -20,10 +20,15 @@ struct ConfigUpdate {
     uint8_t auto_mode;
     uint8_t lcd_enabled;
     uint8_t led_enabled;
+    uint8_t keypad_enabled;
+    // Klipper / Moonraker
+    char moonraker_url[128];
     // PrusaLink integration
     uint8_t prusalink_on;
     char prusalink_url[128];
     char prusalink_api_key[64];
+    // NFC reader selection
+    char nfc_reader[8];  // "pn5180" or "pn532"
 };
 
 class ConfigurationManager {
@@ -47,14 +52,21 @@ public:
     const char* getHAMqttPass() const;
     uint8_t getAutomationMode() const;
 
+    // Klipper / Moonraker
+    const char* getMoonrakerURL() const;
+
     // PrusaLink configuration
     bool isPrusaLinkEnabled() const;
     const char* getPrusaLinkURL() const;
     const char* getPrusaLinkAPIKey() const;
 
+    // NFC reader selection (NVS, default "pn5180")
+    const char* getNfcReader() const;
+
     // Optional hardware features (compile-time default, overridable via NVS)
     bool isLcdEnabled() const;
     bool isLedEnabled() const;
+    bool isKeypadEnabled() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -84,14 +96,21 @@ private:
     char _haMqttPass[64];
     uint8_t _automationMode;
 
+    // Klipper / Moonraker
+    char _moonrakerUrl[128] = {0};
+
     // PrusaLink config
     bool _prusaLinkEnabled = false;
     char _prusaLinkUrl[128] = {0};
     char _prusaLinkApiKey[64] = {0};
 
+    // NFC reader selection
+    char _nfcReader[8] = "pn5180";
+
     // Optional hardware features
     bool _lcdEnabled = false;
     bool _ledEnabled = false;
+    bool _keypadEnabled = false;
 
     bool _initialized = false;
 };

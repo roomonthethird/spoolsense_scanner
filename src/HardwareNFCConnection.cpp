@@ -61,6 +61,12 @@ opt_error_t HardwareNFCConnection::halWritePage(void* ctx, uint8_t page, const u
     return OPT_OK;
 }
 
+void HardwareNFCConnection::getReaderInfo(char* buf, size_t len) const {
+    if (buf && len > 0) {
+        snprintf(buf, len, "PN5180 v%d.%d", fw_[1], fw_[0]);
+    }
+}
+
 bool HardwareNFCConnection::begin() {
     // Configure additional input pins for future use
     pinMode(PIN_PN5180_IRQ, INPUT);    // Interrupt (active HIGH)

@@ -34,6 +34,9 @@
 /* Optional hardware features */
 #define ENABLE_LCD 0
 #define ENABLE_STATUS_LED 1  // Always available on S3-Zero (onboard LED), optional on WROOM (external wiring)
+#define ENABLE_KEYPAD 0      // 3x4 matrix keypad — wiring per BoardPins.h
+                             // Note: Using LCD + keypad together on S3 is not recommended due to limited GPIO.
+                             //       For LCD + keypad builds, use the WROOM board.
 
 /* Board selection: uncomment ONE of the following.
    Pin mapping is automatic via BoardPins.h — no need to configure pins manually. */

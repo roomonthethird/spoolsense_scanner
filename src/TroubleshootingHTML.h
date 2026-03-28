@@ -228,10 +228,10 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
         if (d.nfc) {
           const n = d.nfc;
           if (n.ok) {
-            setCheck('nfc', 'pass', 'NFC Reader (PN5180)',
-              'Firmware v' + n.fw_major + '.' + n.fw_minor);
+            setCheck('nfc', 'pass', 'NFC Reader',
+              n.reader || 'Connected');
           } else {
-            setCheck('nfc', 'fail', 'NFC Reader (PN5180)',
+            setCheck('nfc', 'fail', 'NFC Reader',
               'Not responding. Check SPI wiring.');
           }
         }

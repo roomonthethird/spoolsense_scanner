@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <time.h>
+#include <cstring>
 
 #include "ConfigurationManager.h"
 #include "ApplicationManager.h"
@@ -11,6 +12,8 @@
 #include "WebServerManager.h"
 #include "PrinterManager.h"
 #include "PrusaLinkStrategy.h"
+#include "InputManager.h"
+#include "HardwareNFCConnectionPN532.h"
 #include "BoardPins.h"
 #include <Wire.h>
 
@@ -129,6 +132,10 @@ void setup() {
     lcdManager.setScreenTimeoutMs(config.getLcdTimeoutMs());
   }
 
+  if (config.isKeypadEnabled()) {
+    InputManager::getInstance().begin();
+  }
+
   // Initialize ApplicationManager (message queue) with LCD reference
   if (!ApplicationManager::getInstance().begin(config.isLcdEnabled() ? &lcdManager : nullptr)) {
     Serial.println("ApplicationManager init failed - halting");
@@ -161,6 +168,15 @@ void setup() {
     ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
     Serial.printf("Automation mode: %s\n",
                   mode == 0 ? "SELF_DIRECTED" : "CONTROLLED_BY_HA");
+  }
+
+  // Select NFC reader based on NVS config
+  const char* nfcReader = config.getNfcReader();
+  if (strcmp(nfcReader, "pn532") == 0) {
+    Serial.println("NFC reader: PN532 (ISO14443A only)");
+    NFCManager::getInstance().setConnection(new HardwareNFCConnectionPN532());
+  } else {
+    Serial.printf("NFC reader: %s (default)\n", nfcReader);
   }
 
   // Initialize NFCManager
@@ -221,6 +237,11 @@ void loop() {
 
   // Process HTTP requests for the tag writer web UI
   WebServerManager::getInstance().handleClient();
+
+  // Poll keypad for key presses (if enabled)
+  if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+    InputManager::getInstance().poll();
+  }
 
   // LCD and NFC scanning are handled by their own tasks
   delay(10);

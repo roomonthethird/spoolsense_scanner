@@ -22,9 +22,12 @@ static const char* NVS_KEY_SPOOLMAN_URL   = "spoolman_url";
 static const char* NVS_KEY_AUTO_MODE      = "auto_mode";
 static const char* NVS_KEY_LCD_ON         = "lcd_on";
 static const char* NVS_KEY_LED_ON         = "led_on";
+static const char* NVS_KEY_KEYPAD_ON      = "keypad_on";
+static const char* NVS_KEY_MOONRAKER_URL  = "moonraker_url";
 static const char* NVS_KEY_PRUSALINK_ON   = "prusalink_on";
 static const char* NVS_KEY_PRUSALINK_URL  = "prusalink_url";
 static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
+static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
@@ -91,14 +94,21 @@ void ConfigurationManager::loadFromDeviceConfig() {
 
     _automationMode = cfg.automation_mode;
 
+    // Moonraker — not in DeviceConfig, configured via NVS/web UI
+    _moonrakerUrl[0] = '\0';
+
     // PrusaLink defaults — not in DeviceConfig, disabled by default
     _prusaLinkEnabled = false;
     _prusaLinkUrl[0] = '\0';
     _prusaLinkApiKey[0] = '\0';
 
+    // NFC reader default
+    strncpy(_nfcReader, "pn5180", sizeof(_nfcReader) - 1);
+
     // Optional hardware feature defaults from compile-time flags
     _lcdEnabled = cfg.peripherals.lcd_enabled;
     _ledEnabled = cfg.peripherals.status_led_enabled;
+    _keypadEnabled = cfg.peripherals.keypad_enabled;
 }
 
 #ifndef NATIVE_TEST
@@ -172,6 +182,18 @@ bool ConfigurationManager::loadFromNVS() {
     }
     if (prefs.isKey(NVS_KEY_LED_ON)) {
         _ledEnabled = prefs.getUChar(NVS_KEY_LED_ON, _ledEnabled ? 1 : 0) != 0;
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_MOONRAKER_URL)) {
+        prefs.getString(NVS_KEY_MOONRAKER_URL, _moonrakerUrl, sizeof(_moonrakerUrl));
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_KEYPAD_ON)) {
+        _keypadEnabled = prefs.getUChar(NVS_KEY_KEYPAD_ON, _keypadEnabled ? 1 : 0) != 0;
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_NFC_READER)) {
+        prefs.getString(NVS_KEY_NFC_READER, _nfcReader, sizeof(_nfcReader));
         anyOverride = true;
     }
 
@@ -248,6 +270,18 @@ bool ConfigurationManager::isLedEnabled() const {
     return _ledEnabled;
 }
 
+bool ConfigurationManager::isKeypadEnabled() const {
+    return _keypadEnabled;
+}
+
+const char* ConfigurationManager::getMoonrakerURL() const {
+    return _moonrakerUrl;
+}
+
+const char* ConfigurationManager::getNfcReader() const {
+    return _nfcReader;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -264,6 +298,9 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     strncpy(out.prusalink_api_key, _prusaLinkApiKey, sizeof(out.prusalink_api_key) - 1);
     out.lcd_enabled = _lcdEnabled ? 1 : 0;
     out.led_enabled = _ledEnabled ? 1 : 0;
+    out.keypad_enabled = _keypadEnabled ? 1 : 0;
+    strncpy(out.moonraker_url, _moonrakerUrl, sizeof(out.moonraker_url) - 1);
+    strncpy(out.nfc_reader, _nfcReader, sizeof(out.nfc_reader) - 1);
 }
 
 #ifndef NATIVE_TEST
@@ -290,11 +327,14 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     prefs.putUChar(NVS_KEY_AUTO_MODE, update.auto_mode);
     prefs.putUChar(NVS_KEY_LCD_ON, update.lcd_enabled);
     prefs.putUChar(NVS_KEY_LED_ON, update.led_enabled);
+    prefs.putUChar(NVS_KEY_KEYPAD_ON, update.keypad_enabled);
+    prefs.putString(NVS_KEY_MOONRAKER_URL, update.moonraker_url);
     prefs.putBool(NVS_KEY_PRUSALINK_ON, update.prusalink_on != 0);
     prefs.putString(NVS_KEY_PRUSALINK_URL, update.prusalink_url);
     if (update.prusalink_api_key[0] != '\0') {
         prefs.putString(NVS_KEY_PRUSALINK_KEY, update.prusalink_api_key);
     }
+    prefs.putString(NVS_KEY_NFC_READER, update.nfc_reader);
 
     prefs.end();
     Serial.println("ConfigurationManager: Config saved to NVS");

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.5.9] - 2026-03-28
+
+### Added
+
+- **PN532 NFC reader support** — Adafruit PN532 added as a second NFC reader option (ISO14443A only). NVS key `nfc_reader` selects which reader initializes at boot. Supports GenericUidTag, TigerTag, BambuTag (UID), and OpenPrintTag on NTAG tags. No ISO15693 (ICODE SLIX2) support.
+- **3x4 matrix keypad support** — scan a spool, type a tool number, press # to send ASSIGN_SPOOL to Moonraker. Controlled by NVS `keypad_on` flag. Includes LCD feedback during entry.
+- **Moonraker URL configuration** — configurable via web UI and installer for keypad tool assignment.
+- **NFC reader selection in web UI** — dropdown in Hardware config section with PN5180/PN532 options.
+
+### Fixed
+
+- **LED black spool color** — black (0,0,0) filament color now substitutes dim white (0x33) so the LED is visibly lit instead of appearing off.
+- **NFC abstraction leak** — removed `static_cast<HardwareNFCConnection*>` from NFCManager. Reader identification and diagnostics now use virtual methods (`getReaderInfo()`, `logDiagnostics()`) on the NFCConnectionI interface.
+- **Troubleshooting page** — NFC reader info is now reader-agnostic (shows "PN5180 v3.4" or "PN532 v1.6" instead of hardcoded PN5180 label).
+
+---
+
 ## [1.5.8] - 2026-03-27
 
 ### Fixed

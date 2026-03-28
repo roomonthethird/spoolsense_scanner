@@ -135,16 +135,10 @@ void NFCManager::clearGenericTagSpoolInfo() {
     }
 }
 
-bool NFCManager::getPN5180FirmwareVersion(uint8_t fw[2]) const {
-#ifndef NATIVE_TEST
-    if (!connection_) return false;
-    auto* hw = static_cast<HardwareNFCConnection*>(connection_);
-    if (!hw->isPN5180Ready()) return false;
-    hw->getPN5180FirmwareVersion(fw);
+bool NFCManager::getNfcReaderInfo(char* buf, size_t len) const {
+    if (!connection_ || !buf || len == 0) return false;
+    connection_->getReaderInfo(buf, len);
     return true;
-#else
-    return false;
-#endif
 }
 
 void NFCManager::pauseScanTask() {
@@ -203,9 +197,7 @@ void NFCManager::scanLoop() {
     connection_->setupRF();
 
     // One-time startup diagnostic
-#ifndef NATIVE_TEST
-    static_cast<HardwareNFCConnection*>(connection_)->logDiagnostics();
-#endif
+    connection_->logDiagnostics();
 
     while (true) {
 #ifndef NATIVE_TEST

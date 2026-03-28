@@ -10,6 +10,7 @@
   #include "LEDManager.h"
   #include <Arduino.h>
   #include <WiFi.h>
+  #include <HTTPClient.h>
   extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
@@ -72,7 +73,10 @@ void ApplicationManager::processMessages() {
     if (pendingStatusAfterTagRemoved) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - tagRemovedAtMs);
         if (elapsedMs >= TAG_REMOVED_STATUS_DELAY_MS) {
-            showStatusOnLCD();
+            // Don't overwrite LCD if user is typing a tool number
+            if (keypadBufferLen_ == 0) {
+                showStatusOnLCD();
+            }
             pendingStatusAfterTagRemoved = false;
         }
     }
@@ -85,7 +89,11 @@ void ApplicationManager::processMessages() {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", delayedDisplayMaterialName);
-            snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
+            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+                snprintf(line2, sizeof(line2), "%.0fg Tool#? #", delayedDisplayKgRemaining * 1000.0f);
+            } else {
+                snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
+            }
             lcdManager->updateScreen(line1, line2);
 
             pendingTypeRemainDisplay = false;
@@ -94,6 +102,7 @@ void ApplicationManager::processMessages() {
                          delayedDisplayMaterialName, delayedDisplayKgRemaining * 1000.0f);
         }
     }
+
 }
 
 void ApplicationManager::showStatusOnLCD() {
@@ -192,6 +201,18 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
 
         case AppMessageType::PRINTER_WARNING:
             handlePrinterWarning(msg);
+            break;
+
+        case AppMessageType::KEYPAD_DIGIT:
+            handleKeypadDigit(msg);
+            break;
+
+        case AppMessageType::KEYPAD_CONFIRM:
+            handleKeypadConfirm();
+            break;
+
+        case AppMessageType::KEYPAD_CANCEL:
+            handleKeypadCancel();
             break;
     }
 }
@@ -651,8 +672,13 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", materialName);
-            snprintf(line2, sizeof(line2), "Remain: %.0fg",
-                     kgRemaining * 1000.0f);
+            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+                snprintf(line2, sizeof(line2), "%.0fg Tool#? #",
+                         kgRemaining * 1000.0f);
+            } else {
+                snprintf(line2, sizeof(line2), "Remain: %.0fg",
+                         kgRemaining * 1000.0f);
+            }
             lcdManager->updateScreen(line1, line2);
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
             lcdManager->updateScreen("Generic Tag", "Not in Spoolman");
@@ -903,5 +929,124 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
     (void)topicSuffix;
     (void)payload;
     (void)retained;
+#endif
+}
+
+// ── Keypad handlers ─────────────────────────────────────────────────────────
+
+void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
+    char digit = msg.payload.keypadDigit.digit;
+    Serial.printf("EVENT: KeypadDigit - '%c'\n", digit);
+    pendingKeypadPrompt = false;  // Cancel prompt — user is already typing
+
+    if (keypadBufferLen_ < sizeof(keypadBuffer_) - 1) {
+        keypadBuffer_[keypadBufferLen_++] = digit;
+        keypadBuffer_[keypadBufferLen_] = '\0';
+    }
+
+    if (lcdManager) {
+        char line[17];
+        snprintf(line, sizeof(line), "Assign to: T%s", keypadBuffer_);
+        lcdManager->updateScreen(line, "# Confirm  * Clr", "", "");
+    }
+}
+
+void ApplicationManager::handleKeypadConfirm() {
+    Serial.println("EVENT: KeypadConfirm");
+
+    if (keypadBufferLen_ == 0) {
+        if (lcdManager) lcdManager->updateScreen("No tool entered", "Type number + #");
+        return;
+    }
+
+#ifndef NATIVE_TEST
+    // Check if a spool was recently scanned (doesn't need to still be on the reader)
+    CurrentSpoolState state;
+    bool hasScannedSpool = NFCManager::getInstance().getCurrentSpoolState(state) &&
+                           (state.present || state.spool_id[0] != '\0');
+    if (!hasScannedSpool) {
+        if (lcdManager) lcdManager->updateScreen("No spool scanned", "Scan tag first");
+        keypadBuffer_[0] = '\0';
+        keypadBufferLen_ = 0;
+        return;
+    }
+#endif
+
+    if (sendAssignSpool(keypadBuffer_)) {
+        if (lcdManager) {
+            char line[17];
+            snprintf(line, sizeof(line), "Assigned T%s", keypadBuffer_);
+            lcdManager->updateScreen(line, "OK");
+        }
+    }
+
+    keypadBuffer_[0] = '\0';
+    keypadBufferLen_ = 0;
+}
+
+void ApplicationManager::handleKeypadCancel() {
+    Serial.println("EVENT: KeypadCancel");
+    keypadBuffer_[0] = '\0';
+    keypadBufferLen_ = 0;
+
+    if (lcdManager) {
+        lcdManager->updateScreen("Tool entry", "Cleared");
+    }
+}
+
+bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
+#ifndef NATIVE_TEST
+    // Validate tool number is digits-only (prevent GCode injection)
+    for (const char* p = toolNumber; *p; p++) {
+        if (*p < '0' || *p > '9') {
+            Serial.printf("ApplicationManager: Invalid tool number '%s'\n", toolNumber);
+            return false;
+        }
+    }
+
+    const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
+    if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
+        Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
+        if (lcdManager) lcdManager->updateScreen("Moonraker URL", "Not configured");
+        return false;
+    }
+
+    extern SemaphoreHandle_t g_httpMutex;
+    if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(3000)) != pdTRUE) {
+        Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
+        if (lcdManager) lcdManager->updateScreen("Assign failed", "HTTP busy");
+        return false;
+    }
+
+    char url[192];
+    snprintf(url, sizeof(url), "%s/printer/gcode/script", moonrakerUrl);
+
+    char gcode[64];
+    snprintf(gcode, sizeof(gcode), "ASSIGN_SPOOL TOOL=T%s", toolNumber);
+
+    char postBody[96];
+    snprintf(postBody, sizeof(postBody), "{\"script\":\"%s\"}", gcode);
+
+    WiFiClient client;
+    HTTPClient http;
+    http.setConnectTimeout(1000);
+    http.setTimeout(2000);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(postBody);
+    http.end();
+
+    if (g_httpMutex) xSemaphoreGive(g_httpMutex);
+
+    Serial.printf("ApplicationManager: ASSIGN_SPOOL T%s — HTTP %d\n", toolNumber, code);
+
+    if (code != 200) {
+        if (lcdManager) lcdManager->updateScreen("Assign failed", "Check Moonraker");
+        return false;
+    }
+    return true;
+#else
+    (void)toolNumber;
+    return true;
 #endif
 }
