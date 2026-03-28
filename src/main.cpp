@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <time.h>
+#include <cstring>
 
 #include "ConfigurationManager.h"
 #include "ApplicationManager.h"
@@ -12,6 +13,7 @@
 #include "PrinterManager.h"
 #include "PrusaLinkStrategy.h"
 #include "InputManager.h"
+#include "HardwareNFCConnectionPN532.h"
 #include "BoardPins.h"
 #include <Wire.h>
 
@@ -166,6 +168,15 @@ void setup() {
     ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
     Serial.printf("Automation mode: %s\n",
                   mode == 0 ? "SELF_DIRECTED" : "CONTROLLED_BY_HA");
+  }
+
+  // Select NFC reader based on NVS config
+  const char* nfcReader = config.getNfcReader();
+  if (strcmp(nfcReader, "pn532") == 0) {
+    Serial.println("NFC reader: PN532 (ISO14443A only)");
+    NFCManager::getInstance().setConnection(new HardwareNFCConnectionPN532());
+  } else {
+    Serial.printf("NFC reader: %s (default)\n", nfcReader);
   }
 
   // Initialize NFCManager

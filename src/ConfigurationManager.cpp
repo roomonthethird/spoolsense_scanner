@@ -27,6 +27,7 @@ static const char* NVS_KEY_MOONRAKER_URL  = "moonraker_url";
 static const char* NVS_KEY_PRUSALINK_ON   = "prusalink_on";
 static const char* NVS_KEY_PRUSALINK_URL  = "prusalink_url";
 static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
+static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
@@ -100,6 +101,9 @@ void ConfigurationManager::loadFromDeviceConfig() {
     _prusaLinkEnabled = false;
     _prusaLinkUrl[0] = '\0';
     _prusaLinkApiKey[0] = '\0';
+
+    // NFC reader default
+    strncpy(_nfcReader, "pn5180", sizeof(_nfcReader) - 1);
 
     // Optional hardware feature defaults from compile-time flags
     _lcdEnabled = cfg.peripherals.lcd_enabled;
@@ -188,6 +192,10 @@ bool ConfigurationManager::loadFromNVS() {
         _keypadEnabled = prefs.getUChar(NVS_KEY_KEYPAD_ON, _keypadEnabled ? 1 : 0) != 0;
         anyOverride = true;
     }
+    if (prefs.isKey(NVS_KEY_NFC_READER)) {
+        prefs.getString(NVS_KEY_NFC_READER, _nfcReader, sizeof(_nfcReader));
+        anyOverride = true;
+    }
 
     prefs.end();
     return anyOverride;
@@ -270,6 +278,10 @@ const char* ConfigurationManager::getMoonrakerURL() const {
     return _moonrakerUrl;
 }
 
+const char* ConfigurationManager::getNfcReader() const {
+    return _nfcReader;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -288,6 +300,7 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.led_enabled = _ledEnabled ? 1 : 0;
     out.keypad_enabled = _keypadEnabled ? 1 : 0;
     strncpy(out.moonraker_url, _moonrakerUrl, sizeof(out.moonraker_url) - 1);
+    strncpy(out.nfc_reader, _nfcReader, sizeof(out.nfc_reader) - 1);
 }
 
 #ifndef NATIVE_TEST
@@ -321,6 +334,7 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     if (update.prusalink_api_key[0] != '\0') {
         prefs.putString(NVS_KEY_PRUSALINK_KEY, update.prusalink_api_key);
     }
+    prefs.putString(NVS_KEY_NFC_READER, update.nfc_reader);
 
     prefs.end();
     Serial.println("ConfigurationManager: Config saved to NVS");

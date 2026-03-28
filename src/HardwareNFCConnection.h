@@ -24,8 +24,9 @@ public:
     bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount, const uint8_t* data, uint16_t dataLen) override;
     uint8_t getLastSAK() const override { return lastSAK_; }
     uint16_t getLastATQA() const override { return lastATQA_; }
+    void getReaderInfo(char* buf, size_t len) const override;
     // Diagnostics: log RF_STATUS, IRQ_STATUS, SYSTEM_STATUS registers
-    void logDiagnostics();
+    void logDiagnostics() override;
     // Returns PN5180 firmware version bytes (set during begin()). fw[0]=minor, fw[1]=major.
     void getPN5180FirmwareVersion(uint8_t fw[2]) const { fw[0] = fw_[0]; fw[1] = fw_[1]; }
     bool isPN5180Ready() const { return pn5180Ready_; }

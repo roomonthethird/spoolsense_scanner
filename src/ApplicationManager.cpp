@@ -981,6 +981,14 @@ void ApplicationManager::handleKeypadCancel() {
 
 bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
 #ifndef NATIVE_TEST
+    // Validate tool number is digits-only (prevent GCode injection)
+    for (const char* p = toolNumber; *p; p++) {
+        if (*p < '0' || *p > '9') {
+            Serial.printf("ApplicationManager: Invalid tool number '%s'\n", toolNumber);
+            return false;
+        }
+    }
+
     const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
     if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
         Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
@@ -989,7 +997,7 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
     }
 
     extern SemaphoreHandle_t g_httpMutex;
-    if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+    if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(3000)) != pdTRUE) {
         Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
         if (lcdManager) lcdManager->updateScreen("Assign failed", "HTTP busy");
         return false;
@@ -1006,8 +1014,8 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
 
     WiFiClient client;
     HTTPClient http;
-    http.setConnectTimeout(3000);
-    http.setTimeout(5000);
+    http.setConnectTimeout(1000);
+    http.setTimeout(2000);
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     int code = http.POST(postBody);

@@ -443,11 +443,10 @@ void WebServerManager::handleApiDiagnostics() {
 
     // NFC reader
     JsonObject nfc = doc.createNestedObject("nfc");
-    uint8_t fw[2] = {0, 0};
-    bool nfcOk = NFCManager::getInstance().getPN5180FirmwareVersion(fw);
-    nfc["ok"]       = nfcOk;
-    nfc["fw_major"] = fw[1];
-    nfc["fw_minor"] = fw[0];
+    char readerInfo[32] = {0};
+    bool nfcOk = NFCManager::getInstance().getNfcReaderInfo(readerInfo, sizeof(readerInfo));
+    nfc["ok"]     = nfcOk;
+    nfc["reader"] = readerInfo;
 
     // Memory
     JsonObject memory = doc.createNestedObject("memory");
@@ -491,6 +490,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_on"] = cfg.prusalink_on;
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
+    doc["nfc_reader"] = cfg.nfc_reader;
 
     String body;
     serializeJson(doc, body);
@@ -526,6 +526,9 @@ void WebServerManager::handleApiPostConfig() {
     update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
     strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);
     strncpy(update.prusalink_api_key, doc["prusalink_api_key"] | "", sizeof(update.prusalink_api_key) - 1);
+    const char* nfcVal = doc["nfc_reader"] | "pn5180";
+    if (strcmp(nfcVal, "pn532") != 0) nfcVal = "pn5180";  // only allow known values
+    strncpy(update.nfc_reader, nfcVal, sizeof(update.nfc_reader) - 1);
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");

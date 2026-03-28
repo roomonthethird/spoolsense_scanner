@@ -2,6 +2,7 @@
 #define NFC_CONNECTION_I_H
 
 #include <cstdint>
+#include <cstring>
 #include "openprinttag_lib.h"
 
 // Interface for NFC hardware abstraction
@@ -39,6 +40,14 @@ public:
     // Write ISO14443A tag pages (NTAG213/215/216). Writes 4 bytes per page.
     // Returns true if all pages written successfully.
     virtual bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount, const uint8_t* data, uint16_t dataLen) = 0;
+
+    // Reader identification for diagnostics (e.g. "PN5180 v3.4", "PN532 v1.6")
+    virtual void getReaderInfo(char* buf, size_t len) const {
+        if (buf && len > 0) { strncpy(buf, "unknown", len - 1); buf[len - 1] = '\0'; }
+    }
+
+    // Log hardware-specific diagnostic info (register dumps, etc.). Default: no-op.
+    virtual void logDiagnostics() {}
 };
 
 #endif // NFC_CONNECTION_I_H
