@@ -84,13 +84,22 @@ void LEDManager::showOff() {
     setTarget(LEDMode::OFF, 0, 0, 0);
 }
 
+// Black (0,0,0) is indistinguishable from LED off — substitute dim white
+// so the user can tell a spool is scanned. The scan flash pattern provides
+// scan feedback; the steady color should always be visible.
+static void substituteBlack(uint8_t& r, uint8_t& g, uint8_t& b) {
+    if (r == 0 && g == 0 && b == 0) { r = 0x33; g = 0x33; b = 0x33; }
+}
+
 void LEDManager::showFilamentColor(uint8_t r, uint8_t g, uint8_t b) {
     if (!_initialized) return;
+    substituteBlack(r, g, b);
     setTarget(LEDMode::SOLID, r, g, b);
 }
 
 void LEDManager::breatheFilamentColor(uint8_t r, uint8_t g, uint8_t b) {
     if (!_initialized) return;
+    substituteBlack(r, g, b);
     setTarget(LEDMode::BREATHING, r, g, b);
 }
 
