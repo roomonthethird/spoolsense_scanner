@@ -150,9 +150,9 @@ uint16_t HardwareNFCConnectionPN532::readISO14443Pages(
 
         // Try read, reactivate tag on failure and retry once
         if (!pn532_->mifareultralight_ReadPage(page, pageBuf)) {
-            if (!reactivateTag()) return bytesRead;
+            if (!reactivateTag()) return 0;
             if (!pn532_->mifareultralight_ReadPage(page, pageBuf)) {
-                return bytesRead;
+                return 0;
             }
         }
 
@@ -195,7 +195,11 @@ bool HardwareNFCConnectionPN532::writeISO14443Pages(
 
 void HardwareNFCConnectionPN532::getReaderInfo(char* buf, size_t len) const {
     if (buf && len > 0) {
-        snprintf(buf, len, "PN532 v%d.%d", fwMajor_, fwMinor_);
+        if (!ready_) {
+            snprintf(buf, len, "PN532 (not initialized)");
+        } else {
+            snprintf(buf, len, "PN532 v%d.%d", fwMajor_, fwMinor_);
+        }
     }
 }
 

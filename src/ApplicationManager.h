@@ -219,6 +219,9 @@ private:
     // Keypad tool assignment state
     char keypadBuffer_[8] = {0};   // Accumulates typed digits (e.g. "12")
     uint8_t keypadBufferLen_ = 0;
+    bool pendingKeypadPrompt = false;
+    uint32_t keypadPromptScheduledAtMs = 0;
+    static constexpr uint32_t KEYPAD_PROMPT_DELAY_MS = 3000;
 
     // Handlers
     void handlePrintStarted(const AppMessage& msg);
