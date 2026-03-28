@@ -259,6 +259,12 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 | Write success | Green flash, then restores filament color |
 | Write failure | Red flash, then restores filament color |
 
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/JYFQQQR5F)
+
+Join the [SpoolSense Discord](https://discord.gg/JYFQQQR5F) for real-time help, build photos, and community discussion.
+
 ## Contributing & Help Wanted
 
 > **This project is currently in Alpha.** Testing is being done by myself and one other person. There will be bugs — please help!
@@ -266,7 +272,7 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 **How you can help:**
 
 - **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with any bugs or feedback you find.
-- **Case design** — More enclosure options are welcome. See [Community Enclosures](#community-enclosures) for what exists and what's still needed. Submit designs to `usermods/` via PR.
+- **Case design** — More enclosure options are welcome. Submit designs to `usermods/` via PR. See [spoolsense.org/builds/community-mods](https://spoolsense.org/builds/community-mods/) for existing designs.
 - **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
 ## Credits
