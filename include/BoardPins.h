@@ -84,7 +84,7 @@
   #define PIN_TFT_SCLK     22  // VSPI SCLK (shared with LCD SCL when LCD enabled)
   #define PIN_TFT_MISO     -1  // Not needed for write-only TFT
   #define PIN_TFT_CS        2  // Free GPIO
-  #define PIN_TFT_DC        0  // Free GPIO (boot strapping pin, safe after boot)
+  #define PIN_TFT_DC        4  // Freed from LED when TFT is enabled
   #define PIN_TFT_RST      -1  // Software reset via LovyanGFX
   #define PIN_TFT_BL       -1  // No backlight control (always on), or pick a free pin
 #endif

@@ -86,7 +86,7 @@ class LGFX : public lgfx::LGFX_Device {
 
 public:
     LGFX() {
-        // SPI bus — VSPI (bus 3), freed from LCD when TFT enabled
+        // SPI bus — VSPI. PN5180 uses HSPI via dedicated SPIClass instance.
         {
             auto cfg = _bus_instance.config();
             cfg.spi_host   = VSPI_HOST;
