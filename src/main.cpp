@@ -9,9 +9,7 @@
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
 #include "LCDManager.h"
-#ifdef ENABLE_TFT
 #include "TFTManager.h"
-#endif
 #include "LEDManager.h"
 #include "WebServerManager.h"
 #include "PrinterManager.h"
@@ -35,10 +33,8 @@ static PrusaLinkStrategy prusaLinkStrategy;
 // Always declared; only initialized if isLcdEnabled() at runtime
 LCDManager lcdManager(0x27, 16, 2);
 
-#ifdef ENABLE_TFT
-// TFT display — replaces LCD when enabled
+// TFT display — replaces LCD when enabled via NVS
 TFTManager tftManager;
-#endif
 
 // Always declared; only initialized if isLedEnabled() at runtime
 LEDManager ledManager;
@@ -63,13 +59,11 @@ void startAPMode() {
   Serial.printf("AP started: %s @ 192.168.4.1\n", g_apSSID);
 
   auto& config = ConfigurationManager::getInstance();
-#ifdef ENABLE_TFT
-  tftManager.showError(g_apSSID);
-#else
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showError(g_apSSID);
+  } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen(g_apSSID, "Go to 192.168.4.1");
   }
-#endif
   if (config.isLedEnabled()) {
     ledManager.showWifiFailed();  // yellow/warning state
   }
@@ -87,13 +81,11 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
-#ifdef ENABLE_TFT
-  tftManager.showWifiConnecting();
-#else
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showWifiConnecting();
+  } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen("Connecting WiFi", "");
   }
-#endif
 
   WiFi.begin(config.getWiFiSSID(), config.getWiFiPassword());
 
@@ -109,13 +101,11 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
-#ifdef ENABLE_TFT
-    tftManager.showWifiConnected(WiFi.localIP().toString().c_str());
-#else
-    if (config.isLcdEnabled()) {
+    if (config.isTftEnabled()) {
+      tftManager.showWifiConnected(WiFi.localIP().toString().c_str());
+    } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
     }
-#endif
 
     if (config.isLedEnabled()) {
       ledManager.showWifiConnected();
@@ -126,11 +116,9 @@ void initWiFi() {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
       Serial.println("Failed to obtain time");
-#ifndef ENABLE_TFT
       if (config.isLcdEnabled()) {
         lcdManager.updateScreen("NTP FAILED", "");
       }
-#endif
     } else {
       Serial.println("Time obtained");
     }
@@ -163,14 +151,13 @@ void setup() {
     ledManager.showBooting();
   }
 
-#ifdef ENABLE_TFT
-  // TFT display — replaces LCD
-  tftManager.begin();
-  tftManager.startTask();
-  tftManager.showBoot(FIRMWARE_VERSION);
-  Serial.println("TFT initialized");
-#else
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    // TFT display — mutually exclusive with LCD on WROOM
+    tftManager.begin();
+    tftManager.startTask();
+    tftManager.showBoot(FIRMWARE_VERSION);
+    Serial.println("TFT initialized");
+  } else if (config.isLcdEnabled()) {
     // Initialize I2C with custom pins for LCD
     Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
     Serial.println("I2C initialized");
@@ -182,7 +169,6 @@ void setup() {
 
     lcdManager.setScreenTimeoutMs(config.getLcdTimeoutMs());
   }
-#endif
 
   if (config.isKeypadEnabled()) {
     InputManager::getInstance().begin();

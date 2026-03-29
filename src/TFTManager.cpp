@@ -1,5 +1,3 @@
-#ifdef ENABLE_TFT
-
 #include "TFTManager.h"
 #include <Arduino.h>
 
@@ -628,5 +626,3 @@ uint32_t TFTManager::dimColor(uint32_t color, uint8_t brightness) {
     uint8_t b = ((color)       & 0xFF) * brightness / 255;
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
-
-#endif // ENABLE_TFT

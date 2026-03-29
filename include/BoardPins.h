@@ -38,6 +38,14 @@
   #define PIN_KEYPAD_COL1  17
   #define PIN_KEYPAD_COL2  18
   #define PIN_KEYPAD_COL3  42
+  // TFT SPI display (ENABLE_TFT — S3 pins, not yet validated on hardware)
+  #define PIN_TFT_MOSI     13
+  #define PIN_TFT_SCLK     15
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS        16
+  #define PIN_TFT_DC         3
+  #define PIN_TFT_RST       -1
+  #define PIN_TFT_BL        -1
 #else
   // --- ESP32-WROOM-32 pin mapping (default) ---
   // PN5180 SPI

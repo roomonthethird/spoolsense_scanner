@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef ENABLE_TFT
-
 #include <Arduino.h>
 #include <LovyanGFX.hpp>
 #include "BoardPins.h"
@@ -117,5 +115,3 @@ private:
     static constexpr uint32_t DEFAULT_SCREEN_TIMEOUT_MS = 30000;
     static constexpr uint32_t BREATH_STEP_MS = 20;
 };
-
-#endif // ENABLE_TFT

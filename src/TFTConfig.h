@@ -1,12 +1,5 @@
 #pragma once
 
-#ifdef ENABLE_TFT
-
-// TFT and LCD are mutually exclusive on WROOM (shared GPIO 22/23)
-#if defined(ENABLE_LCD) && ENABLE_LCD == 1 && !defined(BOARD_ESP32_S3)
-  #error "ENABLE_TFT and ENABLE_LCD cannot both be enabled on WROOM (GPIO 22/23 conflict)"
-#endif
-
 #include <LovyanGFX.hpp>
 #include "BoardPins.h"
 
@@ -147,4 +140,3 @@ public:
 };
 
 #endif // BOARD_ESP32_S3
-#endif // ENABLE_TFT

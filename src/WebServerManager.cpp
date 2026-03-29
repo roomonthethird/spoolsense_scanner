@@ -518,6 +518,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
+    doc["tft_enabled"] = cfg.tft_enabled;
     doc["ap_mode"] = _apMode;
     if (_apMode) {
         extern char g_apSSID[];
@@ -554,6 +555,7 @@ void WebServerManager::handleApiPostConfig() {
     update.lcd_enabled = doc["lcd_enabled"] | (uint8_t)0;
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
     update.keypad_enabled = doc["keypad_enabled"] | (uint8_t)0;
+    update.tft_enabled = doc["tft_enabled"] | (uint8_t)0;
     strncpy(update.moonraker_url, doc["moonraker_url"] | "", sizeof(update.moonraker_url) - 1);
     update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
     strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);
