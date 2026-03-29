@@ -248,10 +248,8 @@ void WebServerManager::handleApiRegisterUid() {
     float remainingWeight = doc["remaining_g"] | 0.0f;
     float density = doc["density"] | 0.0f;
     float diameter = doc["diameter_mm"] | 1.75f;
-    int minPrintTemp = doc["min_print_temp"] | 0;
-    int maxPrintTemp = doc["max_print_temp"] | 0;
-    int minBedTemp = doc["min_bed_temp"] | 0;
-    int maxBedTemp = doc["max_bed_temp"] | 0;
+    int extruderTemp = doc["extruder_temp"] | 0;
+    int bedTemp = doc["bed_temp"] | 0;
 
     if (strlen(uid) == 0) {
         sendError(400, "UID is required");
@@ -323,6 +321,8 @@ void WebServerManager::handleApiRegisterUid() {
     filBody["density"] = density > 0 ? density : 1.24f;
     filBody["diameter"] = diameter > 0 ? diameter : 1.75f;
     if (strlen(color) > 0) filBody["color_hex"] = color;
+    if (extruderTemp > 0) filBody["settings_extruder_temp"] = extruderTemp;
+    if (bedTemp > 0) filBody["settings_bed_temp"] = bedTemp;
 
     String filJson;
     serializeJson(filBody, filJson);
