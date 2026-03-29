@@ -383,47 +383,47 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    trackAutoFill(['nozzle_min','nozzle_max','bed_min','bed_max']);
+    trackAutoFill(['nozzle_min','nozzle_max','bed_min','bed_max','dry_temp','dry_time']);
+
+    function ttSetOrClear(el, value) {
+      if (!el || el.dataset.autoFilled === 'false') return;
+      el.value = (value !== undefined && value !== null) ? value : '';
+      el.dataset.autoFilled = 'true';
+    }
 
     function autoFillFromMaterial() {
       syncMaterialId();
       var id = materialIdEl.value;
       var m = materialData[id];
-      if (!m) return;
-      var nMin = document.getElementById('nozzle_min');
-      var nMax = document.getElementById('nozzle_max');
-      var bMin = document.getElementById('bed_min');
-      var bMax = document.getElementById('bed_max');
-      if (m.extruder_temp) {
-        if (nMin && nMin.dataset.autoFilled !== 'false') { nMin.value = Math.max(0, m.extruder_temp - 10); nMin.dataset.autoFilled = 'true'; }
-        if (nMax && nMax.dataset.autoFilled !== 'false') { nMax.value = m.extruder_temp + 10; nMax.dataset.autoFilled = 'true'; }
-      }
-      if (m.bed_temp) {
-        if (bMin && bMin.dataset.autoFilled !== 'false') { bMin.value = Math.max(0, m.bed_temp - 5); bMin.dataset.autoFilled = 'true'; }
-        if (bMax && bMax.dataset.autoFilled !== 'false') { bMax.value = m.bed_temp + 5; bMax.dataset.autoFilled = 'true'; }
-      }
+      var r = (m && m.recommended) ? m.recommended : {};
+      ttSetOrClear(document.getElementById('nozzle_min'), r.nozzleTempMin);
+      ttSetOrClear(document.getElementById('nozzle_max'), r.nozzleTempMax);
+      ttSetOrClear(document.getElementById('bed_min'), r.bedTempMin);
+      ttSetOrClear(document.getElementById('bed_max'), r.bedTempMax);
+      ttSetOrClear(document.getElementById('dry_temp'), r.dryTemp);
+      ttSetOrClear(document.getElementById('dry_time'), r.dryTime);
     }
 
     materialSearchEl.addEventListener('input', autoFillFromMaterial);
 
     (async function loadTigerTagAPI() {
       try {
-        var resp = await fetch('https://api.tigertag.io/api:tigertag/SpoolmanDB/materials');
+        var resp = await fetch('https://raw.githubusercontent.com/TigerTag-Project/TigerTag-RFID-Guide/main/database/id_material.json');
         if (resp.ok) {
           var raw = await resp.json();
           var materials = validateResponse(raw, [
             {key: 'id', type: 'number'},
-            {key: 'material', type: 'string'}
+            {key: 'label', type: 'string'}
           ]);
           if (materials) {
             materials.forEach(function(m) { materialData[m.id] = m; });
-            materials.sort(function(a, b) { return a.material.localeCompare(b.material); });
+            materials.sort(function(a, b) { return a.label.localeCompare(b.label); });
             var dl = document.getElementById('material-list');
             if (dl && materials.length > dl.options.length) {
               dl.innerHTML = '';
               materials.forEach(function(m) {
                 var opt = document.createElement('option');
-                opt.value = m.material;
+                opt.value = m.label;
                 opt.dataset.id = m.id;
                 dl.appendChild(opt);
               });
@@ -433,7 +433,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       } catch(e) { /* keep hardcoded fallback */ }
 
       try {
-        var resp2 = await fetch('https://api.tigertag.io/api:tigertag/brand/get/all');
+        var resp2 = await fetch('https://raw.githubusercontent.com/TigerTag-Project/TigerTag-RFID-Guide/main/database/id_brand.json');
         if (resp2.ok) {
           var raw2 = await resp2.json();
           var brands = validateResponse(raw2, [
