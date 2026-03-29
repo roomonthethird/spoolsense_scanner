@@ -54,13 +54,17 @@ WebServerManager& WebServerManager::getInstance() {
     return instance;
 }
 
-bool WebServerManager::begin(uint16_t port) {
-    // mDNS — reachable as http://spoolsense.local
-    if (MDNS.begin("spoolsense")) {
-        MDNS.addService("http", "tcp", port);
-        Serial.println("WebServerManager: mDNS started (spoolsense.local)");
-    } else {
-        Serial.println("WebServerManager: mDNS failed — reachable by IP only");
+bool WebServerManager::begin(bool apMode, uint16_t port) {
+    _apMode = apMode;
+
+    // mDNS — only in STA mode (AP uses fixed IP 192.168.4.1)
+    if (!apMode) {
+        if (MDNS.begin("spoolsense")) {
+            MDNS.addService("http", "tcp", port);
+            Serial.println("WebServerManager: mDNS started (spoolsense.local)");
+        } else {
+            Serial.println("WebServerManager: mDNS failed — reachable by IP only");
+        }
     }
 
     // Pages
@@ -100,6 +104,25 @@ bool WebServerManager::begin(uint16_t port) {
     _server.on("/api/write-opentag3d", HTTP_POST, [this]() { handleApiWriteOpenTag3D(); });
     _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
 
+    // Captive portal detection endpoints (AP mode)
+    if (apMode) {
+        // Android
+        _server.on("/generate_204", HTTP_GET, [this]() {
+            _server.sendHeader("Location", "http://192.168.4.1/config");
+            _server.send(302, "text/plain", "");
+        });
+        // Apple
+        _server.on("/hotspot-detect.html", HTTP_GET, [this]() {
+            _server.sendHeader("Location", "http://192.168.4.1/config");
+            _server.send(302, "text/plain", "");
+        });
+        // Windows
+        _server.on("/connecttest.txt", HTTP_GET, [this]() {
+            _server.sendHeader("Location", "http://192.168.4.1/config");
+            _server.send(302, "text/plain", "");
+        });
+    }
+
     // Allow browser preflight requests (CORS) so the page can be tested
     // from a local file during development.
     _server.onNotFound([this]() {
@@ -108,6 +131,10 @@ bool WebServerManager::begin(uint16_t port) {
             _server.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
             _server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
             _server.send(204);
+        } else if (_apMode) {
+            // Captive portal: redirect unknown requests to config page
+            _server.sendHeader("Location", "http://192.168.4.1/config");
+            _server.send(302, "text/plain", "Redirecting to setup...");
         } else {
             _server.send(404, "text/plain", "Not found");
         }
@@ -491,6 +518,11 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
+    doc["ap_mode"] = _apMode;
+    if (_apMode) {
+        extern char g_apSSID[];
+        doc["ap_ssid"] = g_apSSID;
+    }
 
     String body;
     serializeJson(doc, body);

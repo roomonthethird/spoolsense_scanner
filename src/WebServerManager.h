@@ -9,9 +9,9 @@ class WebServerManager {
 public:
     static WebServerManager& getInstance();
 
-    // Call once in setup() after WiFi is connected.
-    // Registers routes, starts mDNS as "spoolsense".
-    bool begin(uint16_t port = 80);
+    // Call once in setup() after WiFi is connected or AP mode started.
+    // Registers routes, starts mDNS as "spoolsense" (STA only).
+    bool begin(bool apMode = false, uint16_t port = 80);
 
     // Call from loop() — processes pending HTTP requests.
     void handleClient();
@@ -24,6 +24,7 @@ private:
 #ifndef NATIVE_TEST
     WebServer _server{80};
     bool _initialized = false;
+    bool _apMode = false;
 
     // Page handlers
     void handleLanding();

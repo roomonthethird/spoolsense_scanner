@@ -315,9 +315,10 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     var ot3dFieldMap = {
       minPrintTemp: 'min_print_temp_c', maxPrintTemp: 'max_print_temp_c',
       minBedTemp: 'min_bed_temp_c', maxBedTemp: 'max_bed_temp_c',
-      density: 'density'
+      density: 'density',
+      dryTemp: 'max_dry_temp_c', dryTime: 'dry_time_hours'
     };
-    trackAutoFill(['print_temp_c','bed_temp_c','min_print_temp_c','max_print_temp_c','min_bed_temp_c','max_bed_temp_c','density']);
+    trackAutoFill(['print_temp_c','bed_temp_c','min_print_temp_c','max_print_temp_c','min_bed_temp_c','max_bed_temp_c','density','max_dry_temp_c','dry_time_hours']);
     function ot3dAutoFill() {
       var name = baseMaterialEl.value;
       var mod = modifiersEl ? modifiersEl.value : '';

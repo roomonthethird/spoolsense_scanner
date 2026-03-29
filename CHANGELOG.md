@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.10] - 2026-03-29
+
+### Added
+
+- **AP mode fallback with captive portal** — when WiFi SSID is empty or STA connection fails after 15s, the ESP32 starts an open hotspot (`SpoolSense-XXXX`). A captive portal DNS server auto-redirects phones and laptops to the config page at 192.168.4.1. Enter WiFi credentials, save, device reboots into normal mode. Enables zero-CLI setup for the upcoming web flasher.
+
+### Fixed
+
+- **Tag writer dry temp/time auto-populate** — switched TigerTag and OpenTag3D writer material data from `api.tigertag.io` to canonical GitHub JSON source (`TigerTag-RFID-Guide/database/`). The API was missing dry temp, dry time, and proper nozzle/bed min/max ranges. All writer pages now auto-populate dry temp, dry time, and actual min/max values on material selection. Closes #49.
+- **Stale auto-fill values when switching materials** — writer fields now clear when switching to a material without data instead of retaining the previous material's values.
+
+---
+
 ## [1.5.9] - 2026-03-28
 
 ### Added
