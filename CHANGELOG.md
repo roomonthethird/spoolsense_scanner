@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.11] - 2026-03-29
+
+### Added
+
+- **AP mode fallback with captive portal** — when WiFi SSID is empty or STA connection fails after 15s, the ESP32 starts an open hotspot (`SpoolSense-XXXX`). A captive portal DNS server auto-redirects phones and laptops to the config page at 192.168.4.1. Enter WiFi credentials, save, device reboots into normal mode. Enables zero-CLI setup for the upcoming web flasher.
+
+---
+
 ## [1.5.10] - 2026-03-29
 
 ### Fixed
