@@ -519,6 +519,10 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
     doc["ap_mode"] = _apMode;
+    if (_apMode) {
+        extern char g_apSSID[];
+        doc["ap_ssid"] = g_apSSID;
+    }
 
     String body;
     serializeJson(doc, body);

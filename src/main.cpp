@@ -24,7 +24,7 @@ SemaphoreHandle_t g_httpMutex = nullptr;
 // AP mode state
 bool g_apModeActive = false;
 static DNSServer dnsServer;
-static char g_apSSID[24] = {0};
+char g_apSSID[24] = {0};
 
 // PrusaLink strategy (file-scope so it outlives setup)
 static PrusaLinkStrategy prusaLinkStrategy;

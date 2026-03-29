@@ -247,7 +247,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       if (cfg.ap_mode) {
         var banner = document.getElementById('apBanner');
         banner.classList.remove('hidden');
-        document.getElementById('apBannerSSID').textContent = 'IP: 192.168.4.1';
+        var ssidText = cfg.ap_ssid ? ('Network: ' + cfg.ap_ssid + ' | ') : '';
+        document.getElementById('apBannerSSID').textContent = ssidText + 'IP: 192.168.4.1';
       }
     }).catch(function() {});
 
