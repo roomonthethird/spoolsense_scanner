@@ -158,12 +158,26 @@ function loadMaterialDb() {
   Object.keys(_materialFallback).forEach(function(k) {
     _materialDb[k] = _materialFallback[k];
   });
-  return fetch('https://api.tigertag.io/api:tigertag/SpoolmanDB/materials')
+  return fetch('https://raw.githubusercontent.com/TigerTag-Project/TigerTag-RFID-Guide/main/database/id_material.json')
     .then(function(r) { return r.ok ? r.json() : []; })
     .then(function(data) {
       if (Array.isArray(data)) {
         data.forEach(function(m) {
-          if (m.material) _materialDb[m.material.toUpperCase()] = m;
+          if (m.label) {
+            var r = m.recommended || {};
+            _materialDb[m.label.toUpperCase()] = {
+              material: m.label,
+              extruder_temp: r.nozzleTempMax || 0,
+              bed_temp: r.bedTempMax || 0,
+              density: m.density || 0,
+              minPrintTemp: r.nozzleTempMin || 0,
+              maxPrintTemp: r.nozzleTempMax || 0,
+              minBedTemp: r.bedTempMin || 0,
+              maxBedTemp: r.bedTempMax || 0,
+              dryTemp: r.dryTemp || 0,
+              dryTime: r.dryTime || 0
+            };
+          }
         });
       }
       _materialDbLoaded = true;
@@ -207,44 +221,33 @@ function trackAutoFill(fieldIds) {
 function autoFillMaterialData(materialName, fieldMap) {
   var m = lookupMaterial(materialName);
   if (!m) return;
-  if (m.extruder_temp) {
-    if (fieldMap.minPrintTemp) {
-      var el = document.getElementById(fieldMap.minPrintTemp);
-      if (el && el.dataset.autoFilled !== 'false') {
-        el.value = Math.max(0, m.extruder_temp - 10);
-        el.dataset.autoFilled = 'true';
-      }
-    }
-    if (fieldMap.maxPrintTemp) {
-      var el = document.getElementById(fieldMap.maxPrintTemp);
-      if (el && el.dataset.autoFilled !== 'false') {
-        el.value = m.extruder_temp + 10;
-        el.dataset.autoFilled = 'true';
-      }
-    }
+  if (fieldMap.minPrintTemp && m.minPrintTemp) {
+    var el = document.getElementById(fieldMap.minPrintTemp);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.minPrintTemp; el.dataset.autoFilled = 'true'; }
   }
-  if (m.bed_temp) {
-    if (fieldMap.minBedTemp) {
-      var el = document.getElementById(fieldMap.minBedTemp);
-      if (el && el.dataset.autoFilled !== 'false') {
-        el.value = Math.max(0, m.bed_temp - 5);
-        el.dataset.autoFilled = 'true';
-      }
-    }
-    if (fieldMap.maxBedTemp) {
-      var el = document.getElementById(fieldMap.maxBedTemp);
-      if (el && el.dataset.autoFilled !== 'false') {
-        el.value = m.bed_temp + 5;
-        el.dataset.autoFilled = 'true';
-      }
-    }
+  if (fieldMap.maxPrintTemp && m.maxPrintTemp) {
+    var el = document.getElementById(fieldMap.maxPrintTemp);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.maxPrintTemp; el.dataset.autoFilled = 'true'; }
+  }
+  if (fieldMap.minBedTemp && m.minBedTemp) {
+    var el = document.getElementById(fieldMap.minBedTemp);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.minBedTemp; el.dataset.autoFilled = 'true'; }
+  }
+  if (fieldMap.maxBedTemp && m.maxBedTemp) {
+    var el = document.getElementById(fieldMap.maxBedTemp);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.maxBedTemp; el.dataset.autoFilled = 'true'; }
   }
   if (m.density && fieldMap.density) {
     var el = document.getElementById(fieldMap.density);
-    if (el && el.dataset.autoFilled !== 'false') {
-      el.value = m.density;
-      el.dataset.autoFilled = 'true';
-    }
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.density; el.dataset.autoFilled = 'true'; }
+  }
+  if (m.dryTemp && fieldMap.dryTemp) {
+    var el = document.getElementById(fieldMap.dryTemp);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.dryTemp; el.dataset.autoFilled = 'true'; }
+  }
+  if (m.dryTime && fieldMap.dryTime) {
+    var el = document.getElementById(fieldMap.dryTime);
+    if (el && el.dataset.autoFilled !== 'false') { el.value = m.dryTime; el.dataset.autoFilled = 'true'; }
   }
 }
 
