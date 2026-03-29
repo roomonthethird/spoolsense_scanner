@@ -801,8 +801,20 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
 
             // Read next value
             if (!reader.read()) {
-                //Serial.printf("  [PARSE] reader.read() failed for field '%s'\n", currentField);
                 break;
+            }
+            // Skip nested objects/arrays we don't care about (e.g. "extra": {})
+            if (reader.node_type() == json_node_type::object ||
+                reader.node_type() == json_node_type::array) {
+                int skipDepth = reader.depth();
+                while (reader.read()) {
+                    if ((reader.node_type() == json_node_type::end_object ||
+                         reader.node_type() == json_node_type::end_array) &&
+                        reader.depth() <= skipDepth) {
+                        break;
+                    }
+                }
+                continue;
             }
             //Serial.printf("  [PARSE] got value for field '%s', node_type=%d, inFilament=%d, inVendor=%d\n", currentField, reader.node_type(), inFilament, inVendor);
 

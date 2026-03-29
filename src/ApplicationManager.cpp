@@ -683,8 +683,8 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 #endif
 
     if (display_) {
-        if (msg.payload.spoolmanSynced.success) {
-            // Re-show spool graphic with synced data
+        if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup) {
+            // UID lookup — show spool graphic with Spoolman data (tag had no data)
             DisplaySpoolData spool{};
             strncpy(spool.brand, msg.payload.spoolmanSynced.manufacturer, sizeof(spool.brand) - 1);
             strncpy(spool.material, materialName, sizeof(spool.material) - 1);
@@ -692,10 +692,11 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             if (colorSrc[0] == '#') colorSrc++;
             strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
             spool.remainingWeight = kgRemaining * 1000.0f;
-            spool.totalWeight = 0; // not available in sync payload
-            spool.tagType = 5; // NFC+ for UID lookups, 0 otherwise
-            if (!msg.payload.spoolmanSynced.is_uid_lookup) spool.tagType = 0;
+            spool.totalWeight = 0;
+            spool.tagType = 5;
             display_->showSpool(spool);
+        } else if (msg.payload.spoolmanSynced.success) {
+            // Smart tag — don't overwrite, handleSpoolDetected already showed correct data
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
             display_->showText("Generic Tag", "Not in Spoolman");
         } else {
