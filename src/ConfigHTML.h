@@ -55,6 +55,11 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       <a href="/config">Config</a>
     </nav>
 
+    <div id="apBanner" class="hidden" style="background:#f59e0b;color:#000;padding:12px 16px;border-radius:12px;margin-bottom:16px;text-align:center;font-weight:700;">
+      Setup Mode &mdash; Connect to your WiFi network below.<br>
+      <span id="apBannerSSID" style="font-weight:400;font-size:0.9em;"></span>
+    </div>
+
     <section class="card">
       <div class="card-head">
         <h1 class="card-title">Device Configuration</h1>
@@ -238,6 +243,12 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
       if (cfg.mqtt_pass_set) document.getElementById('mqtt_pass').placeholder = '(set) Leave blank to keep';
+      // Show AP mode banner
+      if (cfg.ap_mode) {
+        var banner = document.getElementById('apBanner');
+        banner.classList.remove('hidden');
+        document.getElementById('apBannerSSID').textContent = 'IP: 192.168.4.1';
+      }
     }).catch(function() {});
 
     // Show/hide Spoolman URL based on toggle
@@ -284,13 +295,20 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       }).then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.success) {
-            result.textContent = 'Settings saved! Rebooting in 3 seconds...';
-            result.className = 'result success';
-            result.classList.remove('hidden');
-            setTimeout(function() {
-              result.textContent += '\nReloading page in 10 seconds...';
-            }, 3000);
-            setTimeout(function() { window.location.reload(); }, 13000);
+            var isAP = !document.getElementById('apBanner').classList.contains('hidden');
+            if (isAP) {
+              result.textContent = 'Saved! Rebooting... reconnect to your WiFi and check http://spoolsense.local in 30 seconds.';
+              result.className = 'result success';
+              result.classList.remove('hidden');
+            } else {
+              result.textContent = 'Settings saved! Rebooting in 3 seconds...';
+              result.className = 'result success';
+              result.classList.remove('hidden');
+              setTimeout(function() {
+                result.textContent += '\nReloading page in 10 seconds...';
+              }, 3000);
+              setTimeout(function() { window.location.reload(); }, 13000);
+            }
           } else {
             throw new Error(data.error || 'Save failed');
           }
