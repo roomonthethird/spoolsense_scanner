@@ -167,15 +167,15 @@ function loadMaterialDb() {
             var r = m.recommended || {};
             _materialDb[m.label.toUpperCase()] = {
               material: m.label,
-              extruder_temp: r.nozzleTempMax || 0,
-              bed_temp: r.bedTempMax || 0,
-              density: m.density || 0,
-              minPrintTemp: r.nozzleTempMin || 0,
-              maxPrintTemp: r.nozzleTempMax || 0,
-              minBedTemp: r.bedTempMin || 0,
-              maxBedTemp: r.bedTempMax || 0,
-              dryTemp: r.dryTemp || 0,
-              dryTime: r.dryTime || 0
+              extruder_temp: r.nozzleTempMax,
+              bed_temp: r.bedTempMax,
+              density: m.density,
+              minPrintTemp: r.nozzleTempMin,
+              maxPrintTemp: r.nozzleTempMax,
+              minBedTemp: r.bedTempMin,
+              maxBedTemp: r.bedTempMax,
+              dryTemp: r.dryTemp,
+              dryTime: r.dryTime
             };
           }
         });
@@ -218,37 +218,24 @@ function trackAutoFill(fieldIds) {
   });
 }
 
+function _setOrClear(fieldMap, key, value) {
+  if (!fieldMap[key]) return;
+  var el = document.getElementById(fieldMap[key]);
+  if (!el || el.dataset.autoFilled === 'false') return;
+  el.value = (value !== undefined && value !== null) ? value : '';
+  el.dataset.autoFilled = 'true';
+}
+
 function autoFillMaterialData(materialName, fieldMap) {
   var m = lookupMaterial(materialName);
   if (!m) return;
-  if (fieldMap.minPrintTemp && m.minPrintTemp) {
-    var el = document.getElementById(fieldMap.minPrintTemp);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.minPrintTemp; el.dataset.autoFilled = 'true'; }
-  }
-  if (fieldMap.maxPrintTemp && m.maxPrintTemp) {
-    var el = document.getElementById(fieldMap.maxPrintTemp);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.maxPrintTemp; el.dataset.autoFilled = 'true'; }
-  }
-  if (fieldMap.minBedTemp && m.minBedTemp) {
-    var el = document.getElementById(fieldMap.minBedTemp);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.minBedTemp; el.dataset.autoFilled = 'true'; }
-  }
-  if (fieldMap.maxBedTemp && m.maxBedTemp) {
-    var el = document.getElementById(fieldMap.maxBedTemp);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.maxBedTemp; el.dataset.autoFilled = 'true'; }
-  }
-  if (m.density && fieldMap.density) {
-    var el = document.getElementById(fieldMap.density);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.density; el.dataset.autoFilled = 'true'; }
-  }
-  if (m.dryTemp && fieldMap.dryTemp) {
-    var el = document.getElementById(fieldMap.dryTemp);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.dryTemp; el.dataset.autoFilled = 'true'; }
-  }
-  if (m.dryTime && fieldMap.dryTime) {
-    var el = document.getElementById(fieldMap.dryTime);
-    if (el && el.dataset.autoFilled !== 'false') { el.value = m.dryTime; el.dataset.autoFilled = 'true'; }
-  }
+  _setOrClear(fieldMap, 'minPrintTemp', m.minPrintTemp);
+  _setOrClear(fieldMap, 'maxPrintTemp', m.maxPrintTemp);
+  _setOrClear(fieldMap, 'minBedTemp', m.minBedTemp);
+  _setOrClear(fieldMap, 'maxBedTemp', m.maxBedTemp);
+  _setOrClear(fieldMap, 'density', m.density);
+  _setOrClear(fieldMap, 'dryTemp', m.dryTemp);
+  _setOrClear(fieldMap, 'dryTime', m.dryTime);
 }
 
 /* ---- Tag kind labels ---- */

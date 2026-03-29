@@ -385,36 +385,23 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     trackAutoFill(['nozzle_min','nozzle_max','bed_min','bed_max','dry_temp','dry_time']);
 
+    function ttSetOrClear(el, value) {
+      if (!el || el.dataset.autoFilled === 'false') return;
+      el.value = (value !== undefined && value !== null) ? value : '';
+      el.dataset.autoFilled = 'true';
+    }
+
     function autoFillFromMaterial() {
       syncMaterialId();
       var id = materialIdEl.value;
       var m = materialData[id];
-      if (!m || !m.recommended) return;
-      var r = m.recommended;
-      var nMin = document.getElementById('nozzle_min');
-      var nMax = document.getElementById('nozzle_max');
-      var bMin = document.getElementById('bed_min');
-      var bMax = document.getElementById('bed_max');
-      var dTemp = document.getElementById('dry_temp');
-      var dTime = document.getElementById('dry_time');
-      if (r.nozzleTempMin) {
-        if (nMin && nMin.dataset.autoFilled !== 'false') { nMin.value = r.nozzleTempMin; nMin.dataset.autoFilled = 'true'; }
-      }
-      if (r.nozzleTempMax) {
-        if (nMax && nMax.dataset.autoFilled !== 'false') { nMax.value = r.nozzleTempMax; nMax.dataset.autoFilled = 'true'; }
-      }
-      if (r.bedTempMin) {
-        if (bMin && bMin.dataset.autoFilled !== 'false') { bMin.value = r.bedTempMin; bMin.dataset.autoFilled = 'true'; }
-      }
-      if (r.bedTempMax) {
-        if (bMax && bMax.dataset.autoFilled !== 'false') { bMax.value = r.bedTempMax; bMax.dataset.autoFilled = 'true'; }
-      }
-      if (r.dryTemp) {
-        if (dTemp && dTemp.dataset.autoFilled !== 'false') { dTemp.value = r.dryTemp; dTemp.dataset.autoFilled = 'true'; }
-      }
-      if (r.dryTime) {
-        if (dTime && dTime.dataset.autoFilled !== 'false') { dTime.value = r.dryTime; dTime.dataset.autoFilled = 'true'; }
-      }
+      var r = (m && m.recommended) ? m.recommended : {};
+      ttSetOrClear(document.getElementById('nozzle_min'), r.nozzleTempMin);
+      ttSetOrClear(document.getElementById('nozzle_max'), r.nozzleTempMax);
+      ttSetOrClear(document.getElementById('bed_min'), r.bedTempMin);
+      ttSetOrClear(document.getElementById('bed_max'), r.bedTempMax);
+      ttSetOrClear(document.getElementById('dry_temp'), r.dryTemp);
+      ttSetOrClear(document.getElementById('dry_time'), r.dryTime);
     }
 
     materialSearchEl.addEventListener('input', autoFillFromMaterial);
