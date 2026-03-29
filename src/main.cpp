@@ -8,6 +8,7 @@
 #include "NFCManager.h"
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
+#include "DisplayI.h"
 #include "LCDManager.h"
 #include "TFTManager.h"
 #include "LEDManager.h"
@@ -174,8 +175,14 @@ void setup() {
     InputManager::getInstance().begin();
   }
 
-  // Initialize ApplicationManager (message queue) with LCD reference
-  if (!ApplicationManager::getInstance().begin(config.isLcdEnabled() ? &lcdManager : nullptr)) {
+  // Initialize ApplicationManager (message queue) with display reference
+  DisplayI* activeDisplay = nullptr;
+  if (config.isTftEnabled()) {
+    activeDisplay = &tftManager;
+  } else if (config.isLcdEnabled()) {
+    activeDisplay = &lcdManager;
+  }
+  if (!ApplicationManager::getInstance().begin(activeDisplay)) {
     Serial.println("ApplicationManager init failed - halting");
     while (1) { delay(1000); }
   }

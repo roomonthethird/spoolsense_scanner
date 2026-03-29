@@ -626,3 +626,27 @@ uint32_t TFTManager::dimColor(uint32_t color, uint8_t brightness) {
     uint8_t b = ((color)       & 0xFF) * brightness / 255;
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
+
+// DisplayI interface — renders text using the TFT status screen
+void TFTManager::showText(const char* line1, const char* line2) {
+    TFTMessage msg{};
+    msg.state = TFTState::Ready; // reuse Ready state for generic text
+    snprintf(msg.statusText, sizeof(msg.statusText), "%s", line1 ? line1 : "");
+    // For two-line text, use the status renderer
+    if (line2 && line2[0]) {
+        msg.state = TFTState::Error; // Error state has 2-line text rendering
+        snprintf(msg.statusText, sizeof(msg.statusText), "%s", line1 ? line1 : "");
+    }
+    xQueueSend(_messageQueue, &msg, 0);
+}
+
+void TFTManager::showText4(const char* line1, const char* line2,
+                           const char* line3, const char* line4) {
+    // TFT renders as two main lines — combine into meaningful display
+    char combined[48];
+    snprintf(combined, sizeof(combined), "%s %s", line1 ? line1 : "", line2 ? line2 : "");
+    TFTMessage msg{};
+    msg.state = TFTState::Error; // reuse 2-line status renderer
+    snprintf(msg.statusText, sizeof(msg.statusText), "%s", combined);
+    xQueueSend(_messageQueue, &msg, 0);
+}

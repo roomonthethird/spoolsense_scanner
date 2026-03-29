@@ -4,6 +4,7 @@
 #include <LovyanGFX.hpp>
 #include "BoardPins.h"
 #include "TFTConfig.h"
+#include "DisplayI.h"
 
 // ---------------------------------------------------------------------------
 // TFTSpoolData — the data the TFT needs after a scan
@@ -53,7 +54,7 @@ struct TFTMessage {
 // ---------------------------------------------------------------------------
 // TFTManager
 // ---------------------------------------------------------------------------
-class TFTManager {
+class TFTManager : public DisplayI {
 public:
     TFTManager();
 
@@ -71,7 +72,12 @@ public:
     void showKeypadEntry(const char* toolNumber);
     void showError(const char* msg);
 
-    void setScreenTimeoutMs(uint32_t timeoutMs);
+    void setScreenTimeoutMs(uint32_t timeoutMs) override;
+
+    // DisplayI interface
+    void showText(const char* line1, const char* line2 = nullptr) override;
+    void showText4(const char* line1, const char* line2,
+                   const char* line3, const char* line4) override;
 
 private:
     static void taskFunc(void* param);

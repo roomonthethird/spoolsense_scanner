@@ -3,7 +3,7 @@
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"
-  #include "LCDManager.h"
+  #include "DisplayI.h"
   #include "SpoolmanManager.h"
   #include "ConfigurationManager.h"
   #include "HomeAssistantManager.h"
@@ -32,12 +32,12 @@ ApplicationManager& ApplicationManager::getInstance() {
     return instance;
 }
 
-bool ApplicationManager::begin(LCDManager* lcd) {
+bool ApplicationManager::begin(DisplayI* display) {
     if (messageQueue != nullptr) {
         return true;  // Already initialized
     }
 
-    lcdManager = lcd;
+    display_ = display;
 
     messageQueue = xQueueCreate(QUEUE_SIZE, sizeof(AppMessage));
     if (messageQueue == nullptr) {
@@ -83,7 +83,7 @@ void ApplicationManager::processMessages() {
 
 
     // Check for delayed Type/Remain display
-    if (pendingTypeRemainDisplay && lcdManager) {
+    if (pendingTypeRemainDisplay && display_) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - typeRemainScheduledAtMs);
         if (elapsedMs >= TYPE_REMAIN_DISPLAY_DELAY_MS) {
             char line1[17];
@@ -94,7 +94,7 @@ void ApplicationManager::processMessages() {
             } else {
                 snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
             }
-            lcdManager->updateScreen(line1, line2);
+            display_->showText(line1, line2);
 
             pendingTypeRemainDisplay = false;
 
@@ -106,7 +106,7 @@ void ApplicationManager::processMessages() {
 }
 
 void ApplicationManager::showStatusOnLCD() {
-    if (lcdManager == nullptr) {
+    if (display_ == nullptr) {
         return;
     }
 
@@ -146,7 +146,7 @@ void ApplicationManager::showStatusOnLCD() {
     char line2[17];
     snprintf(line1, sizeof(line1), "NFC+ Wifi%c", wifiInd);
     snprintf(line2, sizeof(line2), "SM%c MQTT%c", smInd, haInd);
-    lcdManager->updateScreen(line1, line2);
+    display_->showText(line1, line2);
 }
 
 void ApplicationManager::scheduleTypeRemainDisplay(const char* material_name, float kg_remaining) {
@@ -230,10 +230,10 @@ void ApplicationManager::handlePrintStarted(const AppMessage& msg) {
     startingSpoolId[0] = '\0';
     spoolChangedDuringPrint = false;
 
-    if (lcdManager) {
+    if (display_) {
         char line2[17];
         snprintf(line2, sizeof(line2), "Job: %d", currentJobId);
-        lcdManager->updateScreen("Print Started", line2);
+        display_->showText("Print Started", line2);
     }
 
     // Publish printer state to HA
@@ -333,7 +333,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     pendingStatusAfterTagRemoved = false;
 
     // Update LCD with spool info (dedupe by spool_id)
-    if (lcdManager && strcmp(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id) != 0) {
+    if (display_ && strcmp(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id) != 0) {
         strncpy(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id, sizeof(lastDisplayedSpoolId) - 1);
         lastDisplayedSpoolId[sizeof(lastDisplayedSpoolId) - 1] = '\0';
         lastDisplayedBlankId[0] = '\0';  // Clear so blank tag re-displays if swapped
@@ -342,8 +342,8 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         char line2[17];
         snprintf(line1, sizeof(line1), "Type: %.10s", msg.payload.spoolDetected.material_name);
         snprintf(line2, sizeof(line2), "Remain: %.0fg", msg.payload.spoolDetected.kg_remaining * 1000.0f);
-        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", line1, line2);
-    } else if (lcdManager) {
+        display_->showText4("**** Spool ****", "*** Scanned ***", line1, line2);
+    } else if (display_) {
         Serial.printf("ApplicationManager: Skipping LCD update for already displayed spool %s\n", msg.payload.spoolDetected.spool_id);
     }
 
@@ -430,19 +430,19 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     }
 #endif
 
-    if (lcdManager) {
+    if (display_) {
         if (msg.payload.spoolUpdated.success) {
             char line1[17];
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
                      kgRemaining * 1000.0f);
             if (spoolmanConfigured) {
-                lcdManager->updateScreen(line1, "Syncing Spoolman");
+                display_->showText(line1, "Syncing Spoolman");
                 // Type/Remain will be scheduled after SPOOLMAN_SYNCED
             } else {
                 char line2[17];
                 snprintf(line2, sizeof(line2), "Remain: %.0fg",
                          kgRemaining * 1000.0f);
-                lcdManager->updateScreen("Spool Updated!", line2);
+                display_->showText("Spool Updated!", line2);
 
                 // Schedule Type/Remain display after 5 seconds (no Spoolman path)
                 if (materialName[0] != '\0') {
@@ -450,7 +450,7 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
                 }
             }
         } else {
-            lcdManager->updateScreen("Spool Update", "Failed!");
+            display_->showText("Spool Update", "Failed!");
         }
     }
 
@@ -521,12 +521,12 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
 
     pendingStatusAfterTagRemoved = false;
 
-    if (lcdManager && strcmp(lastDisplayedBlankId, msg.payload.blankTag.spool_id) != 0) {
+    if (display_ && strcmp(lastDisplayedBlankId, msg.payload.blankTag.spool_id) != 0) {
         strncpy(lastDisplayedBlankId, msg.payload.blankTag.spool_id, sizeof(lastDisplayedBlankId) - 1);
         lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
         lastDisplayedSpoolId[0] = '\0';  // Clear so valid spool re-displays if swapped
 
-        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", "Unknown Tag", "Use app to setup");
+        display_->showText4("**** Spool ****", "*** Scanned ***", "Unknown Tag", "Use app to setup");
     }
 
     // Publish blank tag state to HA
@@ -555,12 +555,12 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
 
     pendingStatusAfterTagRemoved = false;
 
-    if (lcdManager && strcmp(lastDisplayedBlankId, msg.payload.genericTag.spool_id) != 0) {
+    if (display_ && strcmp(lastDisplayedBlankId, msg.payload.genericTag.spool_id) != 0) {
         strncpy(lastDisplayedBlankId, msg.payload.genericTag.spool_id, sizeof(lastDisplayedBlankId) - 1);
         lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
         lastDisplayedSpoolId[0] = '\0';
 
-        lcdManager->updateScreen("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
+        display_->showText4("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
     }
 
     // Publish generic tag state to HA (pre-lookup)
@@ -589,16 +589,16 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
 void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
     if (spoolChangedDuringPrint) {
         Serial.println("ApplicationManager: Spool changed during print - not updating weight");
-        if (lcdManager) {
-            lcdManager->updateScreen("Spool changed!", "No update");
+        if (display_) {
+            display_->showText("Spool changed!", "No update");
         }
         return;
     }
 
     if (startingSpoolId[0] == '\0') {
         Serial.println("ApplicationManager: No spool detected during print - not updating weight");
-        if (lcdManager) {
-            lcdManager->updateScreen("No spool found", "No update");
+        if (display_) {
+            display_->showText("No spool found", "No update");
         }
         return;
     }
@@ -609,8 +609,8 @@ void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
 
         // Only auto-update NFC tag in SELF_DIRECTED mode
         if (automationMode == AutomationMode::SELF_DIRECTED) {
-            if (lcdManager) {
-                lcdManager->updateScreen("Updating spool..", "");
+            if (display_) {
+                display_->showText("Updating spool..", "");
             }
 
             // Enqueue write request with expected spool ID
@@ -623,14 +623,14 @@ void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
 
             NFCManager::getInstance().enqueueWrite(request);
         } else {
-            if (lcdManager) {
-                lcdManager->updateScreen("Print done", "HA controlled");
+            if (display_) {
+                display_->showText("Print done", "HA controlled");
             }
         }
     } else {
         Serial.println("ApplicationManager: No filament used - not updating spool");
-        if (lcdManager) {
-            lcdManager->updateScreen("Print done", "No filament used");
+        if (display_) {
+            display_->showText("Print done", "No filament used");
         }
     }
 }
@@ -667,7 +667,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     }
 #endif
 
-    if (lcdManager) {
+    if (display_) {
         if (msg.payload.spoolmanSynced.success) {
             char line1[17];
             char line2[17];
@@ -679,14 +679,14 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
                 snprintf(line2, sizeof(line2), "Remain: %.0fg",
                          kgRemaining * 1000.0f);
             }
-            lcdManager->updateScreen(line1, line2);
+            display_->showText(line1, line2);
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
-            lcdManager->updateScreen("Generic Tag", "Not in Spoolman");
+            display_->showText("Generic Tag", "Not in Spoolman");
         } else {
             char line1[17];
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
                      kgRemaining * 1000.0f);
-            lcdManager->updateScreen(line1, "Spoolman Error");
+            display_->showText(line1, "Spoolman Error");
 
             // Schedule Type/Remain display after 5 seconds even on error
             if (materialName[0] != '\0') {
@@ -878,15 +878,15 @@ void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
                   w.warning_type, w.expected, w.actual);
 
     // Show on LCD
-    if (lcdManager) {
+    if (display_) {
         if (strcmp(w.warning_type, "filament_mismatch") == 0) {
             char line2[17];
             snprintf(line2, sizeof(line2), "%.3s!=%.3s WRONG!", w.expected, w.actual);
-            lcdManager->updateScreen("WRONG FILAMENT!", line2);
+            display_->showText("WRONG FILAMENT!", line2);
         } else if (strcmp(w.warning_type, "temp_exceeds_max") == 0) {
             char line2[17];
             snprintf(line2, sizeof(line2), "%.0fC>%dC max", w.gcode_temp, w.tag_max_temp);
-            lcdManager->updateScreen("TEMP WARNING!", line2);
+            display_->showText("TEMP WARNING!", line2);
         }
     }
 
@@ -944,10 +944,10 @@ void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
         keypadBuffer_[keypadBufferLen_] = '\0';
     }
 
-    if (lcdManager) {
+    if (display_) {
         char line[17];
         snprintf(line, sizeof(line), "Assign to: T%s", keypadBuffer_);
-        lcdManager->updateScreen(line, "# Confirm  * Clr", "", "");
+        display_->showText4(line, "# Confirm  * Clr", "", "");
     }
 }
 
@@ -955,7 +955,7 @@ void ApplicationManager::handleKeypadConfirm() {
     Serial.println("EVENT: KeypadConfirm");
 
     if (keypadBufferLen_ == 0) {
-        if (lcdManager) lcdManager->updateScreen("No tool entered", "Type number + #");
+        if (display_) display_->showText("No tool entered", "Type number + #");
         return;
     }
 
@@ -965,7 +965,7 @@ void ApplicationManager::handleKeypadConfirm() {
     bool hasScannedSpool = NFCManager::getInstance().getCurrentSpoolState(state) &&
                            (state.present || state.spool_id[0] != '\0');
     if (!hasScannedSpool) {
-        if (lcdManager) lcdManager->updateScreen("No spool scanned", "Scan tag first");
+        if (display_) display_->showText("No spool scanned", "Scan tag first");
         keypadBuffer_[0] = '\0';
         keypadBufferLen_ = 0;
         return;
@@ -973,10 +973,10 @@ void ApplicationManager::handleKeypadConfirm() {
 #endif
 
     if (sendAssignSpool(keypadBuffer_)) {
-        if (lcdManager) {
+        if (display_) {
             char line[17];
             snprintf(line, sizeof(line), "Assigned T%s", keypadBuffer_);
-            lcdManager->updateScreen(line, "OK");
+            display_->showText(line, "OK");
         }
     }
 
@@ -989,8 +989,8 @@ void ApplicationManager::handleKeypadCancel() {
     keypadBuffer_[0] = '\0';
     keypadBufferLen_ = 0;
 
-    if (lcdManager) {
-        lcdManager->updateScreen("Tool entry", "Cleared");
+    if (display_) {
+        display_->showText("Tool entry", "Cleared");
     }
 }
 
@@ -1007,14 +1007,14 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
     const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
     if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
         Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
-        if (lcdManager) lcdManager->updateScreen("Moonraker URL", "Not configured");
+        if (display_) display_->showText("Moonraker URL", "Not configured");
         return false;
     }
 
     extern SemaphoreHandle_t g_httpMutex;
     if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(3000)) != pdTRUE) {
         Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
-        if (lcdManager) lcdManager->updateScreen("Assign failed", "HTTP busy");
+        if (display_) display_->showText("Assign failed", "HTTP busy");
         return false;
     }
 
@@ -1041,7 +1041,7 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
     Serial.printf("ApplicationManager: ASSIGN_SPOOL T%s — HTTP %d\n", toolNumber, code);
 
     if (code != 200) {
-        if (lcdManager) lcdManager->updateScreen("Assign failed", "Check Moonraker");
+        if (display_) display_->showText("Assign failed", "Check Moonraker");
         return false;
     }
     return true;

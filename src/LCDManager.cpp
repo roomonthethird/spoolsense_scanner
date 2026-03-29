@@ -245,3 +245,13 @@ void LCDManager::processQueue() {
         taskEXIT_CRITICAL(&_stateMux);
     }
 }
+
+// DisplayI interface — delegates to existing updateScreen methods
+void LCDManager::showText(const char* line1, const char* line2) {
+    updateScreen(line1, line2 ? line2 : "");
+}
+
+void LCDManager::showText4(const char* line1, const char* line2,
+                           const char* line3, const char* line4) {
+    updateScreen(line1, line2, line3, line4);
+}
