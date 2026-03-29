@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <time.h>
 #include <cstring>
 
@@ -20,6 +21,11 @@
 // Global HTTP mutex for serializing WiFi HTTP requests
 SemaphoreHandle_t g_httpMutex = nullptr;
 
+// AP mode state
+bool g_apModeActive = false;
+static DNSServer dnsServer;
+char g_apSSID[24] = {0};
+
 // PrusaLink strategy (file-scope so it outlives setup)
 static PrusaLinkStrategy prusaLinkStrategy;
 
@@ -29,15 +35,40 @@ LCDManager lcdManager(0x27, 16, 2);
 // Always declared; only initialized if isLedEnabled() at runtime
 LEDManager ledManager;
 
+void startAPMode() {
+  // Generate SSID from last 4 hex digits of MAC
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(g_apSSID, sizeof(g_apSSID), "SpoolSense-%02X%02X", mac[4], mac[5]);
+
+  Serial.printf("Starting AP mode: %s\n", g_apSSID);
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
+  WiFi.softAP(g_apSSID);
+
+  // Captive portal DNS — redirect all lookups to our IP
+  dnsServer.start(53, "*", IPAddress(192,168,4,1));
+
+  g_apModeActive = true;
+
+  Serial.printf("AP started: %s @ 192.168.4.1\n", g_apSSID);
+
+  auto& config = ConfigurationManager::getInstance();
+  if (config.isLcdEnabled()) {
+    lcdManager.updateScreen(g_apSSID, "Go to 192.168.4.1");
+  }
+  if (config.isLedEnabled()) {
+    ledManager.showWifiFailed();  // yellow/warning state
+  }
+}
+
 void initWiFi() {
   auto& config = ConfigurationManager::getInstance();
 
   if (strlen(config.getWiFiSSID()) == 0) {
-    Serial.println("WiFi SSID not configured - skipping WiFi");
-    if (config.isLcdEnabled()) {
-      lcdManager.updateScreen("WiFi: no SSID", "Check UserConfig.h");
-    }
-    delay(2000);
+    Serial.println("WiFi SSID not configured - starting AP mode");
+    startAPMode();
     return;
   }
 
@@ -67,7 +98,7 @@ void initWiFi() {
     }
 
     if (config.isLedEnabled()) {
-      ledManager.showWifiConnected();  // network up — not yet fully initialized
+      ledManager.showWifiConnected();
     }
 
     Serial.println("Setting up NTP...");
@@ -85,17 +116,8 @@ void initWiFi() {
     delay(2000);
   } else {
     Serial.println("");
-    Serial.println("WiFi connection failed!");
-
-    if (config.isLcdEnabled()) {
-      lcdManager.updateScreen("WiFi FAILED", "");
-    }
-
-    if (config.isLedEnabled()) {
-      ledManager.showWifiFailed();
-    }
-
-    delay(2000);
+    Serial.println("WiFi connection failed - starting AP mode");
+    startAPMode();
   }
 }
 
@@ -152,22 +174,27 @@ void setup() {
     while (1) { delay(1000); }
   }
 
-  // Initialize SpoolmanManager
-  if (!SpoolmanManager::getInstance().begin(g_httpMutex)) {
-    Serial.println("SpoolmanManager init failed - continuing without Spoolman");
-  }
+  // Skip network-dependent managers in AP mode
+  if (!g_apModeActive) {
+    // Initialize SpoolmanManager
+    if (!SpoolmanManager::getInstance().begin(g_httpMutex)) {
+      Serial.println("SpoolmanManager init failed - continuing without Spoolman");
+    }
 
-  // Initialize HomeAssistantManager
-  if (!HomeAssistantManager::getInstance().begin()) {
-    Serial.println("HomeAssistantManager init failed - continuing without HA");
-  }
+    // Initialize HomeAssistantManager
+    if (!HomeAssistantManager::getInstance().begin()) {
+      Serial.println("HomeAssistantManager init failed - continuing without HA");
+    }
 
-  // Load automation mode from config
-  {
-    uint8_t mode = config.getAutomationMode();
-    ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
-    Serial.printf("Automation mode: %s\n",
-                  mode == 0 ? "SELF_DIRECTED" : "CONTROLLED_BY_HA");
+    // Load automation mode from config
+    {
+      uint8_t mode = config.getAutomationMode();
+      ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
+      Serial.printf("Automation mode: %s\n",
+                    mode == 0 ? "SELF_DIRECTED" : "CONTROLLED_BY_HA");
+    }
+  } else {
+    Serial.println("AP mode active - skipping Spoolman, HA, automation init");
   }
 
   // Select NFC reader based on NVS config
@@ -191,27 +218,29 @@ void setup() {
   // Start NFC scan task
   NFCManager::getInstance().startScanTask();
 
-  // Start SpoolmanManager task
-  SpoolmanManager::getInstance().startTask();
+  if (!g_apModeActive) {
+    // Start SpoolmanManager task
+    SpoolmanManager::getInstance().startTask();
 
-  // Start HomeAssistantManager task
-  Serial.printf("Setup: HA config before startTask: enabled=%s host='%s' host_len=%u port=%u user_set=%s\n",
-                config.getHAEnabled() ? "true" : "false",
-                config.getHAMqttHost(),
-                static_cast<unsigned>(strlen(config.getHAMqttHost())),
-                static_cast<unsigned>(config.getHAMqttPort()),
-                strlen(config.getHAMqttUser()) > 0 ? "true" : "false");
-  HomeAssistantManager::getInstance().startTask();
+    // Start HomeAssistantManager task
+    Serial.printf("Setup: HA config before startTask: enabled=%s host='%s' host_len=%u port=%u user_set=%s\n",
+                  config.getHAEnabled() ? "true" : "false",
+                  config.getHAMqttHost(),
+                  static_cast<unsigned>(strlen(config.getHAMqttHost())),
+                  static_cast<unsigned>(config.getHAMqttPort()),
+                  strlen(config.getHAMqttUser()) > 0 ? "true" : "false");
+    HomeAssistantManager::getInstance().startTask();
 
-  // Start PrusaLink printer polling (if configured)
-  if (config.isPrusaLinkEnabled()) {
-    PrinterManager::getInstance().begin();
-    prusaLinkStrategy.setHttpMutex(g_httpMutex);
-    PrinterManager::getInstance().setStrategy(&prusaLinkStrategy);
-    PrinterManager::getInstance().startPollingTask();
-    Serial.println("PrusaLink integration enabled");
-  } else {
-    Serial.println("PrusaLink integration disabled (not configured)");
+    // Start PrusaLink printer polling (if configured)
+    if (config.isPrusaLinkEnabled()) {
+      PrinterManager::getInstance().begin();
+      prusaLinkStrategy.setHttpMutex(g_httpMutex);
+      PrinterManager::getInstance().setStrategy(&prusaLinkStrategy);
+      PrinterManager::getInstance().startPollingTask();
+      Serial.println("PrusaLink integration enabled");
+    } else {
+      Serial.println("PrusaLink integration disabled (not configured)");
+    }
   }
 
   if (config.isLcdEnabled()) {
@@ -223,15 +252,20 @@ void setup() {
     ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
   }
 
-  // Start HTTP tag writer server (WiFi must be connected)
-  if (WiFi.status() == WL_CONNECTED) {
-    WebServerManager::getInstance().begin();
+  // Start HTTP server (both STA and AP mode)
+  if (WiFi.status() == WL_CONNECTED || g_apModeActive) {
+    WebServerManager::getInstance().begin(g_apModeActive);
   }
 
   Serial.println("=== Setup complete ===");
 }
 
 void loop() {
+  // Process captive portal DNS in AP mode
+  if (g_apModeActive) {
+    dnsServer.processNextRequest();
+  }
+
   // Process any pending messages for the application
   ApplicationManager::getInstance().processMessages();
 
