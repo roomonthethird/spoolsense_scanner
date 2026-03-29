@@ -13,6 +13,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | ST7789 TFT color display | Scanner | Replace 16x2 LCD with 240x240 color TFT |
 | Multi-tag detection | Scanner | Read two spools simultaneously (dual antenna) |
 | Spoolman write to tag | Middleware | Write spool data fetched from Spoolman directly to a tag |
+| Bondtech INDX compatibility | Middleware | Support up to 8 toolheads (retail Q2 2026) |
 
 ## Planned
 
@@ -32,6 +33,9 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Resync AFC lock state on MQTT reconnect | Middleware | — | #13 |
 | Moonraker websocket (replace polling) | Middleware | — | #11 |
 | Sync ownership clarification (scanner vs middleware) | Middleware | — | #22 |
+| Smarter Spoolman lookups (filter by NFC ID) | Middleware | — | — |
+| Low spool push notification (HA) | Middleware | — | — |
+| Klipper error alerts via LED (per-toolhead) | Scanner | — | — |
 | Wiring photos and assembly guides | Docs | — | — |
 | More community enclosure designs | Docs | — | — |
 
@@ -60,6 +64,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Orca Slicer lane data integration | Middleware | v1.5.4 |
 | Write loop prevention (per-UID cooldown) | Middleware | v1.5.5 |
 | Atomic toolhead activation (rollback) | Middleware | v1.5.5 |
+| Tag writeback (remaining weight sync) | Middleware | v1.5.5 |
 | 16x2 I2C LCD display | Scanner | v1.4.0 |
 | OTA firmware updates | Scanner | v1.3.0 |
 | Spoolman auto-sync | Scanner | v1.2.0 |
