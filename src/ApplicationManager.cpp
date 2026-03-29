@@ -961,9 +961,7 @@ void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
     }
 
     if (display_) {
-        char line[17];
-        snprintf(line, sizeof(line), "Assign to: T%s", keypadBuffer_);
-        display_->showText4(line, "# Confirm  * Clr", "", "");
+        display_->showKeypad(keypadBuffer_);
     }
 }
 

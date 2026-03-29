@@ -256,6 +256,18 @@ void LCDManager::showText4(const char* line1, const char* line2,
     updateScreen(line1, line2, line3, line4);
 }
 
+void LCDManager::showKeypad(const char* digits) {
+    char line1[17];
+    snprintf(line1, sizeof(line1), "Tool: T%s", digits && digits[0] ? digits : "_");
+    updateScreen(line1, "# Confirm  * Clr");
+}
+
+void LCDManager::showWriteResult(bool success, const char* format) {
+    char line2[17];
+    snprintf(line2, sizeof(line2), "%s", format ? format : "");
+    updateScreen(success ? "Write OK!" : "Write Failed!", line2);
+}
+
 void LCDManager::showSpool(const DisplaySpoolData& spool) {
     char line1[17];
     char line2[17];

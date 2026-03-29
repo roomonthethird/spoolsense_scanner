@@ -26,6 +26,12 @@ public:
     // Spool scanned — LCD shows text, TFT shows graphic with color swatch
     virtual void showSpool(const DisplaySpoolData& spool) = 0;
 
+    // Keypad tool entry — LCD shows text, TFT shows big tool number
+    virtual void showKeypad(const char* digits) = 0;
+
+    // Write result — LCD shows text, TFT shows checkmark/X graphic
+    virtual void showWriteResult(bool success, const char* format) = 0;
+
     // Screen timeout
     virtual void setScreenTimeoutMs(uint32_t timeoutMs) = 0;
 };

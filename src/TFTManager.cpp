@@ -650,6 +650,10 @@ void TFTManager::showText4(const char* line1, const char* line2,
     xQueueSend(_messageQueue, &msg, 0);
 }
 
+void TFTManager::showKeypad(const char* digits) {
+    showKeypadEntry(digits && digits[0] ? digits : "_");
+}
+
 void TFTManager::showSpool(const DisplaySpoolData& spool) {
     TFTSpoolData tftSpool{};
     strncpy(tftSpool.brand, spool.brand, sizeof(tftSpool.brand) - 1);

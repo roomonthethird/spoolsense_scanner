@@ -69,7 +69,7 @@ public:
     void showReady();
     void showSpoolScanned(const TFTSpoolData& spool);
     void showWriting(const char* tagFormat);
-    void showWriteResult(bool success, const char* tagFormat);
+    void showWriteResult(bool success, const char* tagFormat) override;
     void showKeypadEntry(const char* toolNumber);
     void showError(const char* msg);
 
@@ -80,6 +80,7 @@ public:
     void showText4(const char* line1, const char* line2,
                    const char* line3, const char* line4) override;
     void showSpool(const DisplaySpoolData& spool) override;
+    void showKeypad(const char* digits) override;
 
 private:
     static void taskFunc(void* param);
