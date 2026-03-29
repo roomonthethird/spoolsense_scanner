@@ -33,6 +33,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Resync AFC lock state on MQTT reconnect | Middleware | — | #13 |
 | Moonraker websocket (replace polling) | Middleware | — | #11 |
 | Sync ownership clarification (scanner vs middleware) | Middleware | — | #22 |
+| Tag writeback architecture review | Scanner + Middleware | — | — |
 | Smarter Spoolman lookups (filter by NFC ID) | Middleware | — | — |
 | Low spool push notification (HA) | Middleware | — | — |
 | Klipper error alerts via LED (per-toolhead) | Scanner | — | — |
