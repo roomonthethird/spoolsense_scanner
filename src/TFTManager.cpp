@@ -126,7 +126,9 @@ TFTManager::TFTManager()
 // ---------------------------------------------------------------------------
 void TFTManager::begin() {
     _tft.init();
+    delay(100);  // Let display hardware stabilize after cold boot
     _tft.setRotation(0);
+    _tft.setBrightness(255);
     _tft.fillScreen(COLOR_BG);
 
     _sprite.setColorDepth(8);  // 8-bit = 57.6KB vs 115KB at 16-bit
@@ -162,14 +164,16 @@ void TFTManager::showBoot(const char* version) {
 void TFTManager::showWifiConnecting() {
     TFTMessage msg{};
     msg.state = TFTState::WifiConnecting;
-    snprintf(msg.statusText, sizeof(msg.statusText), "Connecting...");
+    snprintf(msg.statusText, sizeof(msg.statusText), "WiFi");
+    snprintf(msg.statusText2, sizeof(msg.statusText2), "Connecting...");
     xQueueSend(_messageQueue, &msg, 0);
 }
 
 void TFTManager::showWifiConnected(const char* ip) {
     TFTMessage msg{};
     msg.state = TFTState::WifiConnecting;
-    snprintf(msg.statusText, sizeof(msg.statusText), "%s", ip);
+    snprintf(msg.statusText, sizeof(msg.statusText), "WiFi Connected");
+    snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", ip);
     xQueueSend(_messageQueue, &msg, 0);
 }
 
@@ -261,7 +265,7 @@ void TFTManager::processQueue() {
                 renderBoot(msg.statusText);
                 break;
             case TFTState::WifiConnecting:
-                renderStatus("WiFi", msg.statusText);
+                renderStatus(msg.statusText, msg.statusText2[0] ? msg.statusText2 : nullptr);
                 break;
             case TFTState::Ready:
                 renderReady();
@@ -630,23 +634,30 @@ uint32_t TFTManager::dimColor(uint32_t color, uint8_t brightness) {
 // DisplayI interface — renders text using the TFT status screen
 void TFTManager::showText(const char* line1, const char* line2) {
     TFTMessage msg{};
-    msg.state = TFTState::Ready; // reuse Ready state for generic text
+    msg.state = TFTState::WifiConnecting; // generic two-line status renderer
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", line1 ? line1 : "");
-    // For two-line text, use the status renderer
-    if (line2 && line2[0]) {
-        msg.state = TFTState::Error; // Error state has 2-line text rendering
-        snprintf(msg.statusText, sizeof(msg.statusText), "%s", line1 ? line1 : "");
-    }
+    snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", line2 ? line2 : "");
     xQueueSend(_messageQueue, &msg, 0);
 }
 
 void TFTManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
-    // TFT renders as two main lines — combine into meaningful display
-    char combined[48];
-    snprintf(combined, sizeof(combined), "%s %s", line1 ? line1 : "", line2 ? line2 : "");
+    // TFT uses two lines — show line3 as primary, line4 as secondary
     TFTMessage msg{};
-    msg.state = TFTState::Error; // reuse 2-line status renderer
-    snprintf(msg.statusText, sizeof(msg.statusText), "%s", combined);
+    msg.state = TFTState::WifiConnecting; // generic two-line status renderer
+    snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3 ? line3 : (line1 ? line1 : ""));
+    snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", line4 ? line4 : (line2 ? line2 : ""));
     xQueueSend(_messageQueue, &msg, 0);
+}
+
+void TFTManager::showSpool(const DisplaySpoolData& spool) {
+    TFTSpoolData tftSpool{};
+    strncpy(tftSpool.brand, spool.brand, sizeof(tftSpool.brand) - 1);
+    strncpy(tftSpool.material, spool.material, sizeof(tftSpool.material) - 1);
+    snprintf(tftSpool.name, sizeof(tftSpool.name), "%s %s", spool.brand, spool.material);
+    strncpy(tftSpool.colorHex, spool.colorHex, sizeof(tftSpool.colorHex) - 1);
+    tftSpool.remainingWeight = spool.remainingWeight;
+    tftSpool.totalWeight = spool.totalWeight;
+    tftSpool.tagType = spool.tagType;
+    showSpoolScanned(tftSpool);
 }

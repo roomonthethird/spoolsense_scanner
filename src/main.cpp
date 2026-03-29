@@ -266,7 +266,9 @@ void setup() {
     }
   }
 
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showReady();
+  } else if (config.isLcdEnabled()) {
     ApplicationManager::getInstance().showStatusOnLCD();
   }
 

@@ -30,6 +30,7 @@ public:
     void showText(const char* line1, const char* line2 = nullptr) override;
     void showText4(const char* line1, const char* line2,
                    const char* line3, const char* line4) override;
+    void showSpool(const DisplaySpoolData& spool) override;
 
 private:
     void processQueue();

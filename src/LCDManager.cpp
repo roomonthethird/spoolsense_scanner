@@ -255,3 +255,11 @@ void LCDManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
     updateScreen(line1, line2, line3, line4);
 }
+
+void LCDManager::showSpool(const DisplaySpoolData& spool) {
+    char line1[17];
+    char line2[17];
+    snprintf(line1, sizeof(line1), "%s %s", spool.brand, spool.material);
+    snprintf(line2, sizeof(line2), "%.0fg/%.0fg", spool.remainingWeight, spool.totalWeight);
+    updateScreen(line1, line2);
+}

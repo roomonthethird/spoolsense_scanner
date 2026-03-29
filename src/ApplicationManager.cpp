@@ -73,8 +73,14 @@ void ApplicationManager::processMessages() {
     if (pendingStatusAfterTagRemoved) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - tagRemovedAtMs);
         if (elapsedMs >= TAG_REMOVED_STATUS_DELAY_MS) {
-            // Don't overwrite LCD if user is typing a tool number
-            if (keypadBufferLen_ == 0) {
+            // Don't overwrite display if user is typing a tool number.
+            // On TFT, keep showing spool data — screen timeout handles dimming.
+#ifndef NATIVE_TEST
+            bool isTft = ConfigurationManager::getInstance().isTftEnabled();
+#else
+            bool isTft = false;
+#endif
+            if (keypadBufferLen_ == 0 && !isTft) {
                 showStatusOnLCD();
             }
             pendingStatusAfterTagRemoved = false;
@@ -332,17 +338,26 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     pendingTypeRemainDisplay = false;
     pendingStatusAfterTagRemoved = false;
 
-    // Update LCD with spool info (dedupe by spool_id)
+    // Update display with spool info (dedupe by spool_id)
     if (display_ && strcmp(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id) != 0) {
         strncpy(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id, sizeof(lastDisplayedSpoolId) - 1);
         lastDisplayedSpoolId[sizeof(lastDisplayedSpoolId) - 1] = '\0';
-        lastDisplayedBlankId[0] = '\0';  // Clear so blank tag re-displays if swapped
+        lastDisplayedBlankId[0] = '\0';
 
-        char line1[17];
-        char line2[17];
-        snprintf(line1, sizeof(line1), "Type: %.10s", msg.payload.spoolDetected.material_name);
-        snprintf(line2, sizeof(line2), "Remain: %.0fg", msg.payload.spoolDetected.kg_remaining * 1000.0f);
-        display_->showText4("**** Spool ****", "*** Scanned ***", line1, line2);
+        const auto& s = msg.payload.spoolDetected;
+        DisplaySpoolData spool{};
+        strncpy(spool.brand, s.manufacturer, sizeof(spool.brand) - 1);
+        strncpy(spool.material, s.material_name, sizeof(spool.material) - 1);
+        snprintf(spool.colorHex, sizeof(spool.colorHex), "%02X%02X%02X",
+                 s.primary_color[0], s.primary_color[1], s.primary_color[2]);
+        spool.remainingWeight = s.kg_remaining * 1000.0f;
+        spool.totalWeight = s.initial_weight_g;
+        // Map tag format string to tag type constant
+        if (strcmp(s.tag_format, "OpenPrintTag") == 0) spool.tagType = 1;
+        else if (strcmp(s.tag_format, "TigerTag") == 0) spool.tagType = 2;
+        else if (strcmp(s.tag_format, "OpenTag3D") == 0) spool.tagType = 3;
+        else spool.tagType = 0;
+        display_->showSpool(spool);
     } else if (display_) {
         Serial.printf("ApplicationManager: Skipping LCD update for already displayed spool %s\n", msg.payload.spoolDetected.spool_id);
     }
@@ -669,17 +684,18 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 
     if (display_) {
         if (msg.payload.spoolmanSynced.success) {
-            char line1[17];
-            char line2[17];
-            snprintf(line1, sizeof(line1), "Type: %.10s", materialName);
-            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
-                snprintf(line2, sizeof(line2), "%.0fg Tool#? #",
-                         kgRemaining * 1000.0f);
-            } else {
-                snprintf(line2, sizeof(line2), "Remain: %.0fg",
-                         kgRemaining * 1000.0f);
-            }
-            display_->showText(line1, line2);
+            // Re-show spool graphic with synced data
+            DisplaySpoolData spool{};
+            strncpy(spool.brand, msg.payload.spoolmanSynced.manufacturer, sizeof(spool.brand) - 1);
+            strncpy(spool.material, materialName, sizeof(spool.material) - 1);
+            const char* colorSrc = msg.payload.spoolmanSynced.color_hex;
+            if (colorSrc[0] == '#') colorSrc++;
+            strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
+            spool.remainingWeight = kgRemaining * 1000.0f;
+            spool.totalWeight = 0; // not available in sync payload
+            spool.tagType = 5; // NFC+ for UID lookups, 0 otherwise
+            if (!msg.payload.spoolmanSynced.is_uid_lookup) spool.tagType = 0;
+            display_->showSpool(spool);
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
             display_->showText("Generic Tag", "Not in Spoolman");
         } else {
