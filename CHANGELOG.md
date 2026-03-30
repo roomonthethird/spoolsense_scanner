@@ -15,8 +15,9 @@
 - **NFC+ reader polling** — keeps polling until Spoolman data arrives instead of stopping on first tag detection.
 - **Spoolman JSON buffer** — dynamically sized to response (was fixed 16KB, failed on 25KB+ spool lists).
 - **Spool picker security** — XSS escaping, hex validation on nfc_id, HTTP timeouts, safe re-assign order (set new before clearing old).
-- **TFT display** — removed duplicate filament name line.
+- **TFT display** — removed duplicate filament name line. Fixed breathing animation unsigned underflow. NTP failure now shown on TFT.
 - **HA task stack** — bumped 7168 → 8192 to prevent overflow during discovery.
+- **Renamed showStatusOnLCD → showStatusScreen** — method now uses DisplayI interface, name reflects that.
 
 ---
 
