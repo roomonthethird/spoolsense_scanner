@@ -397,24 +397,19 @@ void TFTManager::renderSpoolScanned(const TFTSpoolData& spool) {
     drawSpool(cx, cy, 68, 26, fillColor);
 
     // ---- Text area ----
-    int textY = 185;
+    int textY = 190;
     _sprite.setTextDatum(MC_DATUM);
 
-    // Brand + material on one line
+    // Brand + material
     char brandMat[48];
     snprintf(brandMat, sizeof(brandMat), "%s  %s", spool.brand, spool.material);
-    _sprite.setTextColor(COLOR_SUBTEXT);
+    _sprite.setTextColor(COLOR_TEXT);
     _sprite.setTextSize(1);
     _sprite.drawString(brandMat, cx, textY);
 
-    // Filament name
-    _sprite.setTextColor(COLOR_TEXT);
-    _sprite.setTextSize(1);
-    _sprite.drawString(spool.name, cx, textY + 14);
-
     // Weight bar
     if (spool.totalWeight > 0) {
-        drawWeightBar(20, textY + 28, W - 40, 8,
+        drawWeightBar(20, textY + 14, W - 40, 8,
                       spool.remainingWeight, spool.totalWeight);
 
         // Weight text
@@ -424,7 +419,7 @@ void TFTManager::renderSpoolScanned(const TFTSpoolData& spool) {
         _sprite.setTextColor(COLOR_SUBTEXT);
         _sprite.setTextSize(1);
         _sprite.setTextDatum(MC_DATUM);
-        _sprite.drawString(weightStr, cx, textY + 44);
+        _sprite.drawString(weightStr, cx, textY + 30);
     }
 
     _sprite.pushSprite(0, 0);
