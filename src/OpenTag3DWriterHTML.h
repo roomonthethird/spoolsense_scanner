@@ -357,6 +357,26 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
         var modEl = document.getElementById('material_modifiers');
         if (modEl) modEl.value = d.modifiers;
       }
+      // Sync basic print/bed temp from nozzle_max/bed_max
+      var pt = document.getElementById('print_temp_c');
+      if (pt && d.nozzle_max && pt.dataset.autoFilled !== 'false') {
+        pt.value = d.nozzle_max; pt.dataset.autoFilled = 'true';
+      }
+      var bt = document.getElementById('bed_temp_c');
+      if (bt && d.bed_max && bt.dataset.autoFilled !== 'false') {
+        bt.value = d.bed_max; bt.dataset.autoFilled = 'true';
+      }
+      // Sync diameter dropdown (values in micrometers)
+      if (d.diameter) {
+        var dEl = document.getElementById('diameter_um');
+        if (dEl && dEl.dataset.autoFilled !== 'false') {
+          var um = Math.round(d.diameter * 1000);
+          dEl.value = um; dEl.dataset.autoFilled = 'true';
+        }
+      }
+      // Trigger material auto-fill for any missing fields
+      var matEl = document.getElementById('base_material');
+      if (matEl) matEl.dispatchEvent(new Event('input'));
     });
 
     if (modifiersEl) modifiersEl.addEventListener('change', ot3dAutoFill);

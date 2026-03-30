@@ -225,6 +225,7 @@ static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSi
 // --- File-local HTTP helpers ---
 // Persistent client + http objects — reuse TCP connection across requests.
 // All Spoolman calls are serialized by httpMutex_ so no concurrent access.
+// begin() internally calls end() + resets headers. setReuse(true) keeps TCP alive.
 static WiFiClient spoolmanClient;
 static HTTPClient spoolmanHttp;
 

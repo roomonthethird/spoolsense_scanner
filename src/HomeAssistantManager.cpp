@@ -369,6 +369,7 @@ void HomeAssistantManager::taskLoop() {
                     lastMqttState_ = 0;
                     reconnectDelay_ = 1000; // Reset backoff
                     Serial.println("HomeAssistantManager: MQTT connected, publishing discovery/state");
+                    lastDiscoveryUid_[0] = '\0';  // Reset dedupe so reconnect publishes fresh
                     publishDiscovery();
                     subscribeCommands();
                     publishAvailability("online");

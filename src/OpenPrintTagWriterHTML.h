@@ -309,6 +309,9 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
           break;
         }
       }
+      // Trigger material DB auto-fill for any fields the tag didn't have
+      var materialSearchEl = document.getElementById('material_search');
+      if (materialSearchEl) materialSearchEl.dispatchEvent(new Event('input'));
     });
 
     setupAdvancedToggle('advancedToggle', 'advancedBox');

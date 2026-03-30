@@ -180,13 +180,17 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
         .catch(function() { return []; });
     }
 
+    function esc(s) {
+      var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
+
     function renderSpoolRow(spool) {
       var fil = spool.filament || {};
-      var vendor = fil.vendor ? fil.vendor.name : '';
-      var color = fil.color_hex || '';
+      var vendor = fil.vendor ? esc(fil.vendor.name) : '';
+      var color = (fil.color_hex || '').replace(/[^0-9a-fA-F]/g, '');
       var colorSwatch = color ? '<span class="color-swatch" style="background:#' + color + ';display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:middle;margin-right:6px"></span>' : '';
       var remaining = spool.remaining_weight ? Math.round(spool.remaining_weight) + 'g' : '?';
-      var label = colorSwatch + '#' + spool.id + ' ' + (vendor ? vendor + ' ' : '') + (fil.material || fil.name || '?') + ' — ' + remaining;
+      var label = colorSwatch + '#' + spool.id + ' ' + (vendor ? vendor + ' ' : '') + esc(fil.material || fil.name || '?') + ' — ' + remaining;
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border)">'
            + '<span style="font-size:0.9em">' + label + '</span>'
            + '<button onclick="linkSpool(' + spool.id + ')" style="padding:4px 14px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-size:0.85em;font-weight:600">'

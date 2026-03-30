@@ -452,7 +452,6 @@ void WebServerManager::handleApiSpoolmanSpools() {
             } else {
                 delay(1);
             }
-            if (len > 0 && !stream->available()) break;
         }
     } else {
         char errMsg[64];
@@ -506,26 +505,7 @@ void WebServerManager::handleApiSpoolmanLink() {
     char url[256];
     String response;
 
-    // Clear old spool's nfc_id if re-assigning
-    if (oldSpoolId > 0 && oldSpoolId != newSpoolId) {
-        snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, oldSpoolId);
-        http.begin(client, url);
-        http.setTimeout(5000);
-        http.addHeader("Content-Type", "application/json");
-        int clearCode = http.PATCH("{\"extra\":{\"nfc_id\":\"\\\"\\\"\"}}");
-        http.end();
-        if (clearCode == 200 || clearCode == 404) {
-            Serial.printf("WebServerManager: Cleared nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
-        } else {
-            Serial.printf("WebServerManager: WARNING — failed to clear nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
-            char errMsg[80];
-            snprintf(errMsg, sizeof(errMsg), "Failed to clear old spool %d (HTTP %d)", oldSpoolId, clearCode);
-            sendError(502, errMsg);
-            return;
-        }
-    }
-
-    // Set nfc_id on new spool — Spoolman extra values must be valid JSON strings
+    // Set nfc_id on new spool FIRST — confirm it works before clearing old
     char body[128];
     snprintf(body, sizeof(body), "{\"extra\":{\"nfc_id\":\"\\\"%s\\\"\"}}", nfcId);
     snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, newSpoolId);
@@ -536,14 +516,27 @@ void WebServerManager::handleApiSpoolmanLink() {
     response = http.getString();
     http.end();
 
-    if (code == 200) {
-        Serial.printf("WebServerManager: Linked nfc_id=%s to spool %d\n", nfcId, newSpoolId);
-        _server.send(200, "application/json", "{\"success\":true}");
-    } else {
+    if (code != 200) {
         char errMsg[64];
         snprintf(errMsg, sizeof(errMsg), "Spoolman PATCH failed (HTTP %d)", code);
         sendError(502, errMsg);
+        return;
     }
+
+    Serial.printf("WebServerManager: Linked nfc_id=%s to spool %d\n", nfcId, newSpoolId);
+
+    // Clear old spool's nfc_id AFTER new spool confirmed
+    if (oldSpoolId > 0 && oldSpoolId != newSpoolId) {
+        snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, oldSpoolId);
+        http.begin(client, url);
+        http.setTimeout(5000);
+        http.addHeader("Content-Type", "application/json");
+        int clearCode = http.PATCH("{\"extra\":{\"nfc_id\":\"\\\"\\\"\"}}");
+        http.end();
+        Serial.printf("WebServerManager: Cleared nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
+    }
+
+    _server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WebServerManager::handleApiDiagnostics() {
