@@ -19,7 +19,6 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
-| TFT display support | Scanner | v1.6.0 | #8 |
 | WiFi reconnection logic | Scanner | — | #29 |
 | Tag writer: populate from Spoolman | Scanner | — | #32 |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
@@ -50,6 +49,11 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 ## Completed
 
 | Feature | Repo | Version |
+|---------|------|---------|
+| TFT display support (ST7789 240x240) | Scanner | v1.6.0 |
+| DisplayI interface (pluggable displays) | Scanner | v1.6.0 |
+| Spoolman color_hex parsing fix | Scanner | v1.6.0 |
+| NFC+ registration temps to Spoolman | Scanner | v1.6.0 |
 |---------|------|---------|
 | AP mode fallback + captive portal | Scanner | v1.5.10 |
 | Web flasher (browser-based firmware flash) | Docs | v1.5.10 |
