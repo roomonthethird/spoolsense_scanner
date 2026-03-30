@@ -8,7 +8,9 @@
 #include "NFCManager.h"
 #include "SpoolmanManager.h"
 #include "HomeAssistantManager.h"
+#include "DisplayI.h"
 #include "LCDManager.h"
+#include "TFTManager.h"
 #include "LEDManager.h"
 #include "WebServerManager.h"
 #include "PrinterManager.h"
@@ -31,6 +33,9 @@ static PrusaLinkStrategy prusaLinkStrategy;
 
 // Always declared; only initialized if isLcdEnabled() at runtime
 LCDManager lcdManager(0x27, 16, 2);
+
+// TFT display — replaces LCD when enabled via NVS
+TFTManager tftManager;
 
 // Always declared; only initialized if isLedEnabled() at runtime
 LEDManager ledManager;
@@ -55,7 +60,9 @@ void startAPMode() {
   Serial.printf("AP started: %s @ 192.168.4.1\n", g_apSSID);
 
   auto& config = ConfigurationManager::getInstance();
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showError(g_apSSID);
+  } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen(g_apSSID, "Go to 192.168.4.1");
   }
   if (config.isLedEnabled()) {
@@ -75,7 +82,9 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showWifiConnecting();
+  } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen("Connecting WiFi", "");
   }
 
@@ -93,7 +102,9 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
-    if (config.isLcdEnabled()) {
+    if (config.isTftEnabled()) {
+      tftManager.showWifiConnected(WiFi.localIP().toString().c_str());
+    } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
     }
 
@@ -141,7 +152,13 @@ void setup() {
     ledManager.showBooting();
   }
 
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    // TFT display — mutually exclusive with LCD on WROOM
+    tftManager.begin();
+    tftManager.startTask();
+    tftManager.showBoot(FIRMWARE_VERSION);
+    Serial.println("TFT initialized");
+  } else if (config.isLcdEnabled()) {
     // Initialize I2C with custom pins for LCD
     Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
     Serial.println("I2C initialized");
@@ -158,8 +175,14 @@ void setup() {
     InputManager::getInstance().begin();
   }
 
-  // Initialize ApplicationManager (message queue) with LCD reference
-  if (!ApplicationManager::getInstance().begin(config.isLcdEnabled() ? &lcdManager : nullptr)) {
+  // Initialize ApplicationManager (message queue) with display reference
+  DisplayI* activeDisplay = nullptr;
+  if (config.isTftEnabled()) {
+    activeDisplay = &tftManager;
+  } else if (config.isLcdEnabled()) {
+    activeDisplay = &lcdManager;
+  }
+  if (!ApplicationManager::getInstance().begin(activeDisplay)) {
     Serial.println("ApplicationManager init failed - halting");
     while (1) { delay(1000); }
   }
@@ -243,7 +266,9 @@ void setup() {
     }
   }
 
-  if (config.isLcdEnabled()) {
+  if (config.isTftEnabled()) {
+    tftManager.showReady();
+  } else if (config.isLcdEnabled()) {
     ApplicationManager::getInstance().showStatusOnLCD();
   }
 

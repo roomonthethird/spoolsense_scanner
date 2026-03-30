@@ -248,10 +248,8 @@ void WebServerManager::handleApiRegisterUid() {
     float remainingWeight = doc["remaining_g"] | 0.0f;
     float density = doc["density"] | 0.0f;
     float diameter = doc["diameter_mm"] | 1.75f;
-    int minPrintTemp = doc["min_print_temp"] | 0;
-    int maxPrintTemp = doc["max_print_temp"] | 0;
-    int minBedTemp = doc["min_bed_temp"] | 0;
-    int maxBedTemp = doc["max_bed_temp"] | 0;
+    int extruderTemp = doc["extruder_temp"] | 0;
+    int bedTemp = doc["bed_temp"] | 0;
 
     if (strlen(uid) == 0) {
         sendError(400, "UID is required");
@@ -323,6 +321,8 @@ void WebServerManager::handleApiRegisterUid() {
     filBody["density"] = density > 0 ? density : 1.24f;
     filBody["diameter"] = diameter > 0 ? diameter : 1.75f;
     if (strlen(color) > 0) filBody["color_hex"] = color;
+    if (extruderTemp > 0) filBody["settings_extruder_temp"] = extruderTemp;
+    if (bedTemp > 0) filBody["settings_bed_temp"] = bedTemp;
 
     String filJson;
     serializeJson(filBody, filJson);
@@ -518,6 +518,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
+    doc["tft_enabled"] = cfg.tft_enabled;
     doc["ap_mode"] = _apMode;
     if (_apMode) {
         extern char g_apSSID[];
@@ -554,6 +555,11 @@ void WebServerManager::handleApiPostConfig() {
     update.lcd_enabled = doc["lcd_enabled"] | (uint8_t)0;
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
     update.keypad_enabled = doc["keypad_enabled"] | (uint8_t)0;
+    update.tft_enabled = doc["tft_enabled"] | (uint8_t)0;
+    // TFT and LCD share GPIO 22/23 on WROOM — auto-disable LCD when TFT enabled
+    if (update.tft_enabled && update.lcd_enabled) {
+        update.lcd_enabled = 0;
+    }
     strncpy(update.moonraker_url, doc["moonraker_url"] | "", sizeof(update.moonraker_url) - 1);
     update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
     strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);

@@ -11,7 +11,7 @@
   #include <freertos/queue.h>
 #endif
 
-class LCDManager;
+class DisplayI;
 
 enum class AppMessageType {
     PRINT_STARTED,
@@ -82,6 +82,7 @@ struct SpoolmanSyncedPayload {
     char spool_id[17];
     bool success;
     float kg_remaining;          // Remaining weight for LCD display
+    float initial_weight_g;      // Initial spool weight (for weight bar display)
     int32_t spoolman_id;         // Resolved Spoolman spool ID (-1 if unknown)
     char material_name[32];      // Carried from sync request — avoids re-reading NFC state
     char manufacturer[64];       // Vendor name (populated for UID lookups)
@@ -151,7 +152,7 @@ class ApplicationManager {
 public:
     static ApplicationManager& getInstance();
 
-    bool begin(LCDManager* lcd = nullptr);
+    bool begin(DisplayI* display = nullptr);
     bool sendMessage(const AppMessage& msg, uint32_t waitMs = 0);
     void processMessages();
     void showStatusOnLCD();
@@ -167,7 +168,7 @@ public:
 #ifdef NATIVE_TEST
     void resetForTest() {
         if (messageQueue) { vQueueDelete(messageQueue); messageQueue = nullptr; }
-        lcdManager = nullptr;
+        display_ = nullptr;
         currentState = AppState::IDLE;
         startingSpoolId[0] = '\0';
         currentJobId = 0;
@@ -194,8 +195,8 @@ private:
     QueueHandle_t messageQueue = nullptr;
     static constexpr size_t QUEUE_SIZE = 12;
 
-    // LCD reference
-    LCDManager* lcdManager = nullptr;
+    // Display reference (LCD or TFT)
+    DisplayI* display_ = nullptr;
 
     // State machine
     AppState currentState = AppState::IDLE;

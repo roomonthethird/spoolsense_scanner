@@ -38,6 +38,14 @@
   #define PIN_KEYPAD_COL1  17
   #define PIN_KEYPAD_COL2  18
   #define PIN_KEYPAD_COL3  42
+  // TFT SPI display (ENABLE_TFT — S3 pins, not yet validated on hardware)
+  #define PIN_TFT_MOSI     13
+  #define PIN_TFT_SCLK     15
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS        16
+  #define PIN_TFT_DC         3
+  #define PIN_TFT_RST       -1
+  #define PIN_TFT_BL        -1
 #else
   // --- ESP32-WROOM-32 pin mapping (default) ---
   // PN5180 SPI
@@ -70,4 +78,13 @@
   #define PIN_KEYPAD_COL1  19
   #define PIN_KEYPAD_COL2  21
   #define PIN_KEYPAD_COL3  5
+  // TFT SPI display (ENABLE_TFT — mutually exclusive with LCD I2C)
+  // Uses VSPI. Pins 23/22 freed from LCD when TFT replaces it.
+  #define PIN_TFT_MOSI     23  // VSPI MOSI (shared with LCD SDA when LCD enabled)
+  #define PIN_TFT_SCLK     22  // VSPI SCLK (shared with LCD SCL when LCD enabled)
+  #define PIN_TFT_MISO     -1  // Not needed for write-only TFT
+  #define PIN_TFT_CS        2  // Free GPIO
+  #define PIN_TFT_DC        4  // Freed from LED when TFT is enabled
+  #define PIN_TFT_RST      -1  // Software reset via LovyanGFX
+  #define PIN_TFT_BL       -1  // No backlight control (always on), or pick a free pin
 #endif

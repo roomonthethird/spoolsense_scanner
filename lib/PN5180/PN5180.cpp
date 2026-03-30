@@ -19,8 +19,12 @@
 //#define DEBUG 1
 
 #include <Arduino.h>
+#include <SPI.h>
 #include "PN5180.h"
 #include "Debug.h"
+
+// Use HSPI for PN5180 so VSPI is free for TFT display
+static SPIClass pn5180_spi(HSPI);
 
 // PN5180 1-Byte Direct Commands
 // see 11.4.3.3 Host Interface Command List
@@ -67,9 +71,9 @@ void PN5180::begin() {
   digitalWrite(PN5180_RST, HIGH); // no reset
 
   if (PN5180_SCK >= 0 && PN5180_MISO >= 0 && PN5180_MOSI >= 0) {
-    SPI.begin(PN5180_SCK, PN5180_MISO, PN5180_MOSI);
+    pn5180_spi.begin(PN5180_SCK, PN5180_MISO, PN5180_MOSI);
   } else {
-    SPI.begin();
+    pn5180_spi.begin();
   }
   PN5180DEBUG(F("SPI pinout: "));
   PN5180DEBUG(F("SS=")); PN5180DEBUG(PN5180_NSS);
@@ -81,7 +85,7 @@ void PN5180::begin() {
 
 void PN5180::end() {
   digitalWrite(PN5180_NSS, HIGH); // disable
-  SPI.end();
+  pn5180_spi.end();
 }
 
 /*
@@ -109,9 +113,9 @@ bool PN5180::writeRegister(uint8_t reg, uint32_t value) {
    */
   uint8_t buf[6] = { PN5180_WRITE_REGISTER, reg, p[0], p[1], p[2], p[3] };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(buf, 6);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   return true;
 }
@@ -139,9 +143,9 @@ bool PN5180::writeRegisterWithOrMask(uint8_t reg, uint32_t mask) {
 
   uint8_t buf[6] = { PN5180_WRITE_REGISTER_OR_MASK, reg, p[0], p[1], p[2], p[3] };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(buf, 6);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   return true;
 }
@@ -169,9 +173,9 @@ bool PN5180::writeRegisterWithAndMask(uint8_t reg, uint32_t mask) {
 
   uint8_t buf[6] = { PN5180_WRITE_REGISTER_AND_MASK, reg, p[0], p[1], p[2], p[3] };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(buf, 6);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   return true;
 }
@@ -190,9 +194,9 @@ bool PN5180::readRegister(uint8_t reg, uint32_t *value) {
 
   uint8_t cmd[2] = { PN5180_READ_REGISTER, reg };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 2, (uint8_t*)value, 4);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   PN5180DEBUG(F("Register value=0x"));
   PN5180DEBUG(formatHex(*value));
@@ -223,9 +227,9 @@ bool PN5180::readRegister(uint8_t reg, uint32_t *value) {
      buffer[2+i] = data[i];
    }
 
-   SPI.beginTransaction(PN5180_SPI_SETTINGS);
+   pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
    transceiveCommand(buffer, len+2);
-   SPI.endTransaction();
+   pn5180_spi.endTransaction();
 
    return true;
  }
@@ -255,9 +259,9 @@ bool PN5180::readEEprom(uint8_t addr, uint8_t *buffer, int len) {
 
   uint8_t cmd[3] = { PN5180_READ_EEPROM, addr, (uint8_t)len };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 3, buffer, len);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
 #ifdef DEBUG
   PN5180DEBUG(F("EEPROM values: "));
@@ -328,9 +332,9 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
     return false;
   }
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(buffer, len+2);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   return true;
 }
@@ -360,9 +364,9 @@ uint8_t * PN5180::readData(int len, uint8_t *buffer /* = NULL */) {
 
   uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 2, buffer, len);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
 #ifdef DEBUG
   PN5180DEBUG(F("Data read: "));
@@ -403,9 +407,9 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
 
   uint8_t cmd[3] = { PN5180_LOAD_RF_CONFIG, txConf, rxConf };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 3);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   return true;
 }
@@ -420,9 +424,9 @@ bool PN5180::setRF_on() {
 
   uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 2);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   {
     unsigned long t = millis();
@@ -447,9 +451,9 @@ bool PN5180::setRF_off() {
 
   uint8_t cmd[2] { PN5180_RF_OFF, 0x00 };
 
-  SPI.beginTransaction(PN5180_SPI_SETTINGS);
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
   transceiveCommand(cmd, 2);
-  SPI.endTransaction();
+  pn5180_spi.endTransaction();
 
   {
     unsigned long t = millis();
@@ -526,7 +530,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   digitalWrite(PN5180_NSS, LOW); delay(2);
   // 2.
   for (uint8_t i=0; i<sendBufferLen; i++) {
-    SPI.transfer(sendBuffer[i]);
+    pn5180_spi.transfer(sendBuffer[i]);
   }
   // 3.
   {
@@ -561,7 +565,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   digitalWrite(PN5180_NSS, LOW); delay(2);
   // 2.
   for (uint8_t i=0; i<recvBufferLen; i++) {
-    recvBuffer[i] = SPI.transfer(0xff);
+    recvBuffer[i] = pn5180_spi.transfer(0xff);
   }
   // 3.
   {

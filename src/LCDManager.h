@@ -7,6 +7,7 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 #include "LCDDisplayLogic.h"
+#include "DisplayI.h"
 
 struct ScreenMessage {
     char line1[17];
@@ -16,14 +17,22 @@ struct ScreenMessage {
     uint8_t lineCount;
 };
 
-class LCDManager {
+class LCDManager : public DisplayI {
 public:
     LCDManager(uint8_t lcd_Addr, uint8_t lcd_cols, uint8_t lcd_rows);
     void begin();
     void updateScreen(const char* line1, const char* line2);
     void updateScreen(const char* line1, const char* line2, const char* line3, const char* line4);
     void startTask();
-    void setScreenTimeoutMs(uint32_t timeoutMs);
+    void setScreenTimeoutMs(uint32_t timeoutMs) override;
+
+    // DisplayI interface
+    void showText(const char* line1, const char* line2 = nullptr) override;
+    void showText4(const char* line1, const char* line2,
+                   const char* line3, const char* line4) override;
+    void showSpool(const DisplaySpoolData& spool) override;
+    void showKeypad(const char* digits) override;
+    void showWriteResult(bool success, const char* format) override;
 
 private:
     void processQueue();

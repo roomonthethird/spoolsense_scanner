@@ -23,6 +23,7 @@ static const char* NVS_KEY_AUTO_MODE      = "auto_mode";
 static const char* NVS_KEY_LCD_ON         = "lcd_on";
 static const char* NVS_KEY_LED_ON         = "led_on";
 static const char* NVS_KEY_KEYPAD_ON      = "keypad_on";
+static const char* NVS_KEY_TFT_ON         = "tft_on";
 static const char* NVS_KEY_MOONRAKER_URL  = "moonraker_url";
 static const char* NVS_KEY_PRUSALINK_ON   = "prusalink_on";
 static const char* NVS_KEY_PRUSALINK_URL  = "prusalink_url";
@@ -192,6 +193,10 @@ bool ConfigurationManager::loadFromNVS() {
         _keypadEnabled = prefs.getUChar(NVS_KEY_KEYPAD_ON, _keypadEnabled ? 1 : 0) != 0;
         anyOverride = true;
     }
+    if (prefs.isKey(NVS_KEY_TFT_ON)) {
+        _tftEnabled = prefs.getUChar(NVS_KEY_TFT_ON, _tftEnabled ? 1 : 0) != 0;
+        anyOverride = true;
+    }
     if (prefs.isKey(NVS_KEY_NFC_READER)) {
         prefs.getString(NVS_KEY_NFC_READER, _nfcReader, sizeof(_nfcReader));
         anyOverride = true;
@@ -274,6 +279,10 @@ bool ConfigurationManager::isKeypadEnabled() const {
     return _keypadEnabled;
 }
 
+bool ConfigurationManager::isTftEnabled() const {
+    return _tftEnabled;
+}
+
 const char* ConfigurationManager::getMoonrakerURL() const {
     return _moonrakerUrl;
 }
@@ -299,6 +308,7 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.lcd_enabled = _lcdEnabled ? 1 : 0;
     out.led_enabled = _ledEnabled ? 1 : 0;
     out.keypad_enabled = _keypadEnabled ? 1 : 0;
+    out.tft_enabled = _tftEnabled ? 1 : 0;
     strncpy(out.moonraker_url, _moonrakerUrl, sizeof(out.moonraker_url) - 1);
     strncpy(out.nfc_reader, _nfcReader, sizeof(out.nfc_reader) - 1);
 }
@@ -328,6 +338,7 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     prefs.putUChar(NVS_KEY_LCD_ON, update.lcd_enabled);
     prefs.putUChar(NVS_KEY_LED_ON, update.led_enabled);
     prefs.putUChar(NVS_KEY_KEYPAD_ON, update.keypad_enabled);
+    prefs.putUChar(NVS_KEY_TFT_ON, update.tft_enabled);
     prefs.putString(NVS_KEY_MOONRAKER_URL, update.moonraker_url);
     prefs.putBool(NVS_KEY_PRUSALINK_ON, update.prusalink_on != 0);
     prefs.putString(NVS_KEY_PRUSALINK_URL, update.prusalink_url);

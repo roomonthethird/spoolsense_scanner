@@ -801,8 +801,20 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
 
             // Read next value
             if (!reader.read()) {
-                //Serial.printf("  [PARSE] reader.read() failed for field '%s'\n", currentField);
                 break;
+            }
+            // Skip nested objects/arrays we don't care about (e.g. "extra": {})
+            if (reader.node_type() == json_node_type::object ||
+                reader.node_type() == json_node_type::array) {
+                int skipDepth = reader.depth();
+                while (reader.read()) {
+                    if ((reader.node_type() == json_node_type::end_object ||
+                         reader.node_type() == json_node_type::end_array) &&
+                        reader.depth() <= skipDepth) {
+                        break;
+                    }
+                }
+                continue;
             }
             //Serial.printf("  [PARSE] got value for field '%s', node_type=%d, inFilament=%d, inVendor=%d\n", currentField, reader.node_type(), inFilament, inVendor);
 
@@ -1116,6 +1128,7 @@ void SpoolmanManager::taskLoop() {
                 msg.payload.spoolmanSynced.success = found;
                 msg.payload.spoolmanSynced.spoolman_id = found ? details.spoolman_id : -1;
                 msg.payload.spoolmanSynced.kg_remaining = found ? details.remaining_weight_g / 1000.0f : 0.0f;
+                msg.payload.spoolmanSynced.initial_weight_g = found ? details.initial_weight_g : 0.0f;
                 strncpy(msg.payload.spoolmanSynced.material_name,
                         found ? details.material_type : "",
                         sizeof(msg.payload.spoolmanSynced.material_name) - 1);

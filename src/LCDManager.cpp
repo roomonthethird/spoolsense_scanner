@@ -245,3 +245,33 @@ void LCDManager::processQueue() {
         taskEXIT_CRITICAL(&_stateMux);
     }
 }
+
+// DisplayI interface — delegates to existing updateScreen methods
+void LCDManager::showText(const char* line1, const char* line2) {
+    updateScreen(line1, line2 ? line2 : "");
+}
+
+void LCDManager::showText4(const char* line1, const char* line2,
+                           const char* line3, const char* line4) {
+    updateScreen(line1, line2, line3, line4);
+}
+
+void LCDManager::showKeypad(const char* digits) {
+    char line1[17];
+    snprintf(line1, sizeof(line1), "Tool: T%s", digits && digits[0] ? digits : "_");
+    updateScreen(line1, "# Confirm  * Clr");
+}
+
+void LCDManager::showWriteResult(bool success, const char* format) {
+    char line2[17];
+    snprintf(line2, sizeof(line2), "%s", format ? format : "");
+    updateScreen(success ? "Write OK!" : "Write Failed!", line2);
+}
+
+void LCDManager::showSpool(const DisplaySpoolData& spool) {
+    char line1[17];
+    char line2[17];
+    snprintf(line1, sizeof(line1), "%s %s", spool.brand, spool.material);
+    snprintf(line2, sizeof(line2), "%.0fg/%.0fg", spool.remainingWeight, spool.totalWeight);
+    updateScreen(line1, line2);
+}
