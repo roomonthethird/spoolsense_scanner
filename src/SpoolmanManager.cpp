@@ -1128,6 +1128,7 @@ void SpoolmanManager::taskLoop() {
                 msg.payload.spoolmanSynced.success = found;
                 msg.payload.spoolmanSynced.spoolman_id = found ? details.spoolman_id : -1;
                 msg.payload.spoolmanSynced.kg_remaining = found ? details.remaining_weight_g / 1000.0f : 0.0f;
+                msg.payload.spoolmanSynced.initial_weight_g = found ? details.initial_weight_g : 0.0f;
                 strncpy(msg.payload.spoolmanSynced.material_name,
                         found ? details.material_type : "",
                         sizeof(msg.payload.spoolmanSynced.material_name) - 1);

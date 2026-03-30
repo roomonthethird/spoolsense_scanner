@@ -82,6 +82,7 @@ struct SpoolmanSyncedPayload {
     char spool_id[17];
     bool success;
     float kg_remaining;          // Remaining weight for LCD display
+    float initial_weight_g;      // Initial spool weight (for weight bar display)
     int32_t spoolman_id;         // Resolved Spoolman spool ID (-1 if unknown)
     char material_name[32];      // Carried from sync request — avoids re-reading NFC state
     char manufacturer[64];       // Vendor name (populated for UID lookups)

@@ -692,7 +692,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             if (colorSrc[0] == '#') colorSrc++;
             strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
             spool.remainingWeight = kgRemaining * 1000.0f;
-            spool.totalWeight = 0;
+            spool.totalWeight = msg.payload.spoolmanSynced.initial_weight_g;
             spool.tagType = 5;
             display_->showSpool(spool);
         } else if (msg.payload.spoolmanSynced.success) {
