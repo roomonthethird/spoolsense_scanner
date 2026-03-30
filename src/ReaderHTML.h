@@ -186,7 +186,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       var color = fil.color_hex || '';
       var colorSwatch = color ? '<span class="color-swatch" style="background:#' + color + ';display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:middle;margin-right:6px"></span>' : '';
       var remaining = spool.remaining_weight ? Math.round(spool.remaining_weight) + 'g' : '?';
-      var label = colorSwatch + (vendor ? vendor + ' ' : '') + (fil.material || fil.name || '?') + ' — ' + remaining;
+      var label = colorSwatch + '#' + spool.id + ' ' + (vendor ? vendor + ' ' : '') + (fil.material || fil.name || '?') + ' — ' + remaining;
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border)">'
            + '<span style="font-size:0.9em">' + label + '</span>'
            + '<button onclick="linkSpool(' + spool.id + ')" style="padding:4px 14px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-size:0.85em;font-weight:600">'
@@ -230,7 +230,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
     });
 
     window.linkSpool = function(newSpoolId) {
-      if (!spoolmanUrl || !currentTagUid) return;
+      if (!currentTagUid) return;
       var linkResult = document.getElementById('linkResult');
       linkResult.textContent = 'Linking...';
       linkResult.className = '';
@@ -298,6 +298,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       noTag.classList.remove('hidden');
       tagView.classList.add('hidden');
       scanBtn.classList.add('hidden');
+      document.getElementById('spoolPicker').classList.add('hidden');
       pollTimer = setInterval(poll, 1000);
       poll();
     }

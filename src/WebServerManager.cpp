@@ -428,6 +428,7 @@ void WebServerManager::handleApiSpoolmanSpools() {
     char url[256];
     snprintf(url, sizeof(url), "%s/api/v1/spool?archived=false", baseUrl);
     http.begin(client, url);
+    http.setTimeout(5000);
     int code = http.GET();
 
     if (code == 200) {
@@ -437,9 +438,12 @@ void WebServerManager::handleApiSpoolmanSpools() {
         _server.setContentLength(len > 0 ? len : CONTENT_LENGTH_UNKNOWN);
         _server.send(200, "application/json", "");
         uint8_t buf[512];
+        unsigned long lastData = millis();
         while (stream->available() || stream->connected()) {
+            if (millis() - lastData > 10000) break;  // 10s timeout on stalled stream
             int avail = stream->available();
             if (avail > 0) {
+                lastData = millis();
                 int toRead = avail > (int)sizeof(buf) ? (int)sizeof(buf) : avail;
                 int bytesRead = stream->readBytes(buf, toRead);
                 if (bytesRead > 0) {
@@ -477,6 +481,20 @@ void WebServerManager::handleApiSpoolmanLink() {
         return;
     }
 
+    // Validate nfc_id — only hex characters, max 16 chars
+    size_t nfcLen = strlen(nfcId);
+    if (nfcLen > 16) {
+        sendError(400, "nfc_id too long (max 16 chars)");
+        return;
+    }
+    for (size_t i = 0; i < nfcLen; i++) {
+        char c = nfcId[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))) {
+            sendError(400, "nfc_id must be hex characters only");
+            return;
+        }
+    }
+
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
     if (!baseUrl || strlen(baseUrl) == 0) {
         sendError(500, "Spoolman URL not configured");
@@ -492,10 +510,19 @@ void WebServerManager::handleApiSpoolmanLink() {
     if (oldSpoolId > 0 && oldSpoolId != newSpoolId) {
         snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, oldSpoolId);
         http.begin(client, url);
+        http.setTimeout(5000);
         http.addHeader("Content-Type", "application/json");
-        http.PATCH("{\"extra\":{\"nfc_id\":\"\\\"\\\"\"}}");
+        int clearCode = http.PATCH("{\"extra\":{\"nfc_id\":\"\\\"\\\"\"}}");
         http.end();
-        Serial.printf("WebServerManager: Cleared nfc_id from spool %d\n", oldSpoolId);
+        if (clearCode == 200 || clearCode == 404) {
+            Serial.printf("WebServerManager: Cleared nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
+        } else {
+            Serial.printf("WebServerManager: WARNING — failed to clear nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
+            char errMsg[80];
+            snprintf(errMsg, sizeof(errMsg), "Failed to clear old spool %d (HTTP %d)", oldSpoolId, clearCode);
+            sendError(502, errMsg);
+            return;
+        }
     }
 
     // Set nfc_id on new spool — Spoolman extra values must be valid JSON strings
@@ -503,6 +530,7 @@ void WebServerManager::handleApiSpoolmanLink() {
     snprintf(body, sizeof(body), "{\"extra\":{\"nfc_id\":\"\\\"%s\\\"\"}}", nfcId);
     snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, newSpoolId);
     http.begin(client, url);
+    http.setTimeout(5000);
     http.addHeader("Content-Type", "application/json");
     int code = http.PATCH(body);
     response = http.getString();
