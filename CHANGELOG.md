@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.0] - 2026-03-30
+
+### Added
+
+- **TFT display support (ST7789 240x240)** — color spool graphic with filament color fill, weight bar, tag format icons, and breathing animation for low spools (<100g). Runtime NVS toggle in web config. Mutually exclusive with LCD on WROOM (shared GPIO 22/23). Uses LovyanGFX with 8-bit color sprite for heap efficiency.
+- **DisplayI interface** — LCDManager and TFTManager both implement a shared display interface. ApplicationManager works with either display without knowing which is attached.
+
+### Fixed
+
+- **Spoolman color_hex parsing** — nested objects (vendor.extra:{}) broke the JSON streaming parser, causing color to be empty for NFC+ UID lookups. Parser now skips unknown nested objects correctly.
+- **NFC+ registration temps** — extruder and bed temperatures now written to Spoolman filament settings. Single temp fields (averaged from material DB min/max).
+- **NFC+ weight bar** — initial_weight_g now passed through SpoolmanSyncedPayload so NFC+ tags show the weight bar on TFT and LCD.
+- **SPI bus separation** — PN5180 moved to HSPI, TFT on VSPI. Separate SPI peripherals eliminate bus contention.
+
+---
+
 ## [1.5.10] - 2026-03-29
 
 ### Added
