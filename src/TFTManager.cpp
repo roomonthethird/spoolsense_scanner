@@ -303,10 +303,10 @@ void TFTManager::processQueue() {
     // Breathing animation tick
     if (_isBreathing && (millis() - _lastBreathMs >= BREATH_STEP_MS)) {
         _lastBreathMs = millis();
-        _breathBrightness += _breathDirection * 3;
-        if (_breathBrightness <= 30)  _breathDirection = 1;
-        if (_breathBrightness >= 255) _breathDirection = -1;
-        _breathBrightness = constrain(_breathBrightness, 30, 255);
+        int16_t next = (int16_t)_breathBrightness + _breathDirection * 3;
+        if (next <= 30)  { next = 30;  _breathDirection = 1; }
+        if (next >= 255) { next = 255; _breathDirection = -1; }
+        _breathBrightness = (uint8_t)next;
         _tft.setBrightness(_breathBrightness);
     }
 
@@ -624,6 +624,8 @@ uint32_t TFTManager::hexToRgb(const char* hex) {
     return (uint32_t)val;
 }
 
+// Reserved for future use: dim spool graphic color when tag removed
+// (show last scanned spool at ~50% brightness to indicate "gone")
 uint32_t TFTManager::dimColor(uint32_t color, uint8_t brightness) {
     uint8_t r = ((color >> 16) & 0xFF) * brightness / 255;
     uint8_t g = ((color >> 8)  & 0xFF) * brightness / 255;

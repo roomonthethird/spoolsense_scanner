@@ -81,7 +81,7 @@ void ApplicationManager::processMessages() {
             bool isTft = false;
 #endif
             if (keypadBufferLen_ == 0 && !isTft) {
-                showStatusOnLCD();
+                showStatusScreen();
             }
             pendingStatusAfterTagRemoved = false;
         }
@@ -111,7 +111,7 @@ void ApplicationManager::processMessages() {
 
 }
 
-void ApplicationManager::showStatusOnLCD() {
+void ApplicationManager::showStatusScreen() {
     if (display_ == nullptr) {
         return;
     }
