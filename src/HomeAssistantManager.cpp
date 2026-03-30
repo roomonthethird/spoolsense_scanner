@@ -398,8 +398,17 @@ void HomeAssistantManager::taskLoop() {
                 if (strcmp(req.topic, tagStateTopic) == 0) {
                     // Keep spool attributes aligned with the state payload source.
                     mqttClient.publish(tagAttrsTopic, req.payload, req.retained);
-                    // Keep command topics aligned with currently-present UID.
-                    publishDiscovery();
+                    // Only re-publish discovery when UID changes (command topics include UID).
+                    CurrentSpoolState state;
+                    char currentUid[17] = {0};
+                    if (NFCManager::getInstance().getCurrentSpoolState(state) &&
+                        state.present && state.spool_id[0] != '\0') {
+                        strncpy(currentUid, state.spool_id, sizeof(currentUid) - 1);
+                    }
+                    if (strcmp(currentUid, lastDiscoveryUid_) != 0) {
+                        strncpy(lastDiscoveryUid_, currentUid, sizeof(lastDiscoveryUid_) - 1);
+                        publishDiscovery();
+                    }
                 }
             }
         }
@@ -629,19 +638,21 @@ void HomeAssistantManager::publishDiscovery() {
         }
     }
 
-    // Remove stale retained discovery configs from previous read entities.
-    removeLegacyEntity("binary_sensor", "tag_present");
-    removeLegacyEntity("sensor", "spool_uid");
-    removeLegacyEntity("sensor", "remaining_weight");
-    removeLegacyEntity("sensor", "material_type");
-    removeLegacyEntity("sensor", "color");
-    removeLegacyEntity("sensor", "printer_state");
-    // Remove old openprinttag_-prefixed control entities (renamed to spoolsense_).
-    removeLegacyEntity("number", "set_remaining_weight");
-    removeLegacyEntity("number", "set_initial_weight");
-    removeLegacyEntity("number", "set_spoolman_id");
-    removeLegacyEntity("select", "set_material_type");
-    removeLegacyEntity("text", "set_manufacturer");
+    // Remove stale retained discovery configs — once per boot, not every scan.
+    if (!legacyCleanupDone_) {
+        removeLegacyEntity("binary_sensor", "tag_present");
+        removeLegacyEntity("sensor", "spool_uid");
+        removeLegacyEntity("sensor", "remaining_weight");
+        removeLegacyEntity("sensor", "material_type");
+        removeLegacyEntity("sensor", "color");
+        removeLegacyEntity("sensor", "printer_state");
+        removeLegacyEntity("number", "set_remaining_weight");
+        removeLegacyEntity("number", "set_initial_weight");
+        removeLegacyEntity("number", "set_spoolman_id");
+        removeLegacyEntity("select", "set_material_type");
+        removeLegacyEntity("text", "set_manufacturer");
+        legacyCleanupDone_ = true;
+    }
 
     // UID is carried in command topic; payload contains only values.
     char updateRemainingCmdTpl[128];

@@ -75,6 +75,10 @@ private:
     // Device ID cache
     char deviceId_[7] = {0}; // 6 hex chars + null
     CurrentSpoolState spoolScratch_;
+
+    // Discovery dedup — only re-publish when UID changes
+    char lastDiscoveryUid_[17] = {0};
+    bool legacyCleanupDone_ = false;
 };
 
 #endif // HOME_ASSISTANT_MANAGER_H
