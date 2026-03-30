@@ -21,6 +21,7 @@ struct ConfigUpdate {
     uint8_t lcd_enabled;
     uint8_t led_enabled;
     uint8_t keypad_enabled;
+    uint8_t tft_enabled;
     // Klipper / Moonraker
     char moonraker_url[128];
     // PrusaLink integration
@@ -67,6 +68,7 @@ public:
     bool isLcdEnabled() const;
     bool isLedEnabled() const;
     bool isKeypadEnabled() const;
+    bool isTftEnabled() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -111,6 +113,7 @@ private:
     bool _lcdEnabled = false;
     bool _ledEnabled = false;
     bool _keypadEnabled = false;
+    bool _tftEnabled = false;
 
     bool _initialized = false;
 };

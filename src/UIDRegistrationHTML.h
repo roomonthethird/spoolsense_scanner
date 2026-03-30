@@ -158,23 +158,13 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
                 </div>
 
                 <div class="field">
-                  <label for="min_print_temp">Min Print Temp (&deg;C)</label>
-                  <input id="min_print_temp" name="min_print_temp" type="number" min="0" step="1" placeholder="205" />
+                  <label for="extruder_temp">Extruder Temp (&deg;C)</label>
+                  <input id="extruder_temp" name="extruder_temp" type="number" min="0" step="1" placeholder="215" />
                 </div>
 
                 <div class="field">
-                  <label for="max_print_temp">Max Print Temp (&deg;C)</label>
-                  <input id="max_print_temp" name="max_print_temp" type="number" min="0" step="1" placeholder="225" />
-                </div>
-
-                <div class="field">
-                  <label for="min_bed_temp">Min Bed Temp (&deg;C)</label>
-                  <input id="min_bed_temp" name="min_bed_temp" type="number" min="0" step="1" placeholder="55" />
-                </div>
-
-                <div class="field">
-                  <label for="max_bed_temp">Max Bed Temp (&deg;C)</label>
-                  <input id="max_bed_temp" name="max_bed_temp" type="number" min="0" step="1" placeholder="65" />
+                  <label for="bed_temp">Bed Temp (&deg;C)</label>
+                  <input id="bed_temp" name="bed_temp" type="number" min="0" step="1" placeholder="60" />
                 </div>
               </div>
             </div>
@@ -213,13 +203,25 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
 
     // Auto-fill temps and density from material selection
     var nfcFieldMap = {
-      minPrintTemp: 'min_print_temp', maxPrintTemp: 'max_print_temp',
-      minBedTemp: 'min_bed_temp', maxBedTemp: 'max_bed_temp',
       density: 'density'
     };
-    trackAutoFill(['min_print_temp','max_print_temp','min_bed_temp','max_bed_temp','density']);
+    trackAutoFill(['extruder_temp','bed_temp','density']);
     materialTypeEl.addEventListener('input', function() {
       autoFillMaterialData(materialTypeEl.value, nfcFieldMap);
+      // Average min/max temps into single fields
+      var m = lookupMaterial(materialTypeEl.value);
+      if (m) {
+        var et = document.getElementById('extruder_temp');
+        if (et && et.dataset.autoFilled !== 'false' && m.minPrintTemp && m.maxPrintTemp) {
+          et.value = Math.round((m.minPrintTemp + m.maxPrintTemp) / 2);
+          et.dataset.autoFilled = 'true';
+        }
+        var bt = document.getElementById('bed_temp');
+        if (bt && bt.dataset.autoFilled !== 'false' && m.minBedTemp && m.maxBedTemp) {
+          bt.value = Math.round((m.minBedTemp + m.maxBedTemp) / 2);
+          bt.dataset.autoFilled = 'true';
+        }
+      }
     });
     loadMaterialDb().then(function(db) {
       var dl = document.getElementById('material-list');
@@ -352,10 +354,8 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
         remaining_g: remainingWeight,
         density: readPositiveNumber('density') || 0,
         diameter_mm: readPositiveNumber('diameter_mm') || 1.75,
-        min_print_temp: readPositiveNumber('min_print_temp') || 0,
-        max_print_temp: readPositiveNumber('max_print_temp') || 0,
-        min_bed_temp: readPositiveNumber('min_bed_temp') || 0,
-        max_bed_temp: readPositiveNumber('max_bed_temp') || 0
+        extruder_temp: readPositiveNumber('extruder_temp') || 0,
+        bed_temp: readPositiveNumber('bed_temp') || 0
       };
 
       setResult('Registering in Spoolman\u2026', '');
