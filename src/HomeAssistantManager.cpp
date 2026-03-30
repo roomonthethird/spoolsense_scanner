@@ -819,7 +819,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
     Serial.printf("HomeAssistantManager: Command received: %s payload=%s\n", topic, payload);
 
     // Parse topic to extract command name (and optional uid suffix)
-    // Format: openprinttag/{id}/cmd/{command}[/uid]
+    // Format: spoolsense/{id}/cmd/{command}[/uid]
     char cmdPrefix[64];
     snprintf(cmdPrefix, sizeof(cmdPrefix), "spoolsense/%s/cmd/", deviceId_);
 
