@@ -334,6 +334,31 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       }
     }
     baseMaterialEl.addEventListener('input', ot3dAutoFill);
+
+    // Pre-fill from scanned tag if present
+    prefillFromTag({
+      material: 'base_material',
+      color: 'colorHex',
+      colorPicker: 'colorPicker',
+      manufacturer: 'manufacturer',
+      weight: 'target_weight_g',
+      density: 'density',
+      diameter: 'diameter_mm',
+      nozzle_min: 'min_print_temp_c',
+      nozzle_max: 'max_print_temp_c',
+      bed_min: 'min_bed_temp_c',
+      bed_max: 'max_bed_temp_c',
+      dry_temp: 'max_dry_temp_c',
+      dry_time: 'dry_time_hours'
+    }).then(function(d) {
+      if (!d) return;
+      // Sync modifiers dropdown if available
+      if (d.modifiers) {
+        var modEl = document.getElementById('material_modifiers');
+        if (modEl) modEl.value = d.modifiers;
+      }
+    });
+
     if (modifiersEl) modifiersEl.addEventListener('change', ot3dAutoFill);
     loadMaterialDb().then(function(db) {
       var dl = document.getElementById('material-list');
