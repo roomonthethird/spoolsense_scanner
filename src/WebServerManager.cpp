@@ -103,6 +103,8 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
     _server.on("/api/write-opentag3d", HTTP_POST, [this]() { handleApiWriteOpenTag3D(); });
     _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
+    _server.on("/api/spoolman/spools", HTTP_GET,  [this]() { handleApiSpoolmanSpools(); });
+    _server.on("/api/spoolman/link",   HTTP_POST, [this]() { handleApiSpoolmanLink(); });
 
     // Captive portal detection endpoints (AP mode)
     if (apMode) {
@@ -411,6 +413,131 @@ void WebServerManager::handleApiRegisterUid() {
 // ---------------------------------------------------------------------------
 // API: Diagnostics
 // ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiSpoolmanSpools() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+    if (!baseUrl || strlen(baseUrl) == 0) {
+        sendError(500, "Spoolman URL not configured");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    char url[256];
+    snprintf(url, sizeof(url), "%s/api/v1/spool?archived=false", baseUrl);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    int code = http.GET();
+
+    if (code == 200) {
+        // Stream the response directly — avoid buffering 25KB+ in heap
+        WiFiClient* stream = http.getStreamPtr();
+        int len = http.getSize();
+        _server.setContentLength(len > 0 ? len : CONTENT_LENGTH_UNKNOWN);
+        _server.send(200, "application/json", "");
+        uint8_t buf[512];
+        unsigned long lastData = millis();
+        while (stream->available() || stream->connected()) {
+            if (millis() - lastData > 10000) break;  // 10s timeout on stalled stream
+            int avail = stream->available();
+            if (avail > 0) {
+                lastData = millis();
+                int toRead = avail > (int)sizeof(buf) ? (int)sizeof(buf) : avail;
+                int bytesRead = stream->readBytes(buf, toRead);
+                if (bytesRead > 0) {
+                    _server.client().write(buf, bytesRead);
+                }
+            } else {
+                delay(1);
+            }
+        }
+    } else {
+        char errMsg[64];
+        snprintf(errMsg, sizeof(errMsg), "Spoolman returned HTTP %d", code);
+        sendError(502, errMsg);
+    }
+    http.end();
+}
+
+void WebServerManager::handleApiSpoolmanLink() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    int newSpoolId = doc["spool_id"] | -1;
+    const char* nfcId = doc["nfc_id"] | "";
+    int oldSpoolId = doc["old_spool_id"] | -1;
+
+    if (newSpoolId < 0 || strlen(nfcId) == 0) {
+        sendError(400, "spool_id and nfc_id are required");
+        return;
+    }
+
+    // Validate nfc_id — only hex characters, max 16 chars
+    size_t nfcLen = strlen(nfcId);
+    if (nfcLen > 16) {
+        sendError(400, "nfc_id too long (max 16 chars)");
+        return;
+    }
+    for (size_t i = 0; i < nfcLen; i++) {
+        char c = nfcId[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))) {
+            sendError(400, "nfc_id must be hex characters only");
+            return;
+        }
+    }
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+    if (!baseUrl || strlen(baseUrl) == 0) {
+        sendError(500, "Spoolman URL not configured");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    char url[256];
+    String response;
+
+    // Set nfc_id on new spool FIRST — confirm it works before clearing old
+    char body[128];
+    snprintf(body, sizeof(body), "{\"extra\":{\"nfc_id\":\"\\\"%s\\\"\"}}", nfcId);
+    snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, newSpoolId);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.PATCH(body);
+    response = http.getString();
+    http.end();
+
+    if (code != 200) {
+        char errMsg[64];
+        snprintf(errMsg, sizeof(errMsg), "Spoolman PATCH failed (HTTP %d)", code);
+        sendError(502, errMsg);
+        return;
+    }
+
+    Serial.printf("WebServerManager: Linked nfc_id=%s to spool %d\n", nfcId, newSpoolId);
+
+    // Clear old spool's nfc_id AFTER new spool confirmed
+    if (oldSpoolId > 0 && oldSpoolId != newSpoolId) {
+        snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, oldSpoolId);
+        http.begin(client, url);
+        http.setTimeout(5000);
+        http.addHeader("Content-Type", "application/json");
+        int clearCode = http.PATCH("{\"extra\":{\"nfc_id\":\"\\\"\\\"\"}}");
+        http.end();
+        Serial.printf("WebServerManager: Cleared nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
+    }
+
+    _server.send(200, "application/json", "{\"success\":true}");
+}
 
 void WebServerManager::handleApiDiagnostics() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -889,6 +1016,8 @@ void WebServerManager::handleApiStatus() {
                 doc["color"] = spoolInfo.color_hex;
                 doc["remaining_g"] = spoolInfo.remaining_weight_g;
                 doc["spoolman_id"] = spoolInfo.spoolman_id;
+                if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
+                if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
             }
         } else if (state.tag_data_valid) {
             // OpenPrintTag — include OPT fields
