@@ -57,6 +57,8 @@ private:
     void handleTroubleshootingPage();
     void handleUIDRegistrationPage();
     void handleApiRegisterUid();
+    void handleApiSpoolmanSpools();
+    void handleApiSpoolmanLink();
 
     // OTA download state
     static void otaDownloadTask(void* param);
