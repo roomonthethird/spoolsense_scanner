@@ -219,54 +219,49 @@ static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSi
 }
 
 // --- File-local HTTP helpers ---
+// Persistent client + http objects — reuse TCP connection across requests.
+// All Spoolman calls are serialized by httpMutex_ so no concurrent access.
+static WiFiClient spoolmanClient;
+static HTTPClient spoolmanHttp;
 
 static int httpGet(const char* path, String& response) {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
-    WiFiClient client;
-    HTTPClient http;
-
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
-    http.begin(client, url);
-    int code = http.GET();
+    spoolmanHttp.begin(spoolmanClient, url);
+    spoolmanHttp.setReuse(true);
+    int code = spoolmanHttp.GET();
     if (code > 0) {
-        response = http.getString();
+        response = spoolmanHttp.getString();
     }
-    http.end();
     return code;
 }
 
 static int httpPost(const char* path, const char* body, String& response) {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
-    WiFiClient client;
-    HTTPClient http;
-
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    int code = http.POST(body);
+    spoolmanHttp.begin(spoolmanClient, url);
+    spoolmanHttp.setReuse(true);
+    spoolmanHttp.addHeader("Content-Type", "application/json");
+    int code = spoolmanHttp.POST(body);
     if (code > 0) {
-        response = http.getString();
+        response = spoolmanHttp.getString();
     }
-    http.end();
     return code;
 }
 
 static int httpPatch(const char* path, const char* body, String& response) {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
-    WiFiClient client;
-    HTTPClient http;
-
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    int code = http.PATCH(body);
+    spoolmanHttp.begin(spoolmanClient, url);
+    spoolmanHttp.setReuse(true);
+    spoolmanHttp.addHeader("Content-Type", "application/json");
+    int code = spoolmanHttp.PATCH(body);
     if (code > 0) {
-        response = http.getString();
+        response = spoolmanHttp.getString();
     }
-    http.end();
     return code;
 }
 
