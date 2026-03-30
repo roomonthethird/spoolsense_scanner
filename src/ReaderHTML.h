@@ -145,7 +145,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (s.spoolman_id > 0) html += row('Spoolman ID', s.spoolman_id);
       if (s.extruder_temp > 0) html += row('Extruder Temp', s.extruder_temp + ' &deg;C');
       if (s.bed_temp > 0) html += row('Bed Temp', s.bed_temp + ' &deg;C');
-      if (!s.material_name && !s.tag_data_valid) html += row('Data', 'No parseable data &mdash; scan in progress');
+      if (!s.material_name && !s.tag_data_valid) html += row('Data', '<em>Looking up in Spoolman&hellip; keep tag on reader</em>');
       return html;
     }
 
@@ -192,11 +192,18 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
 
     function poll() {
       api('/api/status').then(function(s){
-        if (s.present && !tagFound) {
-          tagFound = true;
-          stopPolling();
+        if (s.present) {
           render(s);
-          scanBtn.classList.remove('hidden');
+          // For generic UID tags, keep polling until Spoolman data arrives
+          var isGenericPending = (s.tag_kind === 'GenericUidTag') && !s.material_name;
+          if (!tagFound && !isGenericPending) {
+            tagFound = true;
+            stopPolling();
+            scanBtn.classList.remove('hidden');
+          } else if (!tagFound) {
+            // Still waiting for Spoolman lookup — keep polling
+            render(s);
+          }
         } else if (!tagFound) {
           render(s);
         }

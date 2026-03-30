@@ -69,7 +69,7 @@ private:
     static constexpr uint32_t MAX_RECONNECT_DELAY = 30000;
 
     static constexpr size_t QUEUE_SIZE = 6;
-    static constexpr size_t TASK_STACK_SIZE = 7168;
+    static constexpr size_t TASK_STACK_SIZE = 8192;
     static constexpr UBaseType_t TASK_PRIORITY = 2;
 
     // Device ID cache
@@ -78,7 +78,6 @@ private:
 
     // Discovery dedup — only re-publish when UID changes
     char lastDiscoveryUid_[17] = {0};
-    bool legacyCleanupDone_ = false;
 };
 
 #endif // HOME_ASSISTANT_MANAGER_H

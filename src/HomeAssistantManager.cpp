@@ -519,15 +519,6 @@ void HomeAssistantManager::publishDiscovery() {
         Serial.printf("HomeAssistantManager: Discovery %s -> %s (%u bytes)\n",
                       discoveryTopic, ok ? "OK" : "FAIL", (unsigned)len);
     };
-    auto removeLegacyEntity = [&](const char* component, const char* objectId) {
-        char discoveryTopic[128];
-        snprintf(discoveryTopic, sizeof(discoveryTopic),
-                 "homeassistant/%s/openprinttag_%s/%s/config",
-                 component, deviceId_, objectId);
-        bool ok = mqttClient.publish(discoveryTopic, "", true);
-        Serial.printf("HomeAssistantManager: Remove legacy discovery %s -> %s\n",
-                      discoveryTopic, ok ? "OK" : "FAIL");
-    };
     auto publishNumberEntity = [&](const char* objectId, const char* name, const char* valTpl,
                                    const char* cmdTopic, const char* cmdTpl, float minV, float maxV,
                                    float stepV, const char* unitOfMeas, const char* icon) {
@@ -638,21 +629,7 @@ void HomeAssistantManager::publishDiscovery() {
         }
     }
 
-    // Remove stale retained discovery configs — once per boot, not every scan.
-    if (!legacyCleanupDone_) {
-        removeLegacyEntity("binary_sensor", "tag_present");
-        removeLegacyEntity("sensor", "spool_uid");
-        removeLegacyEntity("sensor", "remaining_weight");
-        removeLegacyEntity("sensor", "material_type");
-        removeLegacyEntity("sensor", "color");
-        removeLegacyEntity("sensor", "printer_state");
-        removeLegacyEntity("number", "set_remaining_weight");
-        removeLegacyEntity("number", "set_initial_weight");
-        removeLegacyEntity("number", "set_spoolman_id");
-        removeLegacyEntity("select", "set_material_type");
-        removeLegacyEntity("text", "set_manufacturer");
-        legacyCleanupDone_ = true;
-    }
+    // Legacy openprinttag_ entity cleanup removed — no users on the old naming.
 
     // UID is carried in command topic; payload contains only values.
     char updateRemainingCmdTpl[128];

@@ -166,10 +166,14 @@ static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outI
     // Use ArduinoJson — the streaming parser (htcw_json) can't reliably
     // handle Spoolman's nested filament/vendor objects with their own 'id' fields.
     // The response is small enough for heap parsing (~1-2KB per spool).
-    DynamicJsonDocument doc(16384);
+    size_t jsonLen = strlen(jsonText);
+    size_t bufSize = jsonLen + 4096;  // response size + overhead for ArduinoJson metadata
+    if (bufSize < 16384) bufSize = 16384;
+    DynamicJsonDocument doc(bufSize);
     DeserializationError err = deserializeJson(doc, jsonText);
     if (err) {
-        Serial.printf("SpoolmanManager: parseSpoolIdByUuid JSON parse failed: %s\n", err.c_str());
+        Serial.printf("SpoolmanManager: parseSpoolIdByUuid JSON parse failed: %s (input=%u buf=%u)\n",
+                       err.c_str(), (unsigned)jsonLen, (unsigned)bufSize);
         return false;
     }
 
