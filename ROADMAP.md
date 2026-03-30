@@ -20,15 +20,17 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
 | Link/re-assign NFC+ tags to existing Spoolman spools | Scanner | v1.6.1 | #54 |
+| NFC+ reader page: show temps from Spoolman | Scanner | v1.6.1 | — |
+| Tag writer auto-populate from scanned tag | Scanner | v1.6.1 | — |
+| HTTP connection reuse for Spoolman | Scanner | v1.6.1 | #30 |
+| Fix HA discovery re-publish on every scan | Scanner | v1.6.1 | #55 |
 | WiFi reconnection logic | Scanner | — | #29 |
 | Tag writer: populate from Spoolman | Scanner | — | #32 |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
 | TigerTag partial write (changed fields only) | Scanner | — | #13 |
 | PN5180 Phase 2 reliability | Scanner | — | #20 |
-| HTTP connection reuse for Spoolman | Scanner | — | #30 |
 | HA publish queue fix (silent drops) | Scanner | — | #28 |
 | ISO15693 selected-mode writes | Scanner | — | #21 |
-| Tag writer auto-populate from scanned tag | Scanner | — | — |
 | Nozzle/bed temps to AFC lane_data | Middleware | — | #36 |
 | Resync AFC lock state on MQTT reconnect | Middleware | — | #13 |
 | Moonraker websocket (replace polling) | Middleware | — | #11 |
