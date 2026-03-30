@@ -143,6 +143,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (s.color)         html += row('Color', '<span class="color-swatch" style="background:' + s.color + '"></span> ' + s.color);
       if (s.remaining_g !== undefined) html += row('Remaining', s.remaining_g.toFixed(1) + ' g');
       if (s.spoolman_id > 0) html += row('Spoolman ID', s.spoolman_id);
+      if (s.extruder_temp > 0) html += row('Extruder Temp', s.extruder_temp + ' &deg;C');
+      if (s.bed_temp > 0) html += row('Bed Temp', s.bed_temp + ' &deg;C');
       if (!s.material_name && !s.tag_data_valid) html += row('Data', 'No parseable data &mdash; scan in progress');
       return html;
     }

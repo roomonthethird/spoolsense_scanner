@@ -889,6 +889,8 @@ void WebServerManager::handleApiStatus() {
                 doc["color"] = spoolInfo.color_hex;
                 doc["remaining_g"] = spoolInfo.remaining_weight_g;
                 doc["spoolman_id"] = spoolInfo.spoolman_id;
+                if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
+                if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
             }
         } else if (state.tag_data_valid) {
             // OpenPrintTag — include OPT fields

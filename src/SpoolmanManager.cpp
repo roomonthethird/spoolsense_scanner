@@ -845,6 +845,16 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
                             snprintf(outDetails.color_hex, sizeof(outDetails.color_hex), "#%s", colorBuf);
                         }
                     }
+                } else if (strcmp(currentField, "settings_extruder_temp") == 0) {
+                    int temp = 0;
+                    if (readIntValue(reader, temp)) {
+                        outDetails.extruder_temp = static_cast<int16_t>(temp);
+                    }
+                } else if (strcmp(currentField, "settings_bed_temp") == 0) {
+                    int temp = 0;
+                    if (readIntValue(reader, temp)) {
+                        outDetails.bed_temp = static_cast<int16_t>(temp);
+                    }
                 } else if (strcmp(currentField, "weight") == 0) {
                     // Fallback capacity if initial_weight is not set
                     if (outDetails.initial_weight_g == 0.0f && reader.value_type() == json_value_type::real) {
@@ -1136,6 +1146,8 @@ void SpoolmanManager::taskLoop() {
                         found ? details.color_hex : "",
                         sizeof(msg.payload.spoolmanSynced.color_hex) - 1);
                 msg.payload.spoolmanSynced.color_hex[sizeof(msg.payload.spoolmanSynced.color_hex) - 1] = '\0';
+                msg.payload.spoolmanSynced.extruder_temp = found ? details.extruder_temp : 0;
+                msg.payload.spoolmanSynced.bed_temp = found ? details.bed_temp : 0;
             } else {
                 Serial.printf("SpoolmanManager: Syncing spool %s\n", req.spool_id);
                 int resolvedSpoolmanId = -1;
