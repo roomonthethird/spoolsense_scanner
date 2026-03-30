@@ -11,7 +11,7 @@
 // type and adjust _width/_height below. Everything else stays the same.
 //
 // SPI bus used:
-//   WROOM  — VSPI (bus 3): pins 18/23 freed from LCD when ENABLE_TFT replaces LCD
+//   WROOM  — VSPI (bus 3): pins 22/23 freed from LCD when TFT replaces LCD
 //   S3-Zero — SPI2 (FSPI): pins 13/15/16 (PN5180 is on separate SPI instance)
 // ---------------------------------------------------------------------------
 

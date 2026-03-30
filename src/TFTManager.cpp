@@ -132,9 +132,14 @@ void TFTManager::begin() {
     _tft.fillScreen(COLOR_BG);
 
     _sprite.setColorDepth(8);  // 8-bit = 57.6KB vs 115KB at 16-bit
-    _sprite.createSprite(_tft.width(), _tft.height());
+    if (!_sprite.createSprite(_tft.width(), _tft.height())) {
+        Serial.println("TFTManager: WARNING — sprite allocation failed (low heap)");
+    }
 
     _messageQueue = xQueueCreate(4, sizeof(TFTMessage));
+    if (_messageQueue == nullptr) {
+        Serial.println("TFTManager: WARNING — queue creation failed");
+    }
     _lastActivityMs = millis();
 }
 

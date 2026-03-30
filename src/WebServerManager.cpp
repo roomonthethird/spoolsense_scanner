@@ -556,6 +556,10 @@ void WebServerManager::handleApiPostConfig() {
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
     update.keypad_enabled = doc["keypad_enabled"] | (uint8_t)0;
     update.tft_enabled = doc["tft_enabled"] | (uint8_t)0;
+    // TFT and LCD share GPIO 22/23 on WROOM — auto-disable LCD when TFT enabled
+    if (update.tft_enabled && update.lcd_enabled) {
+        update.lcd_enabled = 0;
+    }
     strncpy(update.moonraker_url, doc["moonraker_url"] | "", sizeof(update.moonraker_url) - 1);
     update.prusalink_on = doc["prusalink_on"] | (uint8_t)0;
     strncpy(update.prusalink_url, doc["prusalink_url"] | "", sizeof(update.prusalink_url) - 1);
