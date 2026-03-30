@@ -19,6 +19,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
+| Link/re-assign NFC+ tags to existing Spoolman spools | Scanner | v1.6.1 | #54 |
 | WiFi reconnection logic | Scanner | — | #29 |
 | Tag writer: populate from Spoolman | Scanner | — | #32 |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
