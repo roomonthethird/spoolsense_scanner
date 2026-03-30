@@ -19,11 +19,6 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
-| Link/re-assign NFC+ tags to existing Spoolman spools | Scanner | v1.6.1 | #54 |
-| NFC+ reader page: show temps from Spoolman | Scanner | v1.6.1 | — |
-| Tag writer auto-populate from scanned tag | Scanner | v1.6.1 | — |
-| HTTP connection reuse for Spoolman | Scanner | v1.6.1 | #30 |
-| Fix HA discovery re-publish on every scan | Scanner | v1.6.1 | #55 |
 | WiFi reconnection logic | Scanner | — | #29 |
 | Tag writer: populate from Spoolman | Scanner | — | #32 |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
@@ -53,6 +48,11 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Version |
 |---------|------|---------|
+| Link/re-assign NFC+ tags to Spoolman spools | Scanner | v1.6.1 |
+| Tag writer auto-populate from scanned tag | Scanner | v1.6.1 |
+| NFC+ reader shows temps from Spoolman | Scanner | v1.6.1 |
+| HA discovery traffic reduced ~80% | Scanner | v1.6.1 |
+| HTTP connection reuse for Spoolman | Scanner | v1.6.1 |
 | TFT display support (ST7789 240x240) | Scanner | v1.6.0 |
 | DisplayI interface (pluggable displays) | Scanner | v1.6.0 |
 | Spoolman color_hex parsing fix | Scanner | v1.6.0 |
