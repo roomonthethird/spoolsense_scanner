@@ -583,12 +583,16 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     renderSpoolmanPicker('spoolmanPicker', {
       material: 'base_material',
       manufacturer: 'manufacturer',
+      color: 'colorHex',
+      colorPicker: 'colorPicker',
       remaining: 'target_weight_g',
       density: 'density',
       diameter: 'diameter_um',
       diameterUnit: 'um',
+      nozzle_single: 'print_temp_c',
       nozzle_min: 'min_print_temp_c',
       nozzle_max: 'max_print_temp_c',
+      bed_single: 'bed_temp_c',
       bed_min: 'min_bed_temp_c',
       bed_max: 'max_bed_temp_c'
     });

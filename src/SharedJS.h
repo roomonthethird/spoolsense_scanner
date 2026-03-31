@@ -448,6 +448,17 @@ function fillFromSpoolman(spool, fieldMap) {
 
   fill('material', fil.material || fil.name || '');
   fill('manufacturer', vendor);
+
+  // Dispatch input events to trigger hidden ID sync handlers
+  if (fieldMap.material) {
+    var matEl = document.getElementById(fieldMap.material);
+    if (matEl) matEl.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+  if (fieldMap.manufacturer) {
+    var mfgEl = document.getElementById(fieldMap.manufacturer);
+    if (mfgEl) mfgEl.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+
   fill('remaining', spool.remaining_weight);
   fill('weight', fil.weight);
   fill('density', fil.density);
@@ -459,10 +470,12 @@ function fillFromSpoolman(spool, fieldMap) {
   if (extruder) {
     fill('nozzle_min', extruder.min || extruder);
     fill('nozzle_max', extruder.max || extruder);
+    fill('nozzle_single', extruder.min || extruder);
   }
   if (bed) {
     fill('bed_min', bed.min || bed);
     fill('bed_max', bed.max || bed);
+    fill('bed_single', bed.min || bed);
   }
 
   // Color
@@ -483,7 +496,11 @@ function fillFromSpoolman(spool, fieldMap) {
     var el = document.getElementById(fieldMap.diameter);
     if (el) {
       if (el.tagName === 'SELECT') {
-        el.value = fil.diameter < 2.0 ? '56' : '221';
+        if (fieldMap.diameterUnit === 'um') {
+          el.value = fil.diameter < 2.0 ? '1750' : '2850';
+        } else {
+          el.value = fil.diameter < 2.0 ? '56' : '221';
+        }
       } else if (fieldMap.diameterUnit === 'um') {
         el.value = Math.round(fil.diameter * 1000);
       } else {

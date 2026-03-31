@@ -630,7 +630,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     renderSpoolmanPicker('spoolmanPicker', {
       material: 'material_search',
       manufacturer: 'brand_name',
-      color: 'color',
+      color: 'colorHex',
       colorPicker: 'colorPicker',
       remaining: 'weight_g',
       diameter: 'diameter_id',

@@ -594,7 +594,7 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     renderSpoolmanPicker('spoolmanPicker', {
       material: 'material_search',
       manufacturer: 'manufacturer',
-      color: 'color',
+      color: 'colorHex',
       colorPicker: 'colorPicker',
       remaining: 'remaining_g',
       weight: 'initial_weight_g',
