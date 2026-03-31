@@ -28,7 +28,9 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 
 ## Features
 
-* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. UID-only tags and Bambu Lab tags are also detected for Spoolman registration.
+* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. NFC+ (UID-only) tags and Bambu Lab tags are also detected for Spoolman registration.
+* **Dual NFC Reader Support:** PN5180 (ISO15693 + ISO14443A, all tag formats) and PN532 (ISO14443A only). Selected at runtime via NVS — both compiled into a single binary.
+* **3x4 Matrix Keypad (optional):** Scan a spool, type a tool number, press # to assign via Moonraker's ASSIGN_SPOOL macro. For toolchanger and multi-tool setups.
 * **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format. Material and brand fields are type-to-search with auto-fill for temperatures and density.
 * **NFC+ Registration:** Register plain NFC tags (NTAG215, etc.) in Spoolman using the tag's UID as identifier. No data written to the tag — fill in filament details in the web UI and create the Spoolman entry directly.
 * **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
@@ -98,26 +100,30 @@ Once the scanner is running, open **`http://spoolsense.local`** in your browser.
 # Hardware Setup
 
 ## Hardware Needed
-*   NFC Reader/Writer: PN5180 NFC module (ISO 15693 + ISO 14443A) — [AITRIP PN5180](https://www.amazon.com/dp/B0BXY1Y7PX) (tested)
-*   ESP32: One of the following supported boards:
-    - **ESP32-WROOM-32** — e.g. [ESP32 DevKitC V4](https://www.amazon.com/dp/B0C9THDPXP). Primary development board.
-    - **ESP32-S3-Zero** — Smaller form factor with onboard WS2812 RGB LED and USB-C (no external UART chip needed).
+*   NFC Reader (one of):
+    - **PN5180** (recommended) — ISO15693 + ISO14443A, all tag formats — [AITRIP PN5180](https://www.amazon.com/dp/B0BXY1Y7PX) (tested)
+    - **PN532** — ISO14443A only (no SLIX2/OpenPrintTag on ISO15693). Cheaper and smaller.
+*   ESP32 (one of):
+    - **ESP32-WROOM** — [Freenove ESP32-WROOM](https://www.amazon.com/dp/B0C9THDPXP) (tested). Recommended if using LCD + keypad.
+    - **ESP32-S3-Zero / S3-Zero-M** — Smaller form factor with onboard WS2812 RGB LED. M variant has pre-soldered pin headers.
 *   USB-C cable
-*   Jumper wires: male-to-female Dupont wires (9)
+*   Jumper wires: female-to-female Dupont wires (8 minimum, more if adding extras)
 *   LCD Screen: [16x2 I2C LCD](https://a.co/d/dryhwvd) (optional)
 *   Status LED: SK6812 RGBW (WROOM, optional external) or onboard WS2812 RGB (S3-Zero, built in)
+*   3x4 Matrix Keypad: [membrane keypad](https://www.amazon.com/dp/B0DZ26VVR7) (optional, for toolchanger tool assignment)
 
-## Help Wanted: CAD / Enclosure Design
+## Enclosures
 
-No printable cases exist yet for the current hardware. If you design for 3D printing, contributions are very welcome.
+As of March 2026 only a few printable cases exist. We need the community's help! If you design one, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files.
 
-**Designs needed:**
+See [spoolsense.org/contributing/enclosure-design](https://spoolsense.org/contributing/enclosure-design/) for design guidelines and what's needed.
 
-- **Standalone scanner case (ESP32-WROOM-32 + AITRIP PN5180)** — wall or desk mount with a flat NFC placement area on top. The PN5180 antenna should sit close to the surface where a spool tag is placed.
-- **Standalone scanner case (ESP32-S3-Zero + AITRIP PN5180)** — same requirements, smaller footprint.
-- **BoxTurtle AFC lane mount** — a bracket or tray replacement that positions the AITRIP PN5180 antenna alongside an AFC BoxTurtle lane so the NFC antenna is correctly positioned for tags on loaded spools.
+### Designs Still Needed
 
-If you have a design, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files.
+- **Standalone scanner case (ESP32-WROOM-32 + PN5180)** — wall or desk mount with flat NFC placement area
+- **BoxTurtle AFC lane mount** — bracket or tray that positions the PN5180 antenna alongside an AFC BoxTurtle lane for tags on loaded spools
+
+If you have a design, [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with photos and files, or submit a PR to `usermods/`.
 
 ---
 
@@ -253,6 +259,12 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 | Write success | Green flash, then restores filament color |
 | Write failure | Red flash, then restores filament color |
 
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/JYFQQQR5F)
+
+Join the [SpoolSense Discord](https://discord.gg/JYFQQQR5F) for real-time help, build photos, and community discussion.
+
 ## Contributing & Help Wanted
 
 > **This project is currently in Alpha.** Testing is being done by myself and one other person. There will be bugs — please help!
@@ -260,7 +272,7 @@ Pin mapping is automatic via `BoardPins.h` — no need to configure the pin manu
 **How you can help:**
 
 - **Beta testers** — If you build one, I'd love to hear how it goes. Try it out and [open an issue](https://github.com/SpoolSense/spoolsense_scanner/issues) with any bugs or feedback you find.
-- **Case design** — No enclosures exist yet for the current hardware. See the [Help Wanted: CAD section](#help-wanted-cad--enclosure-design) above for details on what's needed.
+- **Case design** — More enclosure options are welcome. Submit designs to `usermods/` via PR. See [spoolsense.org/builds/community-mods](https://spoolsense.org/builds/community-mods/) for existing designs.
 - **Bug reports & feedback** — Even general impressions are helpful. If something doesn't work the way you'd expect, please open an issue.
 
 ## Credits
