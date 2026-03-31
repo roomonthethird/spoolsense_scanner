@@ -34,4 +34,8 @@ public:
 
     // Screen timeout
     virtual void setScreenTimeoutMs(uint32_t timeoutMs) = 0;
+
+    // OTA support — TFT frees sprite to reclaim heap for SSL
+    virtual void freeForOTA() {}
+    virtual void updateOTAProgress(uint8_t percent) { (void)percent; }
 };
