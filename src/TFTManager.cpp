@@ -741,3 +741,28 @@ void TFTManager::updateOTAProgress(uint8_t percent) {
     _tft.setTextDatum(MC_DATUM);
     _tft.drawString(pctStr, cx, 155);
 }
+
+void TFTManager::showOTAError(const char* error) {
+    int cx = _tft.width() / 2;
+
+    // Clear progress area
+    _tft.fillRect(0, 60, _tft.width(), _tft.height() - 60, COLOR_BG);
+
+    // Error icon
+    _tft.fillCircle(cx, 100, 22, 0xFF4444);
+    _tft.setTextColor(COLOR_BG);
+    _tft.setTextSize(3);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString("X", cx, 100);
+
+    // "Update Failed" text
+    _tft.setTextColor(COLOR_TEXT);
+    _tft.setTextSize(1);
+    _tft.drawString("Update Failed", cx, 135);
+
+    // Error detail
+    if (error && error[0]) {
+        _tft.setTextColor(COLOR_SUBTEXT);
+        _tft.drawString(error, cx, 155);
+    }
+}

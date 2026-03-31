@@ -31,6 +31,7 @@
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
 #include "HomeAssistantManager.h"
+#include "DisplayI.h"
 
 extern "C" {
 #include "openprinttag_lib.h"
@@ -823,6 +824,12 @@ void WebServerManager::otaDownloadTask(void* param) {
     // Pause NFC during OTA
     NFCManager::getInstance().pauseScanTask();
 
+    // Free TFT sprite to reclaim ~57KB heap for SSL
+    if (self->_display) {
+        self->_display->freeForOTA();
+        Serial.printf("OTA: Free heap after sprite release: %u\n", ESP.getFreeHeap());
+    }
+
     WiFiClientSecure secureClient;
     secureClient.setInsecure();
 
@@ -839,6 +846,9 @@ void WebServerManager::otaDownloadTask(void* param) {
         NFCManager::getInstance().resumeScanTask();
         snprintf(self->_otaError, sizeof(self->_otaError), "Download failed: HTTP %d", httpCode);
         self->_otaState = OtaState::FAILED;
+        if (self->_display) {
+            self->_display->showOTAError(self->_otaError);
+        }
         vTaskDelete(nullptr);
         return;
     }
@@ -856,6 +866,9 @@ void WebServerManager::otaDownloadTask(void* param) {
         NFCManager::getInstance().resumeScanTask();
         strncpy(self->_otaError, "Update.begin failed", sizeof(self->_otaError));
         self->_otaState = OtaState::FAILED;
+        if (self->_display) {
+            self->_display->showOTAError(self->_otaError);
+        }
         vTaskDelete(nullptr);
         return;
     }
@@ -873,7 +886,13 @@ void WebServerManager::otaDownloadTask(void* param) {
                 Update.write(buf, bytesRead);
                 written += bytesRead;
                 if (contentLength > 0) {
-                    self->_otaProgress = (uint8_t)((written * 100) / contentLength);
+                    uint8_t newPct = (uint8_t)((written * 100) / contentLength);
+                    if (newPct != self->_otaProgress) {
+                        self->_otaProgress = newPct;
+                        if (self->_display) {
+                            self->_display->updateOTAProgress(newPct);
+                        }
+                    }
                 }
             }
         }
@@ -894,6 +913,9 @@ void WebServerManager::otaDownloadTask(void* param) {
         NFCManager::getInstance().resumeScanTask();
         strncpy(self->_otaError, "Update verification failed", sizeof(self->_otaError));
         self->_otaState = OtaState::FAILED;
+        if (self->_display) {
+            self->_display->showOTAError(self->_otaError);
+        }
     }
 
     vTaskDelete(nullptr);

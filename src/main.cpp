@@ -282,6 +282,7 @@ void setup() {
   // Start HTTP server (both STA and AP mode)
   if (WiFi.status() == WL_CONNECTED || g_apModeActive) {
     WebServerManager::getInstance().begin(g_apModeActive);
+    WebServerManager::getInstance().setDisplay(activeDisplay);
   }
 
   Serial.println("=== Setup complete ===");

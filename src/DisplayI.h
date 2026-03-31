@@ -38,4 +38,5 @@ public:
     // OTA support — TFT frees sprite to reclaim heap for SSL
     virtual void freeForOTA() {}
     virtual void updateOTAProgress(uint8_t percent) { (void)percent; }
+    virtual void showOTAError(const char* error) { (void)error; }
 };
