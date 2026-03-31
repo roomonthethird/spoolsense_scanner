@@ -19,5 +19,6 @@ CODE-CLEANUP.md
 docs/writer-ui-plan.md
 research/
 docs/superpowers/
+.mex/
 .gstack/
 build/

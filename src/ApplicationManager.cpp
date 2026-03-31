@@ -386,6 +386,8 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         if (s.diameter > 0.0f)     len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
         snprintf(json + len, sizeof(json) - len, "}");
         publishToHA("tag/state", json, true);
+        strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
+        lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
     }
 
 #ifndef NATIVE_TEST
@@ -555,6 +557,8 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
                  "\"blank\":true}",
                  msg.payload.blankTag.spool_id);
         publishToHA("tag/state", json, true);
+        strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
+        lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
     }
 }
 
@@ -588,6 +592,8 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
                  "\"spoolman_id\":-1,\"blank\":false}",
                  msg.payload.genericTag.spool_id);
         publishToHA("tag/state", json, true);
+        strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
+        lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
     }
 
     // Trigger Spoolman UID lookup — result will arrive via SPOOLMAN_SYNCED
@@ -758,14 +764,29 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     tagRemovedAtMs = millis();
     pendingStatusAfterTagRemoved = true;
 
-    // Publish tag removed to HA
-    publishToHA("tag/state",
-                "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
-                "\"material_type\":\"\","
-                "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
-                "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
-                "\"blank\":false}",
-                true);
+    // Publish tag removed to HA — retain last spool data with present:false
+    if (lastHAStateJson_[0] != '\0') {
+        char removed[512];
+        char* pos = strstr(lastHAStateJson_, "\"present\":true");
+        if (pos) {
+            size_t prefix_len = pos - lastHAStateJson_;
+            memcpy(removed, lastHAStateJson_, prefix_len);
+            snprintf(removed + prefix_len, sizeof(removed) - prefix_len,
+                     "\"present\":false%s",
+                     pos + strlen("\"present\":true"));
+            publishToHA("tag/state", removed, true);
+        } else {
+            publishToHA("tag/state", lastHAStateJson_, true);
+        }
+    } else {
+        publishToHA("tag/state",
+                    "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
+                    "\"material_type\":\"\","
+                    "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
+                    "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
+                    "\"blank\":false}",
+                    true);
+    }
 }
 
 void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
