@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.3] - Unreleased
+
+### Fixed
+
+- **HA publish queue** — increased from 6 to 12 items and added drop logging. Previously silently dropped messages when MQTT was disconnected. (#28)
+
+---
+
 ## [1.6.2] - 2026-03-31
 
 ### Added
