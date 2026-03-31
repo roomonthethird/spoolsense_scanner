@@ -36,6 +36,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       </div>
 
       <div class="card-body">
+        <div id="spoolmanPicker" style="background:var(--card-alt,#1e1e35);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px"></div>
         <form id="writerForm">
           <section>
             <h2 class="section-title">Filament</h2>
@@ -578,6 +579,19 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     backBtn.addEventListener('click', showCreateView);
     anotherBtn.addEventListener('click', showCreateView);
+
+    renderSpoolmanPicker('spoolmanPicker', {
+      material: 'base_material',
+      manufacturer: 'manufacturer',
+      remaining: 'target_weight_g',
+      density: 'density',
+      diameter: 'diameter_um',
+      diameterUnit: 'um',
+      nozzle_min: 'min_print_temp_c',
+      nozzle_max: 'max_print_temp_c',
+      bed_min: 'min_bed_temp_c',
+      bed_max: 'max_bed_temp_c'
+    });
 
   </script>
 </body>
