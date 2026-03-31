@@ -672,7 +672,9 @@ void TFTManager::showSpool(const DisplaySpoolData& spool) {
 // OTA support — free sprite for SSL heap, render directly to panel
 // ---------------------------------------------------------------------------
 void TFTManager::freeForOTA() {
-    // Stop the TFT task so no queue processing conflicts with direct writes
+    // Stop the TFT task so no queue processing conflicts with direct writes.
+    // NOTE: The task and sprite are NOT restored after OTA failure — the device
+    // is expected to reboot (success) or require manual reboot (failure).
     if (_taskHandle != nullptr) {
         vTaskDelete(_taskHandle);
         _taskHandle = nullptr;
