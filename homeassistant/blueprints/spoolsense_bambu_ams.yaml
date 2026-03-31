@@ -66,6 +66,7 @@ actions:
         PVA: "GFS99"
         HIPS: "GFS98"
         BVOH: "GFS97"
+        PET-CF: "GFT01"
         PPS: "GFT97"
         PPS-CF: "GFT98"
         PP: "GFP97"
