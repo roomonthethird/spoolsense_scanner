@@ -21,5 +21,6 @@ research/
 docs/superpowers/
 .mcp.json
 .mex/
+test-preview/
 .gstack/
 build/
