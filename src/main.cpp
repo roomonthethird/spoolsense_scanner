@@ -40,6 +40,7 @@ static unsigned long g_lastReconnectAttemptMs = 0;
 static constexpr unsigned long WIFI_CHECK_INTERVAL_MS = 5000;
 static constexpr unsigned long WIFI_RECONNECT_INITIAL_MS = 5000;
 static constexpr unsigned long WIFI_RECONNECT_MAX_MS = 60000;
+static constexpr uint16_t HTTP_PORT = 80;
 
 // Always declared; only initialized if isLcdEnabled() at runtime
 LCDManager lcdManager(0x27, 16, 2);
@@ -194,7 +195,7 @@ void checkWiFi() {
     // Re-initialize mDNS (IP may have changed)
     MDNS.end();
     if (MDNS.begin("spoolsense")) {
-      MDNS.addService("http", "tcp", 80);
+      MDNS.addService("http", "tcp", HTTP_PORT);
       Serial.println("WiFi: mDNS restarted (spoolsense.local)");
     } else {
       Serial.println("WiFi: mDNS restart failed — reachable by IP only");
