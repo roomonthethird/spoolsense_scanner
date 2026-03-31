@@ -667,3 +667,104 @@ void TFTManager::showSpool(const DisplaySpoolData& spool) {
     tftSpool.tagType = spool.tagType;
     showSpoolScanned(tftSpool);
 }
+
+// ---------------------------------------------------------------------------
+// OTA support — free sprite for SSL heap, render directly to panel
+// ---------------------------------------------------------------------------
+void TFTManager::freeForOTA() {
+    // Stop the TFT task so no queue processing conflicts with direct writes.
+    // NOTE: The task and sprite are NOT restored after OTA failure — the device
+    // is expected to reboot (success) or require manual reboot (failure).
+    if (_taskHandle != nullptr) {
+        vTaskDelete(_taskHandle);
+        _taskHandle = nullptr;
+        Serial.println("TFTManager: Task stopped for OTA");
+    }
+
+    // Delete sprite to free 57.6KB heap
+    _sprite.deleteSprite();
+    Serial.printf("TFTManager: Sprite freed, heap now %u\n", ESP.getFreeHeap());
+
+    // Wake screen if it was off
+    _tft.setBrightness(255);
+
+    // Draw OTA screen directly to panel (no sprite)
+    _tft.fillScreen(COLOR_BG);
+
+    // Header bar
+    _tft.fillRect(0, 0, _tft.width(), 28, COLOR_HEADER_BG);
+    _tft.setTextColor(COLOR_ACCENT);
+    _tft.setTextSize(1);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString("SpoolSense", _tft.width() / 2, 14);
+
+    // "Updating..." text
+    int cx = _tft.width() / 2;
+    _tft.setTextColor(COLOR_TEXT);
+    _tft.setTextSize(2);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString("Updating...", cx, 80);
+
+    // Progress bar outline (same position updateOTAProgress will fill)
+    int barX = 20;
+    int barY = 120;
+    int barW = _tft.width() - 40;  // 200px on 240px display
+    int barH = 20;
+    _tft.drawRoundRect(barX, barY, barW, barH, barH / 2, 0x555555);
+
+    // "0%" text
+    _tft.setTextColor(COLOR_SUBTEXT);
+    _tft.setTextSize(1);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString("0%", cx, 155);
+}
+
+void TFTManager::updateOTAProgress(uint8_t percent) {
+    if (percent > 100) percent = 100;
+
+    int barX = 20;
+    int barY = 120;
+    int barW = _tft.width() - 40;  // 200px
+    int barH = 20;
+    int cx = _tft.width() / 2;
+
+    // Fill progress bar
+    int filled = (barW * percent) / 100;
+    if (filled > 0) {
+        _tft.fillRoundRect(barX, barY, filled, barH, barH / 2, COLOR_ACCENT);
+    }
+
+    // Clear and redraw percentage text
+    _tft.fillRect(cx - 30, 148, 60, 16, COLOR_BG);
+    char pctStr[8];
+    snprintf(pctStr, sizeof(pctStr), "%u%%", percent);
+    _tft.setTextColor(COLOR_SUBTEXT);
+    _tft.setTextSize(1);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString(pctStr, cx, 155);
+}
+
+void TFTManager::showOTAError(const char* error) {
+    int cx = _tft.width() / 2;
+
+    // Clear progress area
+    _tft.fillRect(0, 60, _tft.width(), _tft.height() - 60, COLOR_BG);
+
+    // Error icon
+    _tft.fillCircle(cx, 100, 22, 0xFF4444);
+    _tft.setTextColor(COLOR_BG);
+    _tft.setTextSize(3);
+    _tft.setTextDatum(MC_DATUM);
+    _tft.drawString("X", cx, 100);
+
+    // "Update Failed" text
+    _tft.setTextColor(COLOR_TEXT);
+    _tft.setTextSize(1);
+    _tft.drawString("Update Failed", cx, 135);
+
+    // Error detail
+    if (error && error[0]) {
+        _tft.setTextColor(COLOR_SUBTEXT);
+        _tft.drawString(error, cx, 155);
+    }
+}
