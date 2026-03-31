@@ -41,6 +41,7 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       </div>
 
       <div class="card-body">
+        <div id="spoolmanPicker" style="background:var(--card-alt,#1e1e35);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px"></div>
         <form id="writerForm">
           <section>
             <h2 class="section-title">Basic</h2>
@@ -589,6 +590,22 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
         prefillFromStatus(status);
       } catch (e) {}
     })();
+
+    renderSpoolmanPicker('spoolmanPicker', {
+      material: 'material_search',
+      manufacturer: 'manufacturer',
+      color: 'color',
+      colorPicker: 'colorPicker',
+      remaining: 'remaining_g',
+      weight: 'initial_weight_g',
+      density: 'density',
+      diameter: 'diameter_mm',
+      nozzle_min: 'min_print_temp',
+      nozzle_max: 'max_print_temp',
+      bed_min: 'min_bed_temp',
+      bed_max: 'max_bed_temp',
+      spoolman_id: 'spoolman_id'
+    });
   </script>
 </body>
 </html>
