@@ -37,6 +37,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       </div>
 
       <div class="card-body">
+        <div id="spoolmanPicker" style="background:var(--card-alt,#1e1e35);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px"></div>
         <form id="writerForm">
           <section>
             <h2 class="section-title">Filament</h2>
@@ -625,6 +626,19 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     backBtn.addEventListener('click', showCreateView);
     anotherBtn.addEventListener('click', showCreateView);
+
+    renderSpoolmanPicker('spoolmanPicker', {
+      material: 'material_search',
+      manufacturer: 'brand_name',
+      color: 'color',
+      colorPicker: 'colorPicker',
+      remaining: 'weight_g',
+      diameter: 'diameter_id',
+      nozzle_min: 'nozzle_min',
+      nozzle_max: 'nozzle_max',
+      bed_min: 'bed_min',
+      bed_max: 'bed_max'
+    });
 
   </script>
 </body>
