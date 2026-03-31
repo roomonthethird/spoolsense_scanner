@@ -2,6 +2,10 @@
 
 ## [1.6.3] - Unreleased
 
+### Added
+
+- **HA state retention after tag removal** — spool data (material, color, weight, temps) persists in HA sensor after tag is removed, with `present: false`. Dashboards now show last scanned spool instead of going blank. (#60)
+
 ### Fixed
 
 - **HA publish queue** — increased from 6 to 12 items and added drop logging. Previously silently dropped messages when MQTT was disconnected. (#28)
