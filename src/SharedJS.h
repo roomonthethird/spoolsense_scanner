@@ -368,4 +368,135 @@ function prefillFromTag(fieldMap) {
     return d;
   }).catch(function() { return null; });
 }
+
+var _spoolmanPickerSpools = [];
+var _spoolmanPickerFieldMap = {};
+
+function renderSpoolmanPicker(containerId, fieldMap) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  fetch('/api/spoolman/spools')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(spools) {
+      if (!spools || !Array.isArray(spools)) {
+        container.innerHTML = '<div style="padding:12px;opacity:0.6;font-size:0.9em">Configure Spoolman in <a href="/config" style="color:var(--accent)">settings</a> to import spool data.</div>';
+        return;
+      }
+      container.innerHTML =
+        '<div style="font-weight:600;color:var(--accent);margin-bottom:8px">Import from Spoolman</div>' +
+        '<input type="text" id="spoolmanPickerSearch" placeholder="Search spools..." style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em;box-sizing:border-box;margin-bottom:8px" />' +
+        '<div id="spoolmanPickerResults" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>';
+
+      document.getElementById('spoolmanPickerSearch').addEventListener('input', function() {
+        filterSpoolmanPicker(spools, this.value, fieldMap);
+      });
+      filterSpoolmanPicker(spools, '', fieldMap);
+    })
+    .catch(function() {
+      container.innerHTML = '<div style="padding:12px;opacity:0.6;font-size:0.9em">Configure Spoolman in <a href="/config" style="color:var(--accent)">settings</a> to import spool data.</div>';
+    });
+}
+
+function filterSpoolmanPicker(spools, query, fieldMap) {
+  _spoolmanPickerSpools = spools;
+  _spoolmanPickerFieldMap = fieldMap;
+  var results = document.getElementById('spoolmanPickerResults');
+  if (!results) return;
+  var q = query.toLowerCase();
+  var filtered = spools.filter(function(s) {
+    var fil = s.filament || {};
+    var vendor = fil.vendor ? fil.vendor.name : '';
+    var text = (vendor + ' ' + (fil.material || '') + ' ' + (fil.name || '')).toLowerCase();
+    return !q || text.indexOf(q) >= 0;
+  });
+  if (filtered.length === 0) {
+    results.innerHTML = '<div style="padding:12px;opacity:0.5;text-align:center">No spools found</div>';
+    return;
+  }
+  results.innerHTML = filtered.slice(0, 20).map(function(spool) {
+    var fil = spool.filament || {};
+    var vendor = fil.vendor ? fil.vendor.name : '';
+    var esc = function(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+    var color = (fil.color_hex || '').replace(/[^0-9a-fA-F]/g, '');
+    var swatch = color ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#' + color + ';vertical-align:middle;margin-right:6px"></span>' : '';
+    var remaining = spool.remaining_weight ? Math.round(spool.remaining_weight) + 'g' : '?';
+    var spoolId = spool.id;
+    return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectSpoolmanSpool(' + spoolId + ')">'
+      + swatch + '#' + spoolId + ' ' + (vendor ? esc(vendor) + ' ' : '') + esc(fil.material || fil.name || '?') + ' \u2014 ' + remaining
+      + '</div>';
+  }).join('');
+}
+
+function selectSpoolmanSpool(spoolId) {
+  var spool = _spoolmanPickerSpools.find(function(s) { return s.id === spoolId; });
+  if (spool) fillFromSpoolman(spool, _spoolmanPickerFieldMap);
+}
+
+function fillFromSpoolman(spool, fieldMap) {
+  var fil = spool.filament || {};
+  var vendor = fil.vendor ? fil.vendor.name : '';
+  var color = (fil.color_hex || '').replace(/^#/, '');
+
+  function fill(key, value) {
+    if (!fieldMap[key] || value === undefined || value === null || value === '' || value === 0) return;
+    var el = document.getElementById(fieldMap[key]);
+    if (!el) return;
+    el.value = value;
+    el.dataset.autoFilled = 'true';
+  }
+
+  fill('material', fil.material || fil.name || '');
+  fill('manufacturer', vendor);
+  fill('remaining', spool.remaining_weight);
+  fill('weight', fil.weight);
+  fill('density', fil.density);
+  fill('spoolman_id', spool.id);
+
+  // Temps
+  var extruder = fil.settings_extruder_temp;
+  var bed = fil.settings_bed_temp;
+  if (extruder) {
+    fill('nozzle_min', extruder.min || extruder);
+    fill('nozzle_max', extruder.max || extruder);
+  }
+  if (bed) {
+    fill('bed_min', bed.min || bed);
+    fill('bed_max', bed.max || bed);
+  }
+
+  // Color
+  if (color && fieldMap.color) {
+    var hexEl = document.getElementById(fieldMap.color);
+    if (hexEl) {
+      hexEl.value = '#' + color.toUpperCase();
+      hexEl.dataset.autoFilled = 'true';
+      if (fieldMap.colorPicker) {
+        var picker = document.getElementById(fieldMap.colorPicker);
+        if (picker) picker.value = '#' + color;
+      }
+    }
+  }
+
+  // Diameter
+  if (fil.diameter && fieldMap.diameter) {
+    var el = document.getElementById(fieldMap.diameter);
+    if (el) {
+      if (el.tagName === 'SELECT') {
+        el.value = fil.diameter < 2.0 ? '56' : '221';
+      } else if (fieldMap.diameterUnit === 'um') {
+        el.value = Math.round(fil.diameter * 1000);
+      } else {
+        el.value = fil.diameter;
+      }
+      el.dataset.autoFilled = 'true';
+    }
+  }
+
+  // Feedback
+  var search = document.getElementById('spoolmanPickerSearch');
+  if (search) search.value = '';
+  var results = document.getElementById('spoolmanPickerResults');
+  if (results) results.innerHTML = '<div style="padding:12px;color:var(--accent);text-align:center;font-weight:600">Loaded spool #' + spool.id + '</div>';
+}
 )rawliteral";
