@@ -68,7 +68,7 @@ private:
     uint32_t lastReconnectAttempt_ = 0;
     static constexpr uint32_t MAX_RECONNECT_DELAY = 30000;
 
-    static constexpr size_t QUEUE_SIZE = 6;
+    static constexpr size_t QUEUE_SIZE = 12;
     static constexpr size_t TASK_STACK_SIZE = 8192;
     static constexpr UBaseType_t TASK_PRIORITY = 2;
 

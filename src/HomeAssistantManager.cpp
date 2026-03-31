@@ -188,8 +188,11 @@ bool HomeAssistantManager::begin() {
 
 bool HomeAssistantManager::enqueuePublish(const HAPublishRequest& req) {
     if (publishQueue == nullptr) return false;
-    // Overwrite oldest if full (drop semantics for state-based retained messages)
-    return xQueueSend(publishQueue, &req, 0) == pdTRUE;
+    if (xQueueSend(publishQueue, &req, 0) != pdTRUE) {
+        Serial.printf("HomeAssistantManager: Queue full, dropped publish to %s\n", req.topic);
+        return false;
+    }
+    return true;
 }
 
 #ifndef NATIVE_TEST
