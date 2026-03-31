@@ -146,61 +146,63 @@ void initWiFi() {
 }
 
 void checkWiFi() {
-    // Skip in AP mode — no WiFi to reconnect
-    if (g_apModeActive) return;
+  // Skip in AP mode — no WiFi to reconnect
+  if (g_apModeActive) return;
 
-    unsigned long now = millis();
-    if (now - g_lastWifiCheckMs < WIFI_CHECK_INTERVAL_MS) return;
-    g_lastWifiCheckMs = now;
+  unsigned long now = millis();
+  if (now - g_lastWifiCheckMs < WIFI_CHECK_INTERVAL_MS) return;
+  g_lastWifiCheckMs = now;
 
-    bool connected = (WiFi.status() == WL_CONNECTED);
+  bool connected = (WiFi.status() == WL_CONNECTED);
 
-    if (g_wifiWasConnected && !connected) {
-        // WiFi just dropped
-        Serial.println("WiFi: Connection lost — starting reconnection");
-        auto& config = ConfigurationManager::getInstance();
-        if (config.isTftEnabled()) {
-            tftManager.showText("WiFi Lost", "Reconnecting...");
-        } else if (config.isLcdEnabled()) {
-            lcdManager.updateScreen("WiFi Lost", "Reconnecting...");
-        }
-        g_wifiReconnectDelay = WIFI_RECONNECT_INITIAL_MS;
-        g_lastReconnectAttemptMs = now;
-        WiFi.reconnect();
-        g_wifiWasConnected = false;
-    } else if (!connected && !g_wifiWasConnected) {
-        // Still disconnected — retry with backoff
-        if (now - g_lastReconnectAttemptMs >= g_wifiReconnectDelay) {
-            Serial.printf("WiFi: Reconnect attempt (backoff %lums)\n", g_wifiReconnectDelay);
-            WiFi.reconnect();
-            g_lastReconnectAttemptMs = now;
-            if (g_wifiReconnectDelay < WIFI_RECONNECT_MAX_MS) {
-                g_wifiReconnectDelay *= 2;
-                if (g_wifiReconnectDelay > WIFI_RECONNECT_MAX_MS) {
-                    g_wifiReconnectDelay = WIFI_RECONNECT_MAX_MS;
-                }
-            }
-        }
-    } else if (!g_wifiWasConnected && connected) {
-        // WiFi just reconnected
-        Serial.printf("WiFi: Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
-        auto& config = ConfigurationManager::getInstance();
-        if (config.isTftEnabled()) {
-            tftManager.showText("WiFi OK", WiFi.localIP().toString().c_str());
-        } else if (config.isLcdEnabled()) {
-            lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
-        }
-
-        // Re-initialize mDNS (IP may have changed)
-        MDNS.end();
-        if (MDNS.begin("spoolsense")) {
-            MDNS.addService("http", "tcp", 80);
-            Serial.println("WiFi: mDNS restarted (spoolsense.local)");
-        }
-
-        g_wifiReconnectDelay = WIFI_RECONNECT_INITIAL_MS;
-        g_wifiWasConnected = true;
+  if (g_wifiWasConnected && !connected) {
+    // WiFi just dropped
+    Serial.println("WiFi: Connection lost — starting reconnection");
+    auto& config = ConfigurationManager::getInstance();
+    if (config.isTftEnabled()) {
+      tftManager.showText("WiFi Lost", "Reconnecting...");
+    } else if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("WiFi Lost", "Reconnecting...");
     }
+    g_wifiReconnectDelay = WIFI_RECONNECT_INITIAL_MS;
+    g_lastReconnectAttemptMs = now;
+    WiFi.reconnect();
+    g_wifiWasConnected = false;
+  } else if (!connected && !g_wifiWasConnected) {
+    // Still disconnected — retry with backoff
+    if (now - g_lastReconnectAttemptMs >= g_wifiReconnectDelay) {
+      Serial.printf("WiFi: Reconnect attempt (backoff %lums)\n", g_wifiReconnectDelay);
+      WiFi.reconnect();
+      g_lastReconnectAttemptMs = now;
+      if (g_wifiReconnectDelay < WIFI_RECONNECT_MAX_MS) {
+        g_wifiReconnectDelay *= 2;
+        if (g_wifiReconnectDelay > WIFI_RECONNECT_MAX_MS) {
+          g_wifiReconnectDelay = WIFI_RECONNECT_MAX_MS;
+        }
+      }
+    }
+  } else if (!g_wifiWasConnected && connected) {
+    // WiFi just reconnected
+    Serial.printf("WiFi: Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
+    auto& config = ConfigurationManager::getInstance();
+    if (config.isTftEnabled()) {
+      tftManager.showText("WiFi OK", WiFi.localIP().toString().c_str());
+    } else if (config.isLcdEnabled()) {
+      lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
+    }
+
+    // Re-initialize mDNS (IP may have changed)
+    MDNS.end();
+    if (MDNS.begin("spoolsense")) {
+      MDNS.addService("http", "tcp", 80);
+      Serial.println("WiFi: mDNS restarted (spoolsense.local)");
+    } else {
+      Serial.println("WiFi: mDNS restart failed — reachable by IP only");
+    }
+
+    g_wifiReconnectDelay = WIFI_RECONNECT_INITIAL_MS;
+    g_wifiWasConnected = true;
+  }
 }
 
 void setup() {
