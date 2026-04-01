@@ -270,6 +270,186 @@ static int httpPatch(const char* path, const char* body, String& response) {
     return code;
 }
 
+// Stream-parse Spoolman spool list to find a spool with matching nfc_id.
+// Reads the HTTP response in chunks (~512 bytes) instead of buffering the
+// entire response in memory. Uses ~600 bytes of heap regardless of spool count.
+static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s", baseUrl, path);
+
+    WiFiClient streamClient;
+    HTTPClient streamHttp;
+    streamHttp.begin(streamClient, url);
+    streamHttp.setTimeout(10000);
+    int code = streamHttp.GET();
+
+    if (code != 200) {
+        Serial.printf("SpoolmanManager: streamFind HTTP %d for %s\n", code, path);
+        streamHttp.end();
+        return -1;
+    }
+
+    WiFiClient* stream = streamHttp.getStreamPtr();
+
+    int bestMatchId = -1;
+    int currentId = -1;
+    int depth = 0;
+    bool inExtra = false;
+    int extraDepth = 0;
+
+    char buf[512];
+    char keyBuf[16] = {};
+    int keyPos = 0;
+    char valBuf[80] = {};
+    int valPos = 0;
+    bool inString = false;
+    bool escaped = false;
+    bool inKey = false;
+    bool inValue = false;
+    bool inNumValue = false;
+
+    unsigned long lastData = millis();
+
+    while (stream->available() || stream->connected()) {
+        if (millis() - lastData > 10000) {
+            Serial.println("SpoolmanManager: streamFind timeout");
+            break;
+        }
+
+        int avail = stream->available();
+        if (avail <= 0) { delay(1); continue; }
+        lastData = millis();
+
+        int toRead = avail > (int)sizeof(buf) ? (int)sizeof(buf) : avail;
+        int bytesRead = stream->readBytes(buf, toRead);
+
+        for (int i = 0; i < bytesRead; i++) {
+            char c = buf[i];
+
+            if (escaped) {
+                escaped = false;
+                if (inString && inKey && keyPos < (int)sizeof(keyBuf) - 1)
+                    keyBuf[keyPos++] = c;
+                if (inString && inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            if (c == '\\' && inString) {
+                escaped = true;
+                if (inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            if (c == '"') {
+                if (!inString) {
+                    inString = true;
+                    if (!inValue) {
+                        inKey = true;
+                        keyPos = 0;
+                        memset(keyBuf, 0, sizeof(keyBuf));
+                    } else {
+                        valPos = 0;
+                        memset(valBuf, 0, sizeof(valBuf));
+                    }
+                } else {
+                    inString = false;
+                    if (inKey) {
+                        inKey = false;
+                        keyBuf[keyPos] = '\0';
+                    }
+                    if (inValue) {
+                        valBuf[valPos] = '\0';
+                        if (inExtra && strcmp(keyBuf, "nfc_id") == 0) {
+                            // Strip escaped inner quotes: \"UUID\" → UUID
+                            char* nfcVal = valBuf;
+                            int nfcLen = strlen(nfcVal);
+                            if (nfcLen >= 2 && nfcVal[0] == '\\' && nfcVal[1] == '"') {
+                                nfcVal += 2; nfcLen -= 2;
+                            }
+                            if (nfcLen >= 2 && nfcVal[nfcLen - 2] == '\\' && nfcVal[nfcLen - 1] == '"') {
+                                nfcVal[nfcLen - 2] = '\0';
+                            }
+                            nfcLen = strlen(nfcVal);
+                            if (nfcLen >= 2 && nfcVal[0] == '"' && nfcVal[nfcLen - 1] == '"') {
+                                nfcVal[nfcLen - 1] = '\0';
+                                nfcVal++;
+                            }
+                            if (strcasecmp(nfcVal, uuid) == 0 && currentId > bestMatchId) {
+                                bestMatchId = currentId;
+                            }
+                        }
+                        inValue = false;
+                    }
+                }
+                continue;
+            }
+
+            if (inString) {
+                if (inKey && keyPos < (int)sizeof(keyBuf) - 1)
+                    keyBuf[keyPos++] = c;
+                if (inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            // Structural characters outside strings
+            if (c == '{') {
+                depth++;
+                if (depth == 1) {
+                    currentId = -1;
+                    inExtra = false;
+                } else if (depth >= 2 && strcmp(keyBuf, "extra") == 0) {
+                    inExtra = true;
+                    extraDepth = depth;
+                }
+            } else if (c == '}') {
+                if (inExtra && depth == extraDepth) {
+                    inExtra = false;
+                }
+                depth--;
+                if (depth == 0) {
+                    // End of spool object — check for trailing numeric id
+                    if (inNumValue && strcmp(keyBuf, "id") == 0) {
+                        valBuf[valPos] = '\0';
+                        currentId = atoi(valBuf);
+                        inNumValue = false;
+                    }
+                }
+            } else if (c == ':') {
+                inValue = true;
+                valPos = 0;
+                memset(valBuf, 0, sizeof(valBuf));
+                inNumValue = false;
+            } else if (c == ',' || c == ']') {
+                if (inNumValue && depth == 1 && strcmp(keyBuf, "id") == 0) {
+                    valBuf[valPos] = '\0';
+                    currentId = atoi(valBuf);
+                }
+                inValue = false;
+                inNumValue = false;
+            } else if (inValue && c >= '0' && c <= '9') {
+                inNumValue = true;
+                if (valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+            } else if (inValue && (c == '-' || c == '.')) {
+                if (valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+            }
+        }
+    }
+
+    streamHttp.end();
+
+    if (bestMatchId >= 0) {
+        Serial.printf("SpoolmanManager: streamFind matched uuid=%s to spool id=%d\n", uuid, bestMatchId);
+    }
+
+    return bestMatchId;
+}
+
 // --- File-local Spoolman API helpers ---
 
 static const char* materialTypeToSpoolmanStr(uint8_t type) {
