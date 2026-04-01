@@ -684,10 +684,26 @@ void TFTManager::showText(const char* line1, const char* line2) {
 
 void TFTManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
-    // TFT uses two lines — show line3 as primary, line4 as secondary
+    // Show all meaningful content — line3 as primary, line4 as secondary
+    // Prepend cleaned line1 context (strip LCD asterisk decoration) if present
     TFTMessage msg{};
     msg.state = TFTState::WifiConnecting; // generic two-line status renderer
-    snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3 ? line3 : (line1 ? line1 : ""));
+    if (line1 && line3) {
+        // Strip asterisks/spaces from line1 for clean TFT display
+        const char* clean = line1;
+        while (*clean == '*' || *clean == ' ') clean++;
+        size_t len = strlen(clean);
+        while (len > 0 && (clean[len-1] == '*' || clean[len-1] == ' ')) len--;
+        char stripped[48] = {};
+        if (len > 0 && len < sizeof(stripped)) { memcpy(stripped, clean, len); stripped[len] = '\0'; }
+        if (stripped[0]) {
+            snprintf(msg.statusText, sizeof(msg.statusText), "%s: %s", stripped, line3);
+        } else {
+            snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3);
+        }
+    } else {
+        snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3 ? line3 : (line1 ? line1 : ""));
+    }
     snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", line4 ? line4 : (line2 ? line2 : ""));
     if (_messageQueue) {
         if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
