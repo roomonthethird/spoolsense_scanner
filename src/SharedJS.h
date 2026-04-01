@@ -470,12 +470,12 @@ function fillFromSpoolman(spool, fieldMap) {
   if (extruder) {
     fill('nozzle_min', extruder.min || extruder);
     fill('nozzle_max', extruder.max || extruder);
-    fill('nozzle_single', extruder.min || extruder);
+    fill('nozzle_single', (extruder.min && extruder.max) ? Math.round((extruder.min + extruder.max) / 2) : (extruder.min || extruder));
   }
   if (bed) {
     fill('bed_min', bed.min || bed);
     fill('bed_max', bed.max || bed);
-    fill('bed_single', bed.min || bed);
+    fill('bed_single', (bed.min && bed.max) ? Math.round((bed.min + bed.max) / 2) : (bed.min || bed));
   }
 
   // Color
