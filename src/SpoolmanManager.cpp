@@ -235,6 +235,7 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
 
     WiFiClient streamClient;
     HTTPClient streamHttp;
+    streamHttp.useHTTP10(true);  // Avoid chunked encoding for streaming parse
     streamHttp.begin(streamClient, url);
     streamHttp.setTimeout(10000);
     int code = streamHttp.GET();
@@ -249,6 +250,7 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
 
     int bestMatchId = -1;
     int currentId = -1;
+    bool nfcIdMatched = false;  // true if nfc_id matched in current spool object
     int depth = 0;
     bool inExtra = false;
     int extraDepth = 0;
@@ -332,8 +334,8 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
                                 nfcVal[nfcLen - 1] = '\0';
                                 nfcVal++;
                             }
-                            if (strcasecmp(nfcVal, uuid) == 0 && currentId > bestMatchId) {
-                                bestMatchId = currentId;
+                            if (strcasecmp(nfcVal, uuid) == 0) {
+                                nfcIdMatched = true;
                             }
                         }
                         inValue = false;
@@ -353,8 +355,11 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
             // Structural characters outside strings
             if (c == '{') {
                 depth++;
+                inValue = false;  // opening brace ends the value context
+                inNumValue = false;
                 if (depth == 1) {
                     currentId = -1;
+                    nfcIdMatched = false;
                     inExtra = false;
                 } else if (depth >= 2 && strcmp(keyBuf, "extra") == 0) {
                     inExtra = true;
@@ -372,11 +377,18 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
                         currentId = atoi(valBuf);
                         inNumValue = false;
                     }
+                    // Deferred match — both id and nfc_id are now known
+                    if (nfcIdMatched && currentId > bestMatchId) {
+                        bestMatchId = currentId;
+                    }
                 }
             } else if (c == ':') {
                 inValue = true;
                 valPos = 0;
                 memset(valBuf, 0, sizeof(valBuf));
+                inNumValue = false;
+            } else if (c == '[') {
+                inValue = false;
                 inNumValue = false;
             } else if (c == ',' || c == ']') {
                 if (inNumValue && depth == 1 && strcmp(keyBuf, "id") == 0) {
