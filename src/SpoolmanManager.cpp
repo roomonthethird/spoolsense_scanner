@@ -243,7 +243,7 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
     if (code != 200) {
         Serial.printf("SpoolmanManager: streamFind HTTP %d for %s\n", code, path);
         streamHttp.end();
-        return -1;
+        return -2;  // error (distinct from -1 = not found)
     }
 
     WiFiClient* stream = streamHttp.getStreamPtr();
@@ -267,10 +267,12 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
     bool inNumValue = false;
 
     unsigned long lastData = millis();
+    bool timedOut = false;
 
     while (stream->available() || stream->connected()) {
         if (millis() - lastData > 10000) {
             Serial.println("SpoolmanManager: streamFind timeout");
+            timedOut = true;
             break;
         }
 
@@ -369,14 +371,12 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
                 if (inExtra && depth == extraDepth) {
                     inExtra = false;
                 }
+                // Clear numeric state on every closing brace to prevent
+                // nested id values (filament.id, vendor.id) from leaking
+                inValue = false;
+                inNumValue = false;
                 depth--;
                 if (depth == 0) {
-                    // End of spool object — check for trailing numeric id
-                    if (inNumValue && strcmp(keyBuf, "id") == 0) {
-                        valBuf[valPos] = '\0';
-                        currentId = atoi(valBuf);
-                        inNumValue = false;
-                    }
                     // Deferred match — both id and nfc_id are now known
                     if (nfcIdMatched && currentId > bestMatchId) {
                         bestMatchId = currentId;
@@ -412,9 +412,12 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
 
     if (bestMatchId >= 0) {
         Serial.printf("SpoolmanManager: streamFind matched uuid=%s to spool id=%d\n", uuid, bestMatchId);
+        return bestMatchId;
     }
 
-    return bestMatchId;
+    // Distinguish "not found" from "error" so callers don't create duplicates on transient failures
+    if (timedOut) return -2;
+    return -1;  // complete scan, no match
 }
 
 // --- File-local Spoolman API helpers ---
