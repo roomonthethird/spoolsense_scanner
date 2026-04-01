@@ -45,12 +45,12 @@ extern "C" {
 static String urlEncode(const char* str) {
     String encoded;
     while (*str) {
-        char c = *str++;
+        unsigned char c = (unsigned char)*str++;
         if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            encoded += c;
+            encoded += (char)c;
         } else {
             char buf[4];
-            snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+            snprintf(buf, sizeof(buf), "%%%02X", c);
             encoded += buf;
         }
     }
