@@ -160,52 +160,7 @@ static bool parseFirstArrayItemId(const char* jsonText, int& outId) {
     return false;
 }
 
-static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outId) {
-    outId = -1;
-
-    // Use ArduinoJson — the streaming parser (htcw_json) can't reliably
-    // handle Spoolman's nested filament/vendor objects with their own 'id' fields.
-    // The response is small enough for heap parsing (~1-2KB per spool).
-    size_t jsonLen = strlen(jsonText);
-    size_t bufSize = jsonLen * 2;  // ArduinoJson needs ~2x input size for nested objects
-    if (bufSize < 16384) bufSize = 16384;
-    DynamicJsonDocument doc(bufSize);
-    DeserializationError err = deserializeJson(doc, jsonText);
-    if (err) {
-        Serial.printf("SpoolmanManager: parseSpoolIdByUuid JSON parse failed: %s (input=%u buf=%u)\n",
-                       err.c_str(), (unsigned)jsonLen, (unsigned)bufSize);
-        return false;
-    }
-
-    // Handle both array (list endpoint) and single object (by-id endpoint)
-    JsonArray spools;
-    if (doc.is<JsonArray>()) {
-        spools = doc.as<JsonArray>();
-    } else if (doc.is<JsonObject>()) {
-        // Single spool response — check it directly
-        JsonObject spool = doc.as<JsonObject>();
-        int id = spool["id"] | -1;
-        const char* nfcId = spool["extra"]["nfc_id"] | "";
-        if (id >= 0 && matchesUuid(nfcId, uuid)) {
-            outId = id;
-            return true;
-        }
-        return false;
-    } else {
-        return false;
-    }
-
-    // Collect all matching IDs and return the highest (most recently registered)
-    // to handle cases where multiple spools share the same UID.
-    for (JsonObject spool : spools) {
-        int id = spool["id"] | -1;
-        const char* nfcId = spool["extra"]["nfc_id"] | "";
-        if (id >= 0 && matchesUuid(nfcId, uuid)) {
-            if (id > outId) outId = id;
-        }
-    }
-    return outId >= 0;
-}
+// parseSpoolIdByUuid removed — replaced by streamFindSpoolByNfcId (#68)
 
 static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSize) {
     if (outUuid == nullptr || outUuidSize == 0) return false;
@@ -268,6 +223,201 @@ static int httpPatch(const char* path, const char* body, String& response) {
         response = spoolmanHttp.getString();
     }
     return code;
+}
+
+// Stream-parse Spoolman spool list to find a spool with matching nfc_id.
+// Reads the HTTP response in chunks (~512 bytes) instead of buffering the
+// entire response in memory. Uses ~600 bytes of heap regardless of spool count.
+static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s", baseUrl, path);
+
+    WiFiClient streamClient;
+    HTTPClient streamHttp;
+    streamHttp.useHTTP10(true);  // Avoid chunked encoding for streaming parse
+    streamHttp.begin(streamClient, url);
+    streamHttp.setTimeout(10000);
+    int code = streamHttp.GET();
+
+    if (code != 200) {
+        Serial.printf("SpoolmanManager: streamFind HTTP %d for %s\n", code, path);
+        streamHttp.end();
+        return -2;  // error (distinct from -1 = not found)
+    }
+
+    WiFiClient* stream = streamHttp.getStreamPtr();
+
+    int bestMatchId = -1;
+    int currentId = -1;
+    bool nfcIdMatched = false;  // true if nfc_id matched in current spool object
+    int depth = 0;
+    bool inExtra = false;
+    int extraDepth = 0;
+
+    char buf[512];
+    char keyBuf[16] = {};
+    int keyPos = 0;
+    char valBuf[80] = {};
+    int valPos = 0;
+    bool inString = false;
+    bool escaped = false;
+    bool inKey = false;
+    bool inValue = false;
+    bool inNumValue = false;
+
+    unsigned long lastData = millis();
+    bool timedOut = false;
+
+    while (stream->available() || stream->connected()) {
+        if (millis() - lastData > 10000) {
+            Serial.println("SpoolmanManager: streamFind timeout");
+            timedOut = true;
+            break;
+        }
+
+        int avail = stream->available();
+        if (avail <= 0) { delay(1); continue; }
+        lastData = millis();
+
+        int toRead = avail > (int)sizeof(buf) ? (int)sizeof(buf) : avail;
+        int bytesRead = stream->readBytes(buf, toRead);
+
+        for (int i = 0; i < bytesRead; i++) {
+            char c = buf[i];
+
+            if (escaped) {
+                escaped = false;
+                if (inString && inKey && keyPos < (int)sizeof(keyBuf) - 1)
+                    keyBuf[keyPos++] = c;
+                if (inString && inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            if (c == '\\' && inString) {
+                escaped = true;
+                if (inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            if (c == '"') {
+                if (!inString) {
+                    inString = true;
+                    if (!inValue) {
+                        inKey = true;
+                        keyPos = 0;
+                        memset(keyBuf, 0, sizeof(keyBuf));
+                    } else {
+                        valPos = 0;
+                        memset(valBuf, 0, sizeof(valBuf));
+                    }
+                } else {
+                    inString = false;
+                    if (inKey) {
+                        inKey = false;
+                        keyBuf[keyPos] = '\0';
+                    }
+                    if (inValue) {
+                        valBuf[valPos] = '\0';
+                        if (inExtra && strcmp(keyBuf, "nfc_id") == 0) {
+                            // Strip escaped inner quotes: \"UUID\" → UUID
+                            char* nfcVal = valBuf;
+                            int nfcLen = strlen(nfcVal);
+                            if (nfcLen >= 2 && nfcVal[0] == '\\' && nfcVal[1] == '"') {
+                                nfcVal += 2; nfcLen -= 2;
+                            }
+                            if (nfcLen >= 2 && nfcVal[nfcLen - 2] == '\\' && nfcVal[nfcLen - 1] == '"') {
+                                nfcVal[nfcLen - 2] = '\0';
+                            }
+                            nfcLen = strlen(nfcVal);
+                            if (nfcLen >= 2 && nfcVal[0] == '"' && nfcVal[nfcLen - 1] == '"') {
+                                nfcVal[nfcLen - 1] = '\0';
+                                nfcVal++;
+                            }
+                            if (strcasecmp(nfcVal, uuid) == 0) {
+                                nfcIdMatched = true;
+                            }
+                        }
+                        inValue = false;
+                    }
+                }
+                continue;
+            }
+
+            if (inString) {
+                if (inKey && keyPos < (int)sizeof(keyBuf) - 1)
+                    keyBuf[keyPos++] = c;
+                if (inValue && valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+                continue;
+            }
+
+            // Structural characters outside strings
+            if (c == '{') {
+                depth++;
+                inValue = false;  // opening brace ends the value context
+                inNumValue = false;
+                if (depth == 1) {
+                    currentId = -1;
+                    nfcIdMatched = false;
+                    inExtra = false;
+                } else if (depth >= 2 && strcmp(keyBuf, "extra") == 0) {
+                    inExtra = true;
+                    extraDepth = depth;
+                }
+            } else if (c == '}') {
+                if (inExtra && depth == extraDepth) {
+                    inExtra = false;
+                }
+                // Clear numeric state on every closing brace to prevent
+                // nested id values (filament.id, vendor.id) from leaking
+                inValue = false;
+                inNumValue = false;
+                depth--;
+                if (depth == 0) {
+                    // Deferred match — both id and nfc_id are now known
+                    if (nfcIdMatched && currentId > bestMatchId) {
+                        bestMatchId = currentId;
+                    }
+                }
+            } else if (c == ':') {
+                inValue = true;
+                valPos = 0;
+                memset(valBuf, 0, sizeof(valBuf));
+                inNumValue = false;
+            } else if (c == '[') {
+                inValue = false;
+                inNumValue = false;
+            } else if (c == ',' || c == ']') {
+                if (inNumValue && depth == 1 && strcmp(keyBuf, "id") == 0) {
+                    valBuf[valPos] = '\0';
+                    currentId = atoi(valBuf);
+                }
+                inValue = false;
+                inNumValue = false;
+            } else if (inValue && c >= '0' && c <= '9') {
+                inNumValue = true;
+                if (valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+            } else if (inValue && (c == '-' || c == '.')) {
+                if (valPos < (int)sizeof(valBuf) - 1)
+                    valBuf[valPos++] = c;
+            }
+        }
+    }
+
+    streamHttp.end();
+
+    if (bestMatchId >= 0) {
+        Serial.printf("SpoolmanManager: streamFind matched uuid=%s to spool id=%d\n", uuid, bestMatchId);
+        return bestMatchId;
+    }
+
+    // Distinguish "not found" from "error" so callers don't create duplicates on transient failures
+    if (timedOut) return -2;
+    return -1;  // complete scan, no match
 }
 
 // --- File-local Spoolman API helpers ---
@@ -534,33 +684,24 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
 }
 
 static int findSpoolByUuid(int filamentId, const char* uuid) {
+    // First try: search within this filament's spools
     char path[128];
     snprintf(path, sizeof(path), "/api/v1/spool?filament.id=%d", filamentId);
-    String response;
-    int code = httpGet(path, response);
-    if (code == 200) {
-        int id = -1;
-        if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
-            Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d in filament=%d\n",
-                          uuid, id, filamentId);
-            return id;
-        }
+    int id = streamFindSpoolByNfcId(path, uuid);
+    if (id >= 0) {
+        Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d in filament=%d\n",
+                      uuid, id, filamentId);
+        return id;
     }
 
-    // Fallback search across all spools to avoid duplicate UUID entries when
-    // a prior sync used different filament metadata for the same physical tag.
-    response = "";
-    code = httpGet("/api/v1/spool", response);
-    if (code == 200) {
-        int id = -1;
-        if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
-            Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d via global lookup\n",
-                          uuid, id);
-            return id;
-        }
+    // Fallback: search across all spools
+    id = streamFindSpoolByNfcId("/api/v1/spool", uuid);
+    if (id >= 0) {
+        Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d via global lookup\n",
+                      uuid, id);
     }
 
-    return -1;
+    return id;
 }
 
 static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
@@ -629,20 +770,12 @@ static bool lookupSpoolById(int spoolId, const char* uuid) {
 }
 
 static int findSpoolByUuidGlobal(const char* uuid) {
-    String response;
-    int code = httpGet("/api/v1/spool", response);
-    if (code != 200) {
-        return -1;
-    }
-
-    int id = -1;
-    if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
+    int id = streamFindSpoolByNfcId("/api/v1/spool", uuid);
+    if (id >= 0) {
         Serial.printf("SpoolmanManager: Recovered spool uuid=%s id=%d via global lookup\n",
                       uuid, id);
-        return id;
     }
-
-    return -1;
+    return id;
 }
 
 static bool archiveSpool(int spoolId) {
@@ -1171,25 +1304,13 @@ void SpoolmanManager::taskLoop() {
 }
 
 bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails) {
-    // Spoolman does not filter by extra_field_value — fetch all spools and
-    // find the matching nfc_id in the response via parseSpoolIdByUuid.
-    const char* path = "/api/v1/spool";
-
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         Serial.println("SpoolmanManager: lookupSpoolByUid could not acquire HTTP mutex");
         return false;
     }
 
-    String response;
-    int code = httpGet(path, response);
-    if (code != 200) {
-        Serial.printf("SpoolmanManager: UID lookup HTTP %d for uid=%s\n", code, uid);
-        xSemaphoreGive(httpMutex_);
-        return false;
-    }
-
-    int spoolmanId = -1;
-    if (!parseSpoolIdByUuid(response.c_str(), uid, spoolmanId) || spoolmanId < 0) {
+    int spoolmanId = streamFindSpoolByNfcId("/api/v1/spool", uid);
+    if (spoolmanId < 0) {
         Serial.printf("SpoolmanManager: UID lookup — no match for uid=%s\n", uid);
         xSemaphoreGive(httpMutex_);
         return false;
