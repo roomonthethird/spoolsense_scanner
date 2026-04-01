@@ -137,6 +137,8 @@ private:
     uint8_t lastSeenUid[8];      // ISO15693 uses 8-byte UID
     uint8_t lastSeenUidLength = 0;
     bool lastSeenValid = false;
+    unsigned long lastSeenMs = 0;            // millis() when last tag was detected
+    static constexpr unsigned long SCAN_COOLDOWN_MS = 3000;  // suppress re-reads within 3s
 
     // Recent spools history (RAM only, most recent first)
     RecentSpoolEntry recentSpools[MAX_RECENT_SPOOLS];
