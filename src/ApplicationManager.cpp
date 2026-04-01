@@ -95,7 +95,12 @@ void ApplicationManager::processMessages() {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", delayedDisplayMaterialName);
-            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+#ifndef NATIVE_TEST
+            bool isKeypad = ConfigurationManager::getInstance().isKeypadEnabled();
+#else
+            bool isKeypad = false;
+#endif
+            if (isKeypad) {
                 snprintf(line2, sizeof(line2), "%.0fg Tool#? #", delayedDisplayKgRemaining * 1000.0f);
             } else {
                 snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
@@ -356,6 +361,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         if (strcmp(s.tag_format, "OpenPrintTag") == 0) spool.tagType = 1;
         else if (strcmp(s.tag_format, "TigerTag") == 0) spool.tagType = 2;
         else if (strcmp(s.tag_format, "OpenTag3D") == 0) spool.tagType = 3;
+        else if (strcmp(s.tag_format, "BambuTag") == 0) spool.tagType = 4;
         else spool.tagType = 0;
         display_->showSpool(spool);
     } else if (display_) {
@@ -411,18 +417,13 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     char materialName[32] = {0};
     float kgRemaining = msg.payload.spoolUpdated.kg_remaining;
 
-#ifndef NATIVE_TEST
     CurrentSpoolState state;
     if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
         opt_get_material_name(&state.tag_data, materialName, sizeof(materialName));
     }
+#ifndef NATIVE_TEST
     bool spoolmanConfigured = SpoolmanManager::getInstance().isConfigured();
 #else
-    // In test mode, also try to get material name for delayed display testing
-    CurrentSpoolState state;
-    if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
-        opt_get_material_name(&state.tag_data, materialName, sizeof(materialName));
-    }
     bool spoolmanConfigured = false;
 #endif
 
@@ -670,11 +671,11 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     if (msg.payload.spoolmanSynced.is_uid_lookup && msg.payload.spoolmanSynced.success) {
         // Validate the tag is still present and matches the lookup UID before
         // writing — the tag may have been removed while the Spoolman request was in flight
-        CurrentSpoolState currentState;
-        bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(currentState)
-                               && currentState.present
-                               && currentState.kind == TagKind::GenericUidTag
-                               && strcmp(currentState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
+        CurrentSpoolState spoolState;
+        bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(spoolState)
+                               && spoolState.present
+                               && spoolState.kind == TagKind::GenericUidTag
+                               && strcmp(spoolState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
         if (tagStillPresent) {
             GenericTagSpoolInfo info = {};
             strncpy(info.material_type, msg.payload.spoolmanSynced.material_name, sizeof(info.material_type) - 1);
@@ -845,26 +846,19 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
 }
 
 void ApplicationManager::handleHAUpdateRemaining(const AppMessage& msg) {
-    Serial.printf("EVENT: HAUpdateRemaining - expected_uid=%s, remaining_g=%.2f\n",
+    Serial.printf("EVENT: HAUpdateRemaining - expected_uid=%s, consumed_g=%.2f\n",
         msg.payload.haUpdateRemaining.expected_uid,
-        msg.payload.haUpdateRemaining.remaining_g);
+        msg.payload.haUpdateRemaining.consumed_g);
 
     const auto& p = msg.payload.haUpdateRemaining;
 
-    // Set consumed weight: we need the initial weight from the current tag
-    // The NFC write will compute consumed = initial - remaining internally
-    // We use SET_CONSUMED_WEIGHT with consumed = initial - remaining
-    // But we don't know initial here. Use SET_CONSUMED_WEIGHT with a sentinel approach.
-    // Actually, the HA manager will compute consumed before sending this message.
-    // For now, treat remaining_g as a consumed weight to set.
-    // The HA task should compute consumed = initial - remaining before sending.
+    // HA task computes consumed = initial - remaining before sending this message.
     NFCWriteRequest req;
     memset(&req, 0, sizeof(req));
     req.request_id = millis();
     req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
-    // remaining_g here is actually the consumed weight (computed by HA task)
-    req.data.consumed_weight = p.remaining_g;
+    req.data.consumed_weight = p.consumed_g;
     NFCManager::getInstance().enqueueWrite(req);
 }
 

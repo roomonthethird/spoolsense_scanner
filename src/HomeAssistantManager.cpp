@@ -969,7 +969,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         msg.type = AppMessageType::HA_UPDATE_REMAINING;
         strncpy(msg.payload.haUpdateRemaining.expected_uid, uid,
                 sizeof(msg.payload.haUpdateRemaining.expected_uid) - 1);
-        msg.payload.haUpdateRemaining.remaining_g = consumed; // Actually consumed weight
+        msg.payload.haUpdateRemaining.consumed_g = consumed;
 
         bool queued = ApplicationManager::getInstance().sendMessage(msg, 50);
         if (!queued) {
