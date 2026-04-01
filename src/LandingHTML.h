@@ -110,7 +110,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <div style="margin-top:8px;font-size:12px;color:#71717A">Use this Device ID when configuring the SpoolSense middleware.</div>
     </div>
 
-    <div class="footer-note" style="margin-top:28px">SpoolSense Scanner &mdash; spoolsense.local</div>
+    <div class="footer-note" id="footerHostname" style="margin-top:28px">SpoolSense Scanner &mdash; spoolsense.local</div>
   </div>
 
   <script src="/js/shared.js"></script>
@@ -118,6 +118,9 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
     fetch('/api/status').then(function(r){return r.json()}).then(function(d){
       if(d.device_id) document.getElementById('deviceId').textContent = d.device_id;
       if(d.firmware_version) document.getElementById('fwVersion').textContent = 'v' + d.firmware_version;
+    }).catch(function(){});
+    fetch('/api/config').then(function(r){return r.json()}).then(function(cfg){
+      if(cfg.hostname) document.getElementById('footerHostname').innerHTML = 'SpoolSense Scanner &mdash; ' + cfg.hostname + '.local';
     }).catch(function(){});
   </script>
 </body>
