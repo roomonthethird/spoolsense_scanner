@@ -7,10 +7,9 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Feature | Repo | Description |
 |---------|------|-------------|
 | Direct Moonraker mode | Scanner | Scanner talks to Moonraker directly, no middleware needed |
-| Bambu Lab AMS via MQTT | Scanner | Direct MQTT integration with Bambu printers |
-| Bambu Lab printer support | Middleware | Local MQTT bridge for Bambu spool tracking |
+| Bambu filament usage tracking → Spoolman | Scanner | Auto-deduct weight from Spoolman after Bambu prints (#62) |
 | MIFARE Classic authentication | Scanner | Read Creality CFS and Bambu encrypted tags |
-| ST7789 TFT color display | Scanner | Replace 16x2 LCD with 240x240 color TFT |
+| GC9A01 round TFT display | Scanner | Community-requested round display variant |
 | Multi-tag detection | Scanner | Read two spools simultaneously (dual antenna) |
 | Spoolman write to tag | Middleware | Write spool data fetched from Spoolman directly to a tag |
 | Bondtech INDX compatibility | Middleware | Support up to 8 toolheads (retail Q2 2026) |
@@ -19,8 +18,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
-| WiFi reconnection logic | Scanner | — | #29 |
-| Tag writer: populate from Spoolman | Scanner | — | #32 |
+| Tag writer: populate from Spoolman | Scanner | v1.6.3 | #32 |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
 | TigerTag partial write (changed fields only) | Scanner | — | #13 |
 | PN5180 Phase 2 reliability | Scanner | — | #20 |
@@ -28,7 +26,7 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | ISO15693 selected-mode writes | Scanner | — | #21 |
 | Nozzle/bed temps to AFC lane_data | Middleware | — | #36 |
 | Resync AFC lock state on MQTT reconnect | Middleware | — | #13 |
-| Moonraker websocket (replace polling) | Middleware | — | #11 |
+| Moonraker websocket (replace polling) | Middleware | needs testing | #11 |
 | Sync ownership clarification (scanner vs middleware) | Middleware | — | #22 |
 | Tag writeback architecture review | Scanner + Middleware | — | — |
 | Smarter Spoolman lookups (filter by NFC ID) | Middleware | — | — |
@@ -48,6 +46,11 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Version |
 |---------|------|---------|
+| WiFi reconnection with exponential backoff | Scanner | v1.6.2 |
+| Bambu AMS blueprint (HA) | Scanner | v1.6.2 |
+| Bambu → Spoolman deduction blueprint (HA) | Scanner | v1.6.2 |
+| OTA fix for TFT builds (sprite free + progress bar) | Scanner | v1.6.2 |
+| HA state retention after tag removal | Scanner | v1.6.2 |
 | Link/re-assign NFC+ tags to Spoolman spools | Scanner | v1.6.1 |
 | Tag writer auto-populate from scanned tag | Scanner | v1.6.1 |
 | NFC+ reader shows temps from Spoolman | Scanner | v1.6.1 |

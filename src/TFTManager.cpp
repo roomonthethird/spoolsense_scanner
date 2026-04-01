@@ -136,7 +136,7 @@ void TFTManager::begin() {
         Serial.println("TFTManager: WARNING — sprite allocation failed (low heap)");
     }
 
-    _messageQueue = xQueueCreate(4, sizeof(TFTMessage));
+    _messageQueue = xQueueCreate(8, sizeof(TFTMessage));
     if (_messageQueue == nullptr) {
         Serial.println("TFTManager: WARNING — queue creation failed");
     }
@@ -144,7 +144,7 @@ void TFTManager::begin() {
 }
 
 void TFTManager::startTask() {
-    xTaskCreatePinnedToCore(
+    BaseType_t result = xTaskCreatePinnedToCore(
         taskFunc,
         "TFTTask",
         8192,   // TFT + sprite rendering needs more stack than LCD
@@ -153,7 +153,12 @@ void TFTManager::startTask() {
         &_taskHandle,
         0       // Core 0, same as LCDTask
     );
-    Serial.println("TFTManager: Task started on core 0");
+    if (result == pdPASS) {
+        Serial.println("TFTManager: Task started on core 0");
+    } else {
+        Serial.println("TFTManager: WARNING — task creation failed");
+        _taskHandle = nullptr;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +168,11 @@ void TFTManager::showBoot(const char* version) {
     TFTMessage msg{};
     msg.state = TFTState::Boot;
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", version);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showWifiConnecting() {
@@ -171,7 +180,11 @@ void TFTManager::showWifiConnecting() {
     msg.state = TFTState::WifiConnecting;
     snprintf(msg.statusText, sizeof(msg.statusText), "WiFi");
     snprintf(msg.statusText2, sizeof(msg.statusText2), "Connecting...");
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showWifiConnected(const char* ip) {
@@ -179,27 +192,43 @@ void TFTManager::showWifiConnected(const char* ip) {
     msg.state = TFTState::WifiConnecting;
     snprintf(msg.statusText, sizeof(msg.statusText), "WiFi Connected");
     snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", ip);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showReady() {
     TFTMessage msg{};
     msg.state = TFTState::Ready;
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
-void TFTManager::showSpoolScanned(const TFTSpoolData& spool) {
+void TFTManager::showSpoolScanned(const DisplaySpoolData& spool) {
     TFTMessage msg{};
     msg.state = TFTState::SpoolScanned;
     msg.spool = spool;
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showWriting(const char* tagFormat) {
     TFTMessage msg{};
     msg.state = TFTState::Writing;
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", tagFormat);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showWriteResult(bool success, const char* tagFormat) {
@@ -207,21 +236,33 @@ void TFTManager::showWriteResult(bool success, const char* tagFormat) {
     msg.state = TFTState::WriteResult;
     msg.writeSuccess = success;
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", tagFormat);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showKeypadEntry(const char* toolNumber) {
     TFTMessage msg{};
     msg.state = TFTState::KeypadEntry;
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", toolNumber);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showError(const char* errMsg) {
     TFTMessage msg{};
     msg.state = TFTState::Error;
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", errMsg);
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::setScreenTimeoutMs(uint32_t timeoutMs) {
@@ -253,7 +294,7 @@ void TFTManager::taskLoop() {
 
 void TFTManager::processQueue() {
     TFTMessage msg;
-    if (xQueueReceive(_messageQueue, &msg, 0) == pdTRUE) {
+    if (_messageQueue && xQueueReceive(_messageQueue, &msg, 0) == pdTRUE) {
         taskENTER_CRITICAL(&_stateMux);
         _lastActivityMs = millis();
         bool wasOff = _screenOff;
@@ -372,7 +413,7 @@ void TFTManager::renderReady() {
     _sprite.pushSprite(0, 0);
 }
 
-void TFTManager::renderSpoolScanned(const TFTSpoolData& spool) {
+void TFTManager::renderSpoolScanned(const DisplaySpoolData& spool) {
     _sprite.fillScreen(COLOR_BG);
 
     int W = _tft.width();   // 240
@@ -639,17 +680,41 @@ void TFTManager::showText(const char* line1, const char* line2) {
     msg.state = TFTState::WifiConnecting; // generic two-line status renderer
     snprintf(msg.statusText, sizeof(msg.statusText), "%s", line1 ? line1 : "");
     snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", line2 ? line2 : "");
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
-    // TFT uses two lines — show line3 as primary, line4 as secondary
+    // Show all meaningful content — line3 as primary, line4 as secondary
+    // Prepend cleaned line1 context (strip LCD asterisk decoration) if present
     TFTMessage msg{};
     msg.state = TFTState::WifiConnecting; // generic two-line status renderer
-    snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3 ? line3 : (line1 ? line1 : ""));
+    if (line1 && line3) {
+        // Strip asterisks/spaces from line1 for clean TFT display
+        const char* clean = line1;
+        while (*clean == '*' || *clean == ' ') clean++;
+        size_t len = strlen(clean);
+        while (len > 0 && (clean[len-1] == '*' || clean[len-1] == ' ')) len--;
+        char stripped[48] = {};
+        if (len > 0 && len < sizeof(stripped)) { memcpy(stripped, clean, len); stripped[len] = '\0'; }
+        if (stripped[0]) {
+            snprintf(msg.statusText, sizeof(msg.statusText), "%s: %s", stripped, line3);
+        } else {
+            snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3);
+        }
+    } else {
+        snprintf(msg.statusText, sizeof(msg.statusText), "%s", line3 ? line3 : (line1 ? line1 : ""));
+    }
     snprintf(msg.statusText2, sizeof(msg.statusText2), "%s", line4 ? line4 : (line2 ? line2 : ""));
-    xQueueSend(_messageQueue, &msg, 0);
+    if (_messageQueue) {
+        if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+            Serial.println("TFTManager: Queue full, dropped display update");
+        }
+    }
 }
 
 void TFTManager::showKeypad(const char* digits) {
@@ -657,15 +722,7 @@ void TFTManager::showKeypad(const char* digits) {
 }
 
 void TFTManager::showSpool(const DisplaySpoolData& spool) {
-    TFTSpoolData tftSpool{};
-    strncpy(tftSpool.brand, spool.brand, sizeof(tftSpool.brand) - 1);
-    strncpy(tftSpool.material, spool.material, sizeof(tftSpool.material) - 1);
-    snprintf(tftSpool.name, sizeof(tftSpool.name), "%s %s", spool.brand, spool.material);
-    strncpy(tftSpool.colorHex, spool.colorHex, sizeof(tftSpool.colorHex) - 1);
-    tftSpool.remainingWeight = spool.remainingWeight;
-    tftSpool.totalWeight = spool.totalWeight;
-    tftSpool.tagType = spool.tagType;
-    showSpoolScanned(tftSpool);
+    showSpoolScanned(spool);
 }
 
 // ---------------------------------------------------------------------------

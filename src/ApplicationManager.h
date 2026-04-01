@@ -186,6 +186,7 @@ public:
         automationMode = AutomationMode::SELF_DIRECTED;
         keypadBuffer_[0] = '\0';
         keypadBufferLen_ = 0;
+        lastHAStateJson_[0] = '\0';
     }
 #endif
 
@@ -225,6 +226,9 @@ private:
     bool pendingKeypadPrompt = false;
     uint32_t keypadPromptScheduledAtMs = 0;
     static constexpr uint32_t KEYPAD_PROMPT_DELAY_MS = 3000;
+
+    // Last published HA spool state — cached for retention on tag removal
+    char lastHAStateJson_[512] = {0};
 
     // Handlers
     void handlePrintStarted(const AppMessage& msg);
