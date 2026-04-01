@@ -167,7 +167,7 @@ static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outI
     // handle Spoolman's nested filament/vendor objects with their own 'id' fields.
     // The response is small enough for heap parsing (~1-2KB per spool).
     size_t jsonLen = strlen(jsonText);
-    size_t bufSize = jsonLen + 4096;  // response size + overhead for ArduinoJson metadata
+    size_t bufSize = jsonLen * 2;  // ArduinoJson needs ~2x input size for nested objects
     if (bufSize < 16384) bufSize = 16384;
     DynamicJsonDocument doc(bufSize);
     DeserializationError err = deserializeJson(doc, jsonText);
