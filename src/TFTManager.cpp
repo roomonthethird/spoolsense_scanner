@@ -144,7 +144,7 @@ void TFTManager::begin() {
 }
 
 void TFTManager::startTask() {
-    xTaskCreatePinnedToCore(
+    BaseType_t result = xTaskCreatePinnedToCore(
         taskFunc,
         "TFTTask",
         8192,   // TFT + sprite rendering needs more stack than LCD
@@ -153,7 +153,12 @@ void TFTManager::startTask() {
         &_taskHandle,
         0       // Core 0, same as LCDTask
     );
-    Serial.println("TFTManager: Task started on core 0");
+    if (result == pdPASS) {
+        Serial.println("TFTManager: Task started on core 0");
+    } else {
+        Serial.println("TFTManager: WARNING — task creation failed");
+        _taskHandle = nullptr;
+    }
 }
 
 // ---------------------------------------------------------------------------
