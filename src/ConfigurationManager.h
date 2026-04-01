@@ -30,6 +30,8 @@ struct ConfigUpdate {
     char prusalink_api_key[64];
     // NFC reader selection
     char nfc_reader[8];  // "pn5180" or "pn532"
+    // mDNS / WiFi hostname
+    char hostname[33];   // max 32 chars + null
 };
 
 class ConfigurationManager {
@@ -63,6 +65,9 @@ public:
 
     // NFC reader selection (NVS, default "pn5180")
     const char* getNfcReader() const;
+
+    // mDNS / WiFi hostname (NVS, default "spoolsense")
+    const char* getHostname() const;
 
     // Optional hardware features (compile-time default, overridable via NVS)
     bool isLcdEnabled() const;
@@ -108,6 +113,9 @@ private:
 
     // NFC reader selection
     char _nfcReader[8] = "pn5180";
+
+    // mDNS / WiFi hostname
+    char _hostname[33] = "spoolsense";
 
     // Optional hardware features
     bool _lcdEnabled = false;
