@@ -204,7 +204,7 @@ void TFTManager::showReady() {
     }
 }
 
-void TFTManager::showSpoolScanned(const TFTSpoolData& spool) {
+void TFTManager::showSpoolScanned(const DisplaySpoolData& spool) {
     TFTMessage msg{};
     msg.state = TFTState::SpoolScanned;
     msg.spool = spool;
@@ -408,7 +408,7 @@ void TFTManager::renderReady() {
     _sprite.pushSprite(0, 0);
 }
 
-void TFTManager::renderSpoolScanned(const TFTSpoolData& spool) {
+void TFTManager::renderSpoolScanned(const DisplaySpoolData& spool) {
     _sprite.fillScreen(COLOR_BG);
 
     int W = _tft.width();   // 240
@@ -717,15 +717,7 @@ void TFTManager::showKeypad(const char* digits) {
 }
 
 void TFTManager::showSpool(const DisplaySpoolData& spool) {
-    TFTSpoolData tftSpool{};
-    strncpy(tftSpool.brand, spool.brand, sizeof(tftSpool.brand) - 1);
-    strncpy(tftSpool.material, spool.material, sizeof(tftSpool.material) - 1);
-    snprintf(tftSpool.name, sizeof(tftSpool.name), "%s %s", spool.brand, spool.material);
-    strncpy(tftSpool.colorHex, spool.colorHex, sizeof(tftSpool.colorHex) - 1);
-    tftSpool.remainingWeight = spool.remainingWeight;
-    tftSpool.totalWeight = spool.totalWeight;
-    tftSpool.tagType = spool.tagType;
-    showSpoolScanned(tftSpool);
+    showSpoolScanned(spool);
 }
 
 // ---------------------------------------------------------------------------
