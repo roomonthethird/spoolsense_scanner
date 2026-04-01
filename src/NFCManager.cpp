@@ -304,6 +304,7 @@ void NFCManager::scanLoop() {
                         memcpy(lastSeenUid, uid, uidLength);
                         lastSeenUidLength = uidLength;
                         lastSeenValid = true;
+                        lastSeenMs = millis();
                         xSemaphoreGive(tagMutex);
                     }
                     Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
@@ -431,6 +432,7 @@ void NFCManager::scanLoop() {
                         memcpy(lastSeenUid, uid, uidLength);
                         lastSeenUidLength = uidLength;
                         lastSeenValid = true;
+                        lastSeenMs = millis();
 
                         if (isTigerTag) {
                             currentSpool.kind = TagKind::TigerTag;
@@ -504,6 +506,7 @@ if (!readOk) {
         memcpy(lastSeenUid, uid, uidLength);
         lastSeenUidLength = uidLength;
         lastSeenValid = true;
+        lastSeenMs = millis();
         blankStateCaptured = true;
         xSemaphoreGive(tagMutex);
     } else {
@@ -611,6 +614,7 @@ bool NFCManager::readAndParseTag(uint8_t* uid, uint8_t uid_length) {
     memcpy(lastSeenUid, uid, uid_length);
     lastSeenUidLength = uid_length;
     lastSeenValid = true;
+    lastSeenMs = millis();
 
     xSemaphoreGive(tagMutex);
 
@@ -2014,6 +2018,16 @@ bool NFCManager::isDuplicateSpool(const uint8_t* uid, uint8_t uid_length) {
         return true;
     }
 
+    // Cooldown: suppress re-reads within 3s where first 3 bytes match.
+    // Catches PN5180 partial UID reads (e.g., 04A651FFFFFFFF) that happen
+    // when the tag is re-detected after a brief communication glitch.
+    if (lastSeenUidLength > 0 && uid_length >= 3 && lastSeenUidLength >= 3 &&
+        (millis() - lastSeenMs) < SCAN_COOLDOWN_MS &&
+        memcmp(uid, lastSeenUid, 3) == 0) {
+        Serial.println("NFCManager: Suppressed re-read (cooldown, partial UID match)");
+        return true;
+    }
+
     if (!lastSeenValid) {
         return false;
     }
@@ -2140,6 +2154,7 @@ if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
     memcpy(lastSeenUid, uid, uidLength);
     lastSeenUidLength = uidLength;
     lastSeenValid = true;
+    lastSeenMs = millis();
     blankStateCaptured = true;
     xSemaphoreGive(tagMutex);
 }
