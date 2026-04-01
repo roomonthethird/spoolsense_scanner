@@ -5,10 +5,16 @@
 ### Added
 
 - **HA state retention after tag removal** — spool data (material, color, weight, temps) persists in HA sensor after tag is removed, with `present: false`. Dashboards now show last scanned spool instead of going blank. (#60)
+- **Tag writer: populate from Spoolman** — searchable spool picker on all 3 writer pages (OpenPrintTag, TigerTag, OpenTag3D). Pick a spool from your Spoolman inventory and the form auto-fills. Shows hint when Spoolman is not configured. (#32)
 
 ### Fixed
 
 - **HA publish queue** — increased from 6 to 12 items and added drop logging. Previously silently dropped messages when MQTT was disconnected. (#28)
+- **TFT null queue guards** — all queue operations now check for null before access. Prevents crash if queue allocation fails.
+- **TFT queue depth** — increased from 4 to 8 with drop logging for burst traffic.
+- **TFT showText4** — was discarding lines 1-2 on generic tag scans. Now shows "Spool: Unknown Tag" instead of just "Unknown Tag".
+- **TFT duplicate struct removed** — eliminated TFTSpoolData (duplicate of DisplaySpoolData with unused name field). Saves 48 bytes per queued message.
+- **TFT startTask check** — now verifies task creation succeeded instead of logging success unconditionally.
 
 ---
 
