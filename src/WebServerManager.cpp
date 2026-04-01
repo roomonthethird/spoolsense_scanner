@@ -33,8 +33,28 @@
 #include "HomeAssistantManager.h"
 #include "DisplayI.h"
 
+// Shared HTTP mutex — serializes all outbound HTTP requests across tasks
+extern SemaphoreHandle_t g_httpMutex;
+static constexpr TickType_t HTTP_MUTEX_TIMEOUT = pdMS_TO_TICKS(10000);
+
 extern "C" {
 #include "openprinttag_lib.h"
+}
+
+// URL-encode a string for safe use in query parameters
+static String urlEncode(const char* str) {
+    String encoded;
+    while (*str) {
+        char c = *str++;
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            encoded += c;
+        } else {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+            encoded += buf;
+        }
+    }
+    return encoded;
 }
 
 // Tag kind enum to string for API responses
@@ -269,6 +289,11 @@ void WebServerManager::handleApiRegisterUid() {
         return;
     }
 
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
+        return;
+    }
+
     WiFiClient client;
     HTTPClient http;
     char url[256];
@@ -277,7 +302,8 @@ void WebServerManager::handleApiRegisterUid() {
 
     // --- Step 1: Find or create vendor ---
     int vendorId = -1;
-    snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, manufacturer);
+    String encodedMfg = urlEncode(manufacturer);
+    snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encodedMfg.c_str());
     http.begin(client, url);
     code = http.GET();
     if (code == 200) {
@@ -340,6 +366,7 @@ void WebServerManager::handleApiRegisterUid() {
         http.end();
         char errMsg[128];
         snprintf(errMsg, sizeof(errMsg), "Failed to create filament (HTTP %d)", code);
+        xSemaphoreGive(g_httpMutex);
         sendError(500, errMsg);
         return;
     }
@@ -354,6 +381,7 @@ void WebServerManager::handleApiRegisterUid() {
         }
     }
     if (filamentId < 0) {
+        xSemaphoreGive(g_httpMutex);
         sendError(500, "Failed to parse filament ID from Spoolman response");
         return;
     }
@@ -383,6 +411,7 @@ void WebServerManager::handleApiRegisterUid() {
         http.end();
         Serial.printf("register-uid: spool creation failed HTTP %d: %s\n", code, response.c_str());
         String errMsg = "Failed to create spool (HTTP " + String(code) + "): " + response;
+        xSemaphoreGive(g_httpMutex);
         _server.send(500, "application/json", "{\"error\":\"" + errMsg + "\"}");
         return;
     }
@@ -407,6 +436,7 @@ void WebServerManager::handleApiRegisterUid() {
     String resultJson;
     serializeJson(result, resultJson);
 
+    xSemaphoreGive(g_httpMutex);
     _server.send(200, "application/json", resultJson);
     Serial.printf("WebServerManager: Registered UID %s as spool %d (filament %d)\n", uid, spoolId, filamentId);
 }
@@ -421,6 +451,11 @@ void WebServerManager::handleApiSpoolmanSpools() {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
     if (!baseUrl || strlen(baseUrl) == 0) {
         sendError(500, "Spoolman URL not configured");
+        return;
+    }
+
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
         return;
     }
 
@@ -460,6 +495,7 @@ void WebServerManager::handleApiSpoolmanSpools() {
         sendError(502, errMsg);
     }
     http.end();
+    xSemaphoreGive(g_httpMutex);
 }
 
 void WebServerManager::handleApiSpoolmanLink() {
@@ -501,6 +537,11 @@ void WebServerManager::handleApiSpoolmanLink() {
         return;
     }
 
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
+        return;
+    }
+
     WiFiClient client;
     HTTPClient http;
     char url[256];
@@ -518,6 +559,7 @@ void WebServerManager::handleApiSpoolmanLink() {
     http.end();
 
     if (code != 200) {
+        xSemaphoreGive(g_httpMutex);
         char errMsg[64];
         snprintf(errMsg, sizeof(errMsg), "Spoolman PATCH failed (HTTP %d)", code);
         sendError(502, errMsg);
@@ -537,6 +579,7 @@ void WebServerManager::handleApiSpoolmanLink() {
         Serial.printf("WebServerManager: Cleared nfc_id from spool %d (HTTP %d)\n", oldSpoolId, clearCode);
     }
 
+    xSemaphoreGive(g_httpMutex);
     _server.send(200, "application/json", "{\"success\":true}");
 }
 
