@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- **Spoolman streaming UID lookup** — replaced ArduinoJson bulk parse with streaming HTTP parser for spool lookups. Fixes NoMemory crash on 30+ spools. Uses ~600 bytes instead of ~60KB. Works with any database size. (#68)
 - **HA publish queue** — increased from 6 to 12 items and added drop logging. Previously silently dropped messages when MQTT was disconnected. (#28)
 - **TFT null queue guards** — all queue operations now check for null before access. Prevents crash if queue allocation fails.
 - **TFT queue depth** — increased from 4 to 8 with drop logging for burst traffic.
