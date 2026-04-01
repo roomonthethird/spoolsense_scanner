@@ -95,7 +95,12 @@ void ApplicationManager::processMessages() {
             char line1[17];
             char line2[17];
             snprintf(line1, sizeof(line1), "Type: %.10s", delayedDisplayMaterialName);
-            if (ConfigurationManager::getInstance().isKeypadEnabled()) {
+#ifndef NATIVE_TEST
+            bool isKeypad = ConfigurationManager::getInstance().isKeypadEnabled();
+#else
+            bool isKeypad = false;
+#endif
+            if (isKeypad) {
                 snprintf(line2, sizeof(line2), "%.0fg Tool#? #", delayedDisplayKgRemaining * 1000.0f);
             } else {
                 snprintf(line2, sizeof(line2), "Remain: %.0fg", delayedDisplayKgRemaining * 1000.0f);
