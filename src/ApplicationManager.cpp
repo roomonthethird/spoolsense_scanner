@@ -411,18 +411,13 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     char materialName[32] = {0};
     float kgRemaining = msg.payload.spoolUpdated.kg_remaining;
 
-#ifndef NATIVE_TEST
     CurrentSpoolState state;
     if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
         opt_get_material_name(&state.tag_data, materialName, sizeof(materialName));
     }
+#ifndef NATIVE_TEST
     bool spoolmanConfigured = SpoolmanManager::getInstance().isConfigured();
 #else
-    // In test mode, also try to get material name for delayed display testing
-    CurrentSpoolState state;
-    if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
-        opt_get_material_name(&state.tag_data, materialName, sizeof(materialName));
-    }
     bool spoolmanConfigured = false;
 #endif
 
