@@ -110,7 +110,7 @@ struct HAWriteTagPayload {
 
 struct HAUpdateRemainingPayload {
     char expected_uid[17];       // Required — must match current tag
-    float remaining_g;
+    float consumed_g;            // Consumed weight (computed by HA task: initial - remaining)
 };
 
 struct PrinterWarningPayload {

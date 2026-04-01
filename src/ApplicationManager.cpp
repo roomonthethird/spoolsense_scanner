@@ -845,26 +845,19 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
 }
 
 void ApplicationManager::handleHAUpdateRemaining(const AppMessage& msg) {
-    Serial.printf("EVENT: HAUpdateRemaining - expected_uid=%s, remaining_g=%.2f\n",
+    Serial.printf("EVENT: HAUpdateRemaining - expected_uid=%s, consumed_g=%.2f\n",
         msg.payload.haUpdateRemaining.expected_uid,
-        msg.payload.haUpdateRemaining.remaining_g);
+        msg.payload.haUpdateRemaining.consumed_g);
 
     const auto& p = msg.payload.haUpdateRemaining;
 
-    // Set consumed weight: we need the initial weight from the current tag
-    // The NFC write will compute consumed = initial - remaining internally
-    // We use SET_CONSUMED_WEIGHT with consumed = initial - remaining
-    // But we don't know initial here. Use SET_CONSUMED_WEIGHT with a sentinel approach.
-    // Actually, the HA manager will compute consumed before sending this message.
-    // For now, treat remaining_g as a consumed weight to set.
-    // The HA task should compute consumed = initial - remaining before sending.
+    // HA task computes consumed = initial - remaining before sending this message.
     NFCWriteRequest req;
     memset(&req, 0, sizeof(req));
     req.request_id = millis();
     req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
-    // remaining_g here is actually the consumed weight (computed by HA task)
-    req.data.consumed_weight = p.remaining_g;
+    req.data.consumed_weight = p.consumed_g;
     NFCManager::getInstance().enqueueWrite(req);
 }
 
