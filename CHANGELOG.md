@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.4] - 2026-04-01
+
+### Added
+
+- **TFT text labels** — replaced unreadable bitmap icons with colored text labels (OPT, TT, OT3D, Bambu, NFC+). Wired BambuTag mapping in ApplicationManager. Saves ~2KB flash. (#66)
+- **Scan cooldown** — 3s cooldown suppresses PN5180 partial UID double-scans that caused false "Generic Tag Not in Spoolman" errors. (#70)
+- **Keypad pin rearrangement** — WROOM keypad pins reordered to match physical ribbon connector order for easier wiring. Breaking change — existing keypad users must re-wire. Thanks @mrsimicsak. (#69)
+
+### Fixed
+
+- **HTTP mutex on WebServerManager** — Spoolman proxy, UID registration, and spool link handlers now acquire g_httpMutex. Prevents races with background Spoolman sync that caused intermittent HTTP 400 errors. (#75)
+- **URL-encode manufacturer** — vendor names with spaces (e.g., "Bambu Lab") no longer break UID registration queries. (#76)
+- **ApplicationManager code review fixes** — shadowed variable rename, deduplicated ifdef blocks, NATIVE_TEST guard, HA field rename.
+
+---
+
 ## [1.6.3] - 2026-03-31
 
 ### Added
