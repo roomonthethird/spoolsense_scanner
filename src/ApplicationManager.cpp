@@ -670,11 +670,11 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     if (msg.payload.spoolmanSynced.is_uid_lookup && msg.payload.spoolmanSynced.success) {
         // Validate the tag is still present and matches the lookup UID before
         // writing — the tag may have been removed while the Spoolman request was in flight
-        CurrentSpoolState currentState;
-        bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(currentState)
-                               && currentState.present
-                               && currentState.kind == TagKind::GenericUidTag
-                               && strcmp(currentState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
+        CurrentSpoolState spoolState;
+        bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(spoolState)
+                               && spoolState.present
+                               && spoolState.kind == TagKind::GenericUidTag
+                               && strcmp(spoolState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
         if (tagStillPresent) {
             GenericTagSpoolInfo info = {};
             strncpy(info.material_type, msg.payload.spoolmanSynced.material_name, sizeof(info.material_type) - 1);
