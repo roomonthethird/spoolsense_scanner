@@ -69,7 +69,14 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       <div class="card-body">
         <form id="configForm">
           <section>
-            <h2 class="section-title">WiFi</h2>
+            <h2 class="section-title">Network</h2>
+            <div class="field">
+              <label for="hostname">Hostname</label>
+              <input id="hostname" type="text" placeholder="spoolsense" maxlength="32"
+                     pattern="[a-z0-9][a-z0-9\-]{0,30}[a-z0-9]?" title="Lowercase letters, numbers, hyphens (1-32 chars)" />
+              <div style="font-size:11px;color:#71717A;margin-top:4px">mDNS hostname (e.g. spoolsense-lane1). Access at http://&lt;hostname&gt;.local</div>
+            </div>
+            <h3 style="font-size:13px;color:#A1A1AA;margin:16px 0 8px;font-weight:600">WiFi</h3>
             <div class="grid-2">
               <div class="field">
                 <label for="wifi_ssid">SSID</label>
@@ -231,6 +238,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 
     // Load current config
     api('/api/config').then(function(cfg) {
+      maybeSetValue('hostname', cfg.hostname);
       maybeSetValue('wifi_ssid', cfg.wifi_ssid);
       maybeSetValue('mqtt_host', cfg.mqtt_host);
       maybeSetValue('mqtt_port', cfg.mqtt_port);
@@ -278,6 +286,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       btn.textContent = 'Saving...';
 
       var body = {
+        hostname: document.getElementById('hostname').value.trim().toLowerCase(),
         wifi_ssid: document.getElementById('wifi_ssid').value.trim(),
         wifi_pass: document.getElementById('wifi_pass').value,
         mqtt_host: document.getElementById('mqtt_host').value.trim(),
@@ -307,7 +316,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           if (data.success) {
             var isAP = !document.getElementById('apBanner').classList.contains('hidden');
             if (isAP) {
-              result.textContent = 'Saved! Rebooting... reconnect to your WiFi and check http://spoolsense.local in 30 seconds.';
+              var hn = document.getElementById('hostname').value.trim().toLowerCase() || 'spoolsense';
+              result.textContent = 'Saved! Rebooting... reconnect to your WiFi and check http://' + hn + '.local in 30 seconds.';
               result.className = 'result success';
               result.classList.remove('hidden');
             } else {
