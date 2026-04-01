@@ -6,19 +6,6 @@
 #include "TFTConfig.h"
 #include "DisplayI.h"
 
-// ---------------------------------------------------------------------------
-// TFTSpoolData — the data the TFT needs after a scan
-// ---------------------------------------------------------------------------
-struct TFTSpoolData {
-    char brand[32];        // e.g. "eSUN"
-    char material[16];     // e.g. "PLA"
-    char name[48];         // e.g. "eSUN PLA+ White"
-    char colorHex[8];      // e.g. "FFFFFF"  (no leading #)
-    float remainingWeight; // grams remaining
-    float totalWeight;     // grams total (for % bar)
-    uint8_t tagType;       // TAG_TYPE_* constants below
-};
-
 // Tag type constants — one icon per type
 #define TAG_TYPE_UNKNOWN      0
 #define TAG_TYPE_OPENPRINTTAG 1
@@ -46,7 +33,7 @@ enum class TFTState {
 // ---------------------------------------------------------------------------
 struct TFTMessage {
     TFTState state;
-    TFTSpoolData spool;    // valid when state == SpoolScanned
+    DisplaySpoolData spool; // valid when state == SpoolScanned
     char statusText[48];   // used for Boot/Ready/Error/Writing/KeypadEntry
     char statusText2[48];  // second line for generic status display
     bool writeSuccess;     // used for WriteResult
@@ -67,7 +54,7 @@ public:
     void showWifiConnecting();
     void showWifiConnected(const char* ip);
     void showReady();
-    void showSpoolScanned(const TFTSpoolData& spool);
+    void showSpoolScanned(const DisplaySpoolData& spool);
     void showWriting(const char* tagFormat);
     void showWriteResult(bool success, const char* tagFormat) override;
     void showKeypadEntry(const char* toolNumber);
@@ -95,7 +82,7 @@ private:
     // --- Rendering ---
     void renderBoot(const char* version);
     void renderReady();
-    void renderSpoolScanned(const TFTSpoolData& spool);
+    void renderSpoolScanned(const DisplaySpoolData& spool);
     void renderStatus(const char* line1, const char* line2 = nullptr);
     void renderWriteResult(bool success, const char* tagFormat);
     void renderKeypadEntry(const char* toolNumber);
