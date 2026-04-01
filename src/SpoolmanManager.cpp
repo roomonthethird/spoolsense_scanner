@@ -160,52 +160,7 @@ static bool parseFirstArrayItemId(const char* jsonText, int& outId) {
     return false;
 }
 
-static bool parseSpoolIdByUuid(const char* jsonText, const char* uuid, int& outId) {
-    outId = -1;
-
-    // Use ArduinoJson — the streaming parser (htcw_json) can't reliably
-    // handle Spoolman's nested filament/vendor objects with their own 'id' fields.
-    // The response is small enough for heap parsing (~1-2KB per spool).
-    size_t jsonLen = strlen(jsonText);
-    size_t bufSize = jsonLen * 2;  // ArduinoJson needs ~2x input size for nested objects
-    if (bufSize < 16384) bufSize = 16384;
-    DynamicJsonDocument doc(bufSize);
-    DeserializationError err = deserializeJson(doc, jsonText);
-    if (err) {
-        Serial.printf("SpoolmanManager: parseSpoolIdByUuid JSON parse failed: %s (input=%u buf=%u)\n",
-                       err.c_str(), (unsigned)jsonLen, (unsigned)bufSize);
-        return false;
-    }
-
-    // Handle both array (list endpoint) and single object (by-id endpoint)
-    JsonArray spools;
-    if (doc.is<JsonArray>()) {
-        spools = doc.as<JsonArray>();
-    } else if (doc.is<JsonObject>()) {
-        // Single spool response — check it directly
-        JsonObject spool = doc.as<JsonObject>();
-        int id = spool["id"] | -1;
-        const char* nfcId = spool["extra"]["nfc_id"] | "";
-        if (id >= 0 && matchesUuid(nfcId, uuid)) {
-            outId = id;
-            return true;
-        }
-        return false;
-    } else {
-        return false;
-    }
-
-    // Collect all matching IDs and return the highest (most recently registered)
-    // to handle cases where multiple spools share the same UID.
-    for (JsonObject spool : spools) {
-        int id = spool["id"] | -1;
-        const char* nfcId = spool["extra"]["nfc_id"] | "";
-        if (id >= 0 && matchesUuid(nfcId, uuid)) {
-            if (id > outId) outId = id;
-        }
-    }
-    return outId >= 0;
-}
+// parseSpoolIdByUuid removed — replaced by streamFindSpoolByNfcId (#68)
 
 static bool parseSpoolUuid(const char* jsonText, char* outUuid, size_t outUuidSize) {
     if (outUuid == nullptr || outUuidSize == 0) return false;
@@ -714,33 +669,24 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
 }
 
 static int findSpoolByUuid(int filamentId, const char* uuid) {
+    // First try: search within this filament's spools
     char path[128];
     snprintf(path, sizeof(path), "/api/v1/spool?filament.id=%d", filamentId);
-    String response;
-    int code = httpGet(path, response);
-    if (code == 200) {
-        int id = -1;
-        if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
-            Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d in filament=%d\n",
-                          uuid, id, filamentId);
-            return id;
-        }
+    int id = streamFindSpoolByNfcId(path, uuid);
+    if (id >= 0) {
+        Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d in filament=%d\n",
+                      uuid, id, filamentId);
+        return id;
     }
 
-    // Fallback search across all spools to avoid duplicate UUID entries when
-    // a prior sync used different filament metadata for the same physical tag.
-    response = "";
-    code = httpGet("/api/v1/spool", response);
-    if (code == 200) {
-        int id = -1;
-        if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
-            Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d via global lookup\n",
-                          uuid, id);
-            return id;
-        }
+    // Fallback: search across all spools
+    id = streamFindSpoolByNfcId("/api/v1/spool", uuid);
+    if (id >= 0) {
+        Serial.printf("SpoolmanManager: Found spool uuid=%s id=%d via global lookup\n",
+                      uuid, id);
     }
 
-    return -1;
+    return id;
 }
 
 static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
@@ -809,20 +755,12 @@ static bool lookupSpoolById(int spoolId, const char* uuid) {
 }
 
 static int findSpoolByUuidGlobal(const char* uuid) {
-    String response;
-    int code = httpGet("/api/v1/spool", response);
-    if (code != 200) {
-        return -1;
-    }
-
-    int id = -1;
-    if (parseSpoolIdByUuid(response.c_str(), uuid, id)) {
+    int id = streamFindSpoolByNfcId("/api/v1/spool", uuid);
+    if (id >= 0) {
         Serial.printf("SpoolmanManager: Recovered spool uuid=%s id=%d via global lookup\n",
                       uuid, id);
-        return id;
     }
-
-    return -1;
+    return id;
 }
 
 static bool archiveSpool(int spoolId) {
@@ -1351,25 +1289,13 @@ void SpoolmanManager::taskLoop() {
 }
 
 bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails) {
-    // Spoolman does not filter by extra_field_value — fetch all spools and
-    // find the matching nfc_id in the response via parseSpoolIdByUuid.
-    const char* path = "/api/v1/spool";
-
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         Serial.println("SpoolmanManager: lookupSpoolByUid could not acquire HTTP mutex");
         return false;
     }
 
-    String response;
-    int code = httpGet(path, response);
-    if (code != 200) {
-        Serial.printf("SpoolmanManager: UID lookup HTTP %d for uid=%s\n", code, uid);
-        xSemaphoreGive(httpMutex_);
-        return false;
-    }
-
-    int spoolmanId = -1;
-    if (!parseSpoolIdByUuid(response.c_str(), uid, spoolmanId) || spoolmanId < 0) {
+    int spoolmanId = streamFindSpoolByNfcId("/api/v1/spool", uid);
+    if (spoolmanId < 0) {
         Serial.printf("SpoolmanManager: UID lookup — no match for uid=%s\n", uid);
         xSemaphoreGive(httpMutex_);
         return false;
