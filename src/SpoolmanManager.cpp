@@ -484,8 +484,8 @@ static constexpr size_t NUM_REQUIRED_FIELDS = sizeof(REQUIRED_EXTRA_FIELDS) / si
 
 static bool extraFieldsVerified = false;
 
-static void ensureExtraFields() {
-    if (extraFieldsVerified) return;
+static bool ensureExtraFields() {
+    if (extraFieldsVerified) return true;
 
 #ifndef NATIVE_TEST
     // Check NVS version — skip API calls if already verified this firmware version
@@ -496,7 +496,7 @@ static void ensureExtraFields() {
             prefs.end();
             if (stored >= SPOOLMAN_FIELDS_VERSION) {
                 extraFieldsVerified = true;
-                return;
+                return true;
             }
         }
     }
@@ -566,6 +566,7 @@ static void ensureExtraFields() {
 #endif
 
     extraFieldsVerified = allChecked;
+    return allChecked;
 }
 
 // ---------------------------------------------------------------------------
@@ -583,30 +584,34 @@ static int findOrCreateVendor(const char* name) {
 
     Serial.printf("SpoolmanManager: get vendors code=%d\n", code);
 
-    if (code == 200) {
-        int id = -1;
-        if (parseVendorIdByName(response.c_str(), name, id)) {
-            Serial.printf("SpoolmanManager: Found vendor '%s' id=%d\n", name, id);
-            return id;
-        }
+    if (code != 200) {
+        // Lookup failed — don't create blindly, could be transient error
+        Serial.printf("SpoolmanManager: Vendor lookup failed (code=%d), cannot resolve '%s'\n", code, name);
+        return -1;
     }
 
-    // Create new vendor
+    int id = -1;
+    if (parseVendorIdByName(response.c_str(), name, id)) {
+        Serial.printf("SpoolmanManager: Found vendor '%s' id=%d\n", name, id);
+        return id;
+    }
+
+    // Definitive miss — create new vendor
     StaticJsonDocument<JSON_SMALL_CAPACITY> createDoc;
     createDoc["name"] = name;
     String body;
     serializeJson(createDoc, body);
 
-    code = httpPost("/api/v1/vendor", body.c_str(), response);
+    String createResp;
+    code = httpPost("/api/v1/vendor", body.c_str(), createResp);
     if (code == 200) {
-        int id = -1;
-        if (parseIdFromObject(response.c_str(), id)) {
+        if (parseIdFromObject(createResp.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created vendor '%s' id=%d\n", name, id);
             return id;
         }
     }
 
-    Serial.printf("SpoolmanManager: Failed to create vendor '%s', code=%d: %s\n", name, code, response.c_str());
+    Serial.printf("SpoolmanManager: Failed to create vendor '%s', code=%d: %s\n", name, code, createResp.c_str());
     return -1;
 }
 
@@ -786,16 +791,17 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     String body;
     serializeJson(createDoc, body);
 
-    code = httpPost("/api/v1/filament", body.c_str(), response);
+    String createResp;
+    code = httpPost("/api/v1/filament", body.c_str(), createResp);
     if (code == 200 || code == 201) {
         int id = -1;
-        if (parseIdFromObject(response.c_str(), id)) {
+        if (parseIdFromObject(createResp.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created filament material=%s id=%d\n", material, id);
             return id;
         }
     }
 
-    Serial.printf("SpoolmanManager: Failed to create filament, code=%d: %s\n", code, response.c_str());
+    Serial.printf("SpoolmanManager: Failed to create filament, code=%d: %s\n", code, createResp.c_str());
     return -1;
 }
 
@@ -1449,7 +1455,11 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     }
 
     // Ensure Spoolman has required extra fields (runs once per boot)
-    ensureExtraFields();
+    if (!ensureExtraFields()) {
+        Serial.println("SpoolmanManager: Extra fields not ready, aborting sync");
+        xSemaphoreGive(httpMutex_);
+        return false;
+    }
 
     resolvedSpoolmanId = -1;
     bool success = false;
