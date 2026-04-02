@@ -2,6 +2,11 @@
 #define CONFIGURATION_MANAGER_H
 
 #include <cstdint>
+#include <cstddef>
+
+// Sanitize hostname in-place: lowercase alphanum + hyphens, no leading/trailing
+// hyphens, falls back to "spoolsense" if empty. cap = buffer size including null.
+void sanitizeHostname(char* buf, size_t cap);
 
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "0.0.0-dev"
@@ -30,6 +35,8 @@ struct ConfigUpdate {
     char prusalink_api_key[64];
     // NFC reader selection
     char nfc_reader[8];  // "pn5180" or "pn532"
+    // mDNS / WiFi hostname
+    char hostname[33];   // max 32 chars + null
 };
 
 class ConfigurationManager {
@@ -63,6 +70,9 @@ public:
 
     // NFC reader selection (NVS, default "pn5180")
     const char* getNfcReader() const;
+
+    // mDNS / WiFi hostname (NVS, default "spoolsense")
+    const char* getHostname() const;
 
     // Optional hardware features (compile-time default, overridable via NVS)
     bool isLcdEnabled() const;
@@ -108,6 +118,9 @@ private:
 
     // NFC reader selection
     char _nfcReader[8] = "pn5180";
+
+    // mDNS / WiFi hostname
+    char _hostname[33] = "spoolsense";
 
     // Optional hardware features
     bool _lcdEnabled = false;
