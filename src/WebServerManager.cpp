@@ -1523,15 +1523,23 @@ void WebServerManager::handleApiWriteOpenTag3D() {
 
 void WebServerManager::sendError(int code, const char* msg) {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    // Escape quotes and backslashes in msg to produce valid JSON
-    char escaped[128];
+    // Escape quotes, backslashes, and control chars for valid JSON
+    char escaped[192];
     size_t j = 0;
-    for (size_t i = 0; msg[i] && j < sizeof(escaped) - 2; i++) {
-        if (msg[i] == '"' || msg[i] == '\\') {
-            escaped[j++] = '\\';
-        }
-        if (j < sizeof(escaped) - 1) {
-            escaped[j++] = msg[i];
+    for (size_t i = 0; msg[i] && j < sizeof(escaped) - 6; i++) {
+        char c = msg[i];
+        if (c == '"' || c == '\\') {
+            escaped[j++] = '\\'; escaped[j++] = c;
+        } else if (c == '\n') {
+            escaped[j++] = '\\'; escaped[j++] = 'n';
+        } else if (c == '\r') {
+            escaped[j++] = '\\'; escaped[j++] = 'r';
+        } else if (c == '\t') {
+            escaped[j++] = '\\'; escaped[j++] = 't';
+        } else if ((unsigned char)c < 0x20) {
+            j += snprintf(escaped + j, sizeof(escaped) - j, "\\u%04X", (unsigned char)c);
+        } else {
+            escaped[j++] = c;
         }
     }
     escaped[j] = '\0';
