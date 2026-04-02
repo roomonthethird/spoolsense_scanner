@@ -174,6 +174,13 @@ bool PN5180ISO14443::mifareBlockRead(uint8_t blockno, uint8_t *buffer) {
 	  return false;
 	//Check if we have received any data from the tag
 	delay(5);
+	// Check for RX errors before reading data
+	uint32_t rxStatus;
+	readRegister(RX_STATUS, &rxStatus);
+	if (rxStatus & (RX_STATUS_DATA_INTEGRITY_ERROR | RX_STATUS_PROTOCOL_ERROR)) {
+		PN5180DEBUG(F("mifareBlockRead: RX error\n"));
+		return false;
+	}
 	len = rxBytesReceived();
 	if (len == 16) {
 		// READ 16 bytes into  buffer
@@ -195,8 +202,14 @@ uint8_t PN5180ISO14443::mifareBlockWrite16(uint8_t blockno, uint8_t *buffer) {
 	sendData(cmd, 2, 0x00);
 	readData(1, cmd);
 
+	// Check Phase 1 ACK before sending data
+	if (cmd[0] != 0x0A) {
+		writeRegisterWithOrMask(CRC_RX_CONFIG, 0x1);
+		return cmd[0];  // NAK
+	}
+
 	// Mifare write part 2
-	sendData(buffer,16, 0x00);
+	sendData(buffer, 16, 0x00);
 	delay(10);
 
 	// Read ACK/NAK
