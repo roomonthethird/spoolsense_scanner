@@ -387,6 +387,10 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));
     prefs.putString(NVS_KEY_HOSTNAME, sanitizedHostname);
 
+    // Clear Spoolman extra fields version so they're re-verified on next boot
+    // (handles Spoolman URL change, Spoolman reinstall, etc.)
+    prefs.remove("sp_fields_v");
+
     prefs.end();
     Serial.println("ConfigurationManager: Config saved to NVS");
     return true;
