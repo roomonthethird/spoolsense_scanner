@@ -741,31 +741,10 @@ void WebServerManager::handleApiPostConfig() {
     if (strcmp(nfcVal, "pn532") != 0) nfcVal = "pn5180";  // only allow known values
     strncpy(update.nfc_reader, nfcVal, sizeof(update.nfc_reader) - 1);
 
-    // Hostname: lowercase, alphanum + hyphens, 1-32 chars, no leading/trailing hyphen
-    const char* hostnameVal = doc["hostname"] | "spoolsense";
-    char validatedHostname[33] = {0};
-    size_t hLen = 0;
-    for (size_t i = 0; hostnameVal[i] && i < 32; i++) {
-        char c = hostnameVal[i];
-        // Auto-lowercase
-        if (c >= 'A' && c <= 'Z') c = c + 32;
-        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-            validatedHostname[hLen++] = c;
-        }
-    }
-    validatedHostname[hLen] = '\0';
-    // Strip leading/trailing hyphens
-    while (hLen > 0 && validatedHostname[0] == '-') {
-        memmove(validatedHostname, validatedHostname + 1, hLen);
-        hLen--;
-    }
-    while (hLen > 0 && validatedHostname[hLen - 1] == '-') {
-        validatedHostname[--hLen] = '\0';
-    }
-    if (hLen == 0) {
-        strncpy(validatedHostname, "spoolsense", sizeof(validatedHostname) - 1);
-    }
-    strncpy(update.hostname, validatedHostname, sizeof(update.hostname) - 1);
+    // Hostname: sanitize via shared helper (lowercase alphanum + hyphens, 1-32 chars)
+    strncpy(update.hostname, doc["hostname"] | "spoolsense", sizeof(update.hostname) - 1);
+    update.hostname[sizeof(update.hostname) - 1] = '\0';
+    sanitizeHostname(update.hostname, sizeof(update.hostname));
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");

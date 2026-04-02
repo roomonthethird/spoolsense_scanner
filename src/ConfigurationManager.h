@@ -2,6 +2,11 @@
 #define CONFIGURATION_MANAGER_H
 
 #include <cstdint>
+#include <cstddef>
+
+// Sanitize hostname in-place: lowercase alphanum + hyphens, no leading/trailing
+// hyphens, falls back to "spoolsense" if empty. cap = buffer size including null.
+void sanitizeHostname(char* buf, size_t cap);
 
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "0.0.0-dev"

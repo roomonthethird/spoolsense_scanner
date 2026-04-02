@@ -73,7 +73,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
             <div class="field">
               <label for="hostname">Hostname</label>
               <input id="hostname" type="text" placeholder="spoolsense" maxlength="32"
-                     pattern="[a-z0-9][a-z0-9\-]{0,30}[a-z0-9]?" title="Lowercase letters, numbers, hyphens (1-32 chars)" />
+                     pattern="[a-z0-9](?:[a-z0-9\-]{0,30}[a-z0-9])?" title="Lowercase letters, numbers, hyphens (1-32 chars, no leading/trailing hyphens)" />
               <div style="font-size:11px;color:#71717A;margin-top:4px">mDNS hostname (e.g. spoolsense-lane1). Access at http://&lt;hostname&gt;.local</div>
             </div>
             <h3 style="font-size:13px;color:#A1A1AA;margin:16px 0 8px;font-weight:600">WiFi</h3>
@@ -278,15 +278,21 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('prusalink_fields').style.display = this.checked ? '' : 'none';
     });
 
+    function normalizeHostname(v) {
+      return (v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, 32) || 'spoolsense';
+    }
+
     document.getElementById('configForm').addEventListener('submit', function(e) {
       e.preventDefault();
+      var normalizedHostname = normalizeHostname(document.getElementById('hostname').value);
+      document.getElementById('hostname').value = normalizedHostname;
       var btn = document.getElementById('saveBtn');
       var result = document.getElementById('saveResult');
       btn.disabled = true;
       btn.textContent = 'Saving...';
 
       var body = {
-        hostname: document.getElementById('hostname').value.trim().toLowerCase(),
+        hostname: normalizedHostname,
         wifi_ssid: document.getElementById('wifi_ssid').value.trim(),
         wifi_pass: document.getElementById('wifi_pass').value,
         mqtt_host: document.getElementById('mqtt_host').value.trim(),
@@ -316,8 +322,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           if (data.success) {
             var isAP = !document.getElementById('apBanner').classList.contains('hidden');
             if (isAP) {
-              var hn = document.getElementById('hostname').value.trim().toLowerCase() || 'spoolsense';
-              result.textContent = 'Saved! Rebooting... reconnect to your WiFi and check http://' + hn + '.local in 30 seconds.';
+              result.textContent = 'Saved! Rebooting... reconnect to your WiFi and check http://' + normalizedHostname + '.local in 30 seconds.';
               result.className = 'result success';
               result.classList.remove('hidden');
             } else {

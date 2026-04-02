@@ -31,6 +31,27 @@ static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
 static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 static const char* NVS_KEY_HOSTNAME      = "hostname";
 
+// Sanitize hostname: lowercase alphanum + hyphens, strip leading/trailing hyphens,
+// fall back to "spoolsense" if empty. Used at NVS boundaries and web API.
+void sanitizeHostname(char* buf, size_t cap) {
+    char out[33] = {0};
+    size_t n = 0;
+    for (size_t i = 0; buf[i] && n < 32; i++) {
+        char c = buf[i];
+        if (c >= 'A' && c <= 'Z') c = c + 32;
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+            out[n++] = c;
+        }
+    }
+    while (n > 0 && out[0] == '-') { memmove(out, out + 1, n); n--; }
+    while (n > 0 && out[n - 1] == '-') { out[--n] = '\0'; }
+    if (n == 0) {
+        strncpy(out, "spoolsense", sizeof(out) - 1);
+    }
+    strncpy(buf, out, cap - 1);
+    buf[cap - 1] = '\0';
+}
+
 ConfigurationManager& ConfigurationManager::getInstance() {
     static ConfigurationManager instance;
     return instance;
@@ -208,6 +229,7 @@ bool ConfigurationManager::loadFromNVS() {
     }
     if (prefs.isKey(NVS_KEY_HOSTNAME)) {
         prefs.getString(NVS_KEY_HOSTNAME, _hostname, sizeof(_hostname));
+        sanitizeHostname(_hostname, sizeof(_hostname));
         anyOverride = true;
     }
 
@@ -360,7 +382,10 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
         prefs.putString(NVS_KEY_PRUSALINK_KEY, update.prusalink_api_key);
     }
     prefs.putString(NVS_KEY_NFC_READER, update.nfc_reader);
-    prefs.putString(NVS_KEY_HOSTNAME, update.hostname);
+    char sanitizedHostname[33] = {0};
+    strncpy(sanitizedHostname, update.hostname, sizeof(sanitizedHostname) - 1);
+    sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));
+    prefs.putString(NVS_KEY_HOSTNAME, sanitizedHostname);
 
     prefs.end();
     Serial.println("ConfigurationManager: Config saved to NVS");
