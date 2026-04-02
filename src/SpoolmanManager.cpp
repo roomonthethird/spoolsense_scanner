@@ -7,6 +7,9 @@
 #include <json.hpp>
 
 #include <Arduino.h>
+#ifndef NATIVE_TEST
+#include <Preferences.h>
+#endif
 #include <cmath>
 #include "openprinttag_lib.h"
 
@@ -454,43 +457,161 @@ static const char* materialTypeToSpoolmanStr(uint8_t type) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Ensure required extra fields exist in Spoolman
+// Runs once per boot, skipped if NVS version matches SPOOLMAN_FIELDS_VERSION.
+// Bump the version constant when adding new required fields.
+// ---------------------------------------------------------------------------
+
+static constexpr uint8_t SPOOLMAN_FIELDS_VERSION = 1;
+static const char* NVS_KEY_FIELDS_V = "sp_fields_v";
+
+struct ExtraFieldDef {
+    const char* entity;   // "filament" or "spool"
+    const char* key;
+    const char* name;
+};
+
+static const ExtraFieldDef REQUIRED_EXTRA_FIELDS[] = {
+    {"filament", "aspect",          "Aspect/Finish"},
+    {"filament", "dry_temp",        "Dry Temp (C)"},
+    {"filament", "dry_time_hours",  "Dry Time (hrs)"},
+    {"spool",    "nfc_id",          "nfc_id"},
+    {"spool",    "tag_format",      "Tag Format"},
+    {"spool",    "active_toolhead", "active_toolhead"},
+};
+static constexpr size_t NUM_REQUIRED_FIELDS = sizeof(REQUIRED_EXTRA_FIELDS) / sizeof(REQUIRED_EXTRA_FIELDS[0]);
+
+static bool extraFieldsVerified = false;
+
+static bool ensureExtraFields() {
+    if (extraFieldsVerified) return true;
+
+#ifndef NATIVE_TEST
+    // Check NVS version — skip API calls if already verified this firmware version
+    {
+        Preferences prefs;
+        if (prefs.begin("spoolsense", true)) {  // read-only
+            uint8_t stored = prefs.getUChar(NVS_KEY_FIELDS_V, 0);
+            prefs.end();
+            if (stored >= SPOOLMAN_FIELDS_VERSION) {
+                extraFieldsVerified = true;
+                return true;
+            }
+        }
+    }
+#endif
+
+    Serial.println("SpoolmanManager: Verifying Spoolman extra fields...");
+
+    bool allChecked = true;
+    const char* entities[] = {"filament", "spool"};
+    for (const char* entity : entities) {
+        char path[48];
+        snprintf(path, sizeof(path), "/api/v1/field/%s", entity);
+        String response;
+        int code = httpGet(path, response);
+        if (code != 200) {
+            Serial.printf("SpoolmanManager: Failed to get %s fields (code=%d), will retry next sync\n", entity, code);
+            allChecked = false;
+            continue;
+        }
+
+        // Check which required keys exist for this entity
+        for (size_t i = 0; i < NUM_REQUIRED_FIELDS; i++) {
+            const auto& f = REQUIRED_EXTRA_FIELDS[i];
+            if (strcmp(f.entity, entity) != 0) continue;
+
+            // Simple substring check — look for "key":"<fieldname>" in response
+            char needle[48];
+            snprintf(needle, sizeof(needle), "\"key\":\"%s\"", f.key);
+            if (response.indexOf(needle) >= 0) continue;
+
+            // Field missing — create it via POST /api/v1/field/{entity}/{key}
+            char createPath[64];
+            snprintf(createPath, sizeof(createPath), "/api/v1/field/%s/%s", f.entity, f.key);
+            StaticJsonDocument<JSON_SMALL_CAPACITY> doc;
+            doc["name"] = f.name;
+            doc["field_type"] = "text";
+            // nfc_id needs a default empty value for Spoolman queries
+            if (strcmp(f.key, "nfc_id") == 0) {
+                doc["default_value"] = "\"\"";
+            }
+            String body;
+            serializeJson(doc, body);
+            String createResp;
+            int createCode = httpPost(createPath, body.c_str(), createResp);
+            if (createCode == 200 || createCode == 201) {
+                Serial.printf("SpoolmanManager: Created %s extra field '%s'\n", entity, f.key);
+            } else {
+                Serial.printf("SpoolmanManager: Failed to create %s field '%s' (code=%d): %s\n",
+                              entity, f.key, createCode, createResp.c_str());
+                allChecked = false;
+            }
+        }
+    }
+
+#ifndef NATIVE_TEST
+    // Only store version if all entities were checked and all fields verified/created
+    if (allChecked) {
+        Preferences prefs;
+        if (prefs.begin("spoolsense", false)) {  // read-write
+            prefs.putUChar(NVS_KEY_FIELDS_V, SPOOLMAN_FIELDS_VERSION);
+            prefs.end();
+        }
+        Serial.println("SpoolmanManager: Extra fields verified");
+    } else {
+        Serial.println("SpoolmanManager: Extra fields partially verified, will retry next sync");
+    }
+#endif
+
+    extraFieldsVerified = allChecked;
+    return allChecked;
+}
+
+// ---------------------------------------------------------------------------
+// Vendor lookup / creation
+// ---------------------------------------------------------------------------
+
 static int findOrCreateVendor(const char* name) {
     if (name == nullptr || name[0] == '\0') {
         name = "Unknown";
     }
 
-    // Search for existing vendor
-    char path[192];
-    snprintf(path, sizeof(path), "/api/v1/vendor?name=%s", name);
+    // Fetch all vendors and match client-side (Spoolman ?name= filter is unreliable)
     String response;
-    int code = httpGet(path, response);
+    int code = httpGet("/api/v1/vendor", response);
 
-    Serial.printf("SpoolmanManager: get vendor '%s' code=%d\n", name, code);
+    Serial.printf("SpoolmanManager: get vendors code=%d\n", code);
 
-    if (code == 200 || code == 201) {
-        int id = -1;
-        if (parseVendorIdByName(response.c_str(), name, id)) {
-            Serial.printf("SpoolmanManager: Found vendor '%s' id=%d\n", name, id);
-            return id;
-        }
+    if (code != 200) {
+        // Lookup failed — don't create blindly, could be transient error
+        Serial.printf("SpoolmanManager: Vendor lookup failed (code=%d), cannot resolve '%s'\n", code, name);
+        return -1;
     }
 
-    // Create new vendor
+    int id = -1;
+    if (parseVendorIdByName(response.c_str(), name, id)) {
+        Serial.printf("SpoolmanManager: Found vendor '%s' id=%d\n", name, id);
+        return id;
+    }
+
+    // Definitive miss — create new vendor
     StaticJsonDocument<JSON_SMALL_CAPACITY> createDoc;
     createDoc["name"] = name;
     String body;
     serializeJson(createDoc, body);
 
-    code = httpPost("/api/v1/vendor", body.c_str(), response);
-    if (code == 200) {
-        int id = -1;
-        if (parseIdFromObject(response.c_str(), id)) {
+    String createResp;
+    code = httpPost("/api/v1/vendor", body.c_str(), createResp);
+    if (code == 200 || code == 201) {
+        if (parseIdFromObject(createResp.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created vendor '%s' id=%d\n", name, id);
             return id;
         }
     }
 
-    Serial.printf("SpoolmanManager: Failed to create vendor '%s', code=%d\n", name, code);
+    Serial.printf("SpoolmanManager: Failed to create vendor '%s', code=%d: %s\n", name, code, createResp.c_str());
     return -1;
 }
 
@@ -670,16 +791,17 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     String body;
     serializeJson(createDoc, body);
 
-    code = httpPost("/api/v1/filament", body.c_str(), response);
+    String createResp;
+    code = httpPost("/api/v1/filament", body.c_str(), createResp);
     if (code == 200 || code == 201) {
         int id = -1;
-        if (parseIdFromObject(response.c_str(), id)) {
+        if (parseIdFromObject(createResp.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created filament material=%s id=%d\n", material, id);
             return id;
         }
     }
 
-    Serial.printf("SpoolmanManager: Failed to create filament, code=%d\n", code);
+    Serial.printf("SpoolmanManager: Failed to create filament, code=%d: %s\n", code, createResp.c_str());
     return -1;
 }
 
@@ -1329,6 +1451,13 @@ bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails
 bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId) {
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         Serial.println("SpoolmanManager: Could not acquire HTTP mutex");
+        return false;
+    }
+
+    // Ensure Spoolman has required extra fields (runs once per boot)
+    if (!ensureExtraFields()) {
+        Serial.println("SpoolmanManager: Extra fields not ready, aborting sync");
+        xSemaphoreGive(httpMutex_);
         return false;
     }
 

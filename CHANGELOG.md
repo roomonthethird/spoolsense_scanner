@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.6] - 2026-04-02
+
+### Fixed
+
+- **Spoolman extra fields auto-register** — scanner now checks and creates required Spoolman extra fields (dry_temp, dry_time_hours, aspect, nfc_id, tag_format, active_toolhead) on first sync. Versioned NVS flag skips API calls on subsequent boots. Fixes filament auto-create 400 errors on Spoolman 0.23.x. (#87)
+- **Vendor lookup deduplication** — fetch all vendors and match client-side instead of unreliable ?name= filter. Prevents duplicate vendor creation on every scan. (#87)
+- **JSON error response escaping** — sendError() now escapes quotes, backslashes, newlines, and control characters. Prevents malformed JSON responses. (#77)
+- **Write/OTA return value checks** — format-tag and TigerTag write endpoints return 503 when queue full. OTA task creation failure returns 500 and resets state. (#78)
+
+---
+
 ## [1.6.5] - 2026-04-02
 
 ### Added
