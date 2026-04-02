@@ -861,7 +861,12 @@ void WebServerManager::handleApiUpdateFromUrl() {
     _otaError[0] = '\0';
 
     Serial.printf("OTA: Free heap before task: %u\n", ESP.getFreeHeap());
-    xTaskCreatePinnedToCore(otaDownloadTask, "OTATask", 24576, this, 2, nullptr, 0);
+    BaseType_t created = xTaskCreatePinnedToCore(otaDownloadTask, "OTATask", 24576, this, 2, nullptr, 0);
+    if (created != pdPASS) {
+        _otaState = OtaState::IDLE;
+        sendError(500, "Failed to start OTA task");
+        return;
+    }
 
     _server.send(200, "application/json", "{\"success\":true,\"status\":\"started\"}");
 }
@@ -1312,7 +1317,10 @@ void WebServerManager::handleApiFormatTag() {
     req.request_id = millis();
     req.type = NFCWriteType::FORMAT_NEW;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
-    NFCManager::getInstance().enqueueWrite(req);
+    if (!NFCManager::getInstance().enqueueWrite(req)) {
+        sendError(503, "Write queue full");
+        return;
+    }
 
     _server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1402,7 +1410,10 @@ void WebServerManager::handleApiWriteTigerTag() {
     req.type = NFCWriteType::WRITE_TIGERTAG;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
     memcpy(req.data.tigertag_data, payload, 40);
-    NFCManager::getInstance().enqueueWrite(req);
+    if (!NFCManager::getInstance().enqueueWrite(req)) {
+        sendError(503, "Write queue full");
+        return;
+    }
 
     _server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1512,8 +1523,20 @@ void WebServerManager::handleApiWriteOpenTag3D() {
 
 void WebServerManager::sendError(int code, const char* msg) {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    char body[96];
-    snprintf(body, sizeof(body), "{\"success\":false,\"error\":\"%s\"}", msg);
+    // Escape quotes and backslashes in msg to produce valid JSON
+    char escaped[128];
+    size_t j = 0;
+    for (size_t i = 0; msg[i] && j < sizeof(escaped) - 2; i++) {
+        if (msg[i] == '"' || msg[i] == '\\') {
+            escaped[j++] = '\\';
+        }
+        if (j < sizeof(escaped) - 1) {
+            escaped[j++] = msg[i];
+        }
+    }
+    escaped[j] = '\0';
+    char body[192];
+    snprintf(body, sizeof(body), "{\"success\":false,\"error\":\"%s\"}", escaped);
     _server.send(code, "application/json", body);
 }
 
