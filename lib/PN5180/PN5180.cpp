@@ -600,7 +600,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 1.
-  digitalWrite(PN5180_NSS, LOW); delay(2);
+  digitalWrite(PN5180_NSS, LOW); delayMicroseconds(10);
   // 2.
   for (uint8_t i=0; i<sendBufferLen; i++) {
     pn5180_spi.transfer(sendBuffer[i]);
@@ -617,7 +617,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 4.
-  digitalWrite(PN5180_NSS, HIGH); delay(1);
+  digitalWrite(PN5180_NSS, HIGH); delayMicroseconds(10);
   // 5.
   {
     unsigned long t = millis();
@@ -635,7 +635,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   PN5180DEBUG(F("Receiving SPI frame...\n"));
 
   // 1.
-  digitalWrite(PN5180_NSS, LOW); delay(2);
+  digitalWrite(PN5180_NSS, LOW); delayMicroseconds(10);
   // 2.
   for (uint8_t i=0; i<recvBufferLen; i++) {
     recvBuffer[i] = pn5180_spi.transfer(0xff);
@@ -652,7 +652,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 4.
-  digitalWrite(PN5180_NSS, HIGH); delay(1);
+  digitalWrite(PN5180_NSS, HIGH); delayMicroseconds(10);
   // 5.
   {
     unsigned long t = millis();
