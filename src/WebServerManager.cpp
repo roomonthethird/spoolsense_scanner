@@ -80,9 +80,10 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
 
     // mDNS — only in STA mode (AP uses fixed IP 192.168.4.1)
     if (!apMode) {
-        if (MDNS.begin("spoolsense")) {
+        const char* hostname = ConfigurationManager::getInstance().getHostname();
+        if (MDNS.begin(hostname)) {
             MDNS.addService("http", "tcp", port);
-            Serial.println("WebServerManager: mDNS started (spoolsense.local)");
+            Serial.printf("WebServerManager: mDNS started (%s.local)\n", hostname);
         } else {
             Serial.println("WebServerManager: mDNS failed — reachable by IP only");
         }
@@ -689,6 +690,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_url"] = cfg.prusalink_url;
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
+    doc["hostname"] = cfg.hostname;
     doc["tft_enabled"] = cfg.tft_enabled;
     doc["ap_mode"] = _apMode;
     if (_apMode) {
@@ -738,6 +740,11 @@ void WebServerManager::handleApiPostConfig() {
     const char* nfcVal = doc["nfc_reader"] | "pn5180";
     if (strcmp(nfcVal, "pn532") != 0) nfcVal = "pn5180";  // only allow known values
     strncpy(update.nfc_reader, nfcVal, sizeof(update.nfc_reader) - 1);
+
+    // Hostname: sanitize via shared helper (lowercase alphanum + hyphens, 1-32 chars)
+    strncpy(update.hostname, doc["hostname"] | "spoolsense", sizeof(update.hostname) - 1);
+    update.hostname[sizeof(update.hostname) - 1] = '\0';
+    sanitizeHostname(update.hostname, sizeof(update.hostname));
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");

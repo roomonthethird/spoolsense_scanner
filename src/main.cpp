@@ -99,6 +99,7 @@ void initWiFi() {
     lcdManager.updateScreen("Connecting WiFi", "");
   }
 
+  WiFi.setHostname(config.getHostname());
   WiFi.begin(config.getWiFiSSID(), config.getWiFiPassword());
 
   int attempts = 0;
@@ -194,9 +195,10 @@ void checkWiFi() {
 
     // Re-initialize mDNS (IP may have changed)
     MDNS.end();
-    if (MDNS.begin("spoolsense")) {
+    const char* hostname = ConfigurationManager::getInstance().getHostname();
+    if (MDNS.begin(hostname)) {
       MDNS.addService("http", "tcp", HTTP_PORT);
-      Serial.println("WiFi: mDNS restarted (spoolsense.local)");
+      Serial.printf("WiFi: mDNS restarted (%s.local)\n", hostname);
     } else {
       Serial.println("WiFi: mDNS restart failed — reachable by IP only");
     }
