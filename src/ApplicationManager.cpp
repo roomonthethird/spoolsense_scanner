@@ -66,8 +66,10 @@ void ApplicationManager::processMessages() {
     }
 
     AppMessage msg;
-    while (xQueueReceive(messageQueue, &msg, 0) == pdTRUE) {
+    size_t processed = 0;
+    while (processed < QUEUE_SIZE && xQueueReceive(messageQueue, &msg, 0) == pdTRUE) {
         handleMessage(msg);
+        processed++;
     }
 
     if (pendingStatusAfterTagRemoved) {
@@ -384,13 +386,19 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
                  s.spool_id, s.material_name, s.material_name, colorHex,
                  s.manufacturer, s.kg_remaining * 1000.0f, s.initial_weight_g,
                  s.spoolman_id);
-        if (s.min_print_temp != 0) len += snprintf(json + len, sizeof(json) - len, ",\"min_print_temp\":%d", s.min_print_temp);
-        if (s.max_print_temp != 0) len += snprintf(json + len, sizeof(json) - len, ",\"max_print_temp\":%d", s.max_print_temp);
-        if (s.min_bed_temp != 0)   len += snprintf(json + len, sizeof(json) - len, ",\"min_bed_temp\":%d", s.min_bed_temp);
-        if (s.max_bed_temp != 0)   len += snprintf(json + len, sizeof(json) - len, ",\"max_bed_temp\":%d", s.max_bed_temp);
-        if (s.density > 0.0f)      len += snprintf(json + len, sizeof(json) - len, ",\"density\":%.2f", s.density);
-        if (s.diameter > 0.0f)     len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
-        snprintf(json + len, sizeof(json) - len, "}");
+        // Clamp len to prevent buffer overrun on conditional appends (#79)
+        if (len < 0) len = 0;
+        if (static_cast<size_t>(len) >= sizeof(json)) len = sizeof(json) - 1;
+        if (s.min_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_print_temp\":%d", s.min_print_temp);
+        if (s.max_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_print_temp\":%d", s.max_print_temp);
+        if (s.min_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_bed_temp\":%d", s.min_bed_temp);
+        if (s.max_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_bed_temp\":%d", s.max_bed_temp);
+        if (s.density > 0.0f      && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"density\":%.2f", s.density);
+        if (s.diameter > 0.0f     && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
+        // Re-clamp before closing brace — snprintf return can exceed buffer
+        if (static_cast<size_t>(len) >= sizeof(json) - 1) len = sizeof(json) - 2;
+        json[len++] = '}';
+        json[len] = '\0';
         publishToHA("tag/state", json, true);
         strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
         lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
@@ -800,7 +808,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
     // Material type
     NFCWriteRequest req;
     memset(&req, 0, sizeof(req));
-    req.request_id = millis();
+    req.request_id = NFCManager::getInstance().generateRequestId();
     req.type = NFCWriteType::CHANGE_FILAMENT_TYPE;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
     req.data.new_material_type = p.material_type;
@@ -808,7 +816,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
 
     // Color
     memset(&req, 0, sizeof(req));
-    req.request_id = millis() + 1;
+    req.request_id = NFCManager::getInstance().generateRequestId();
     req.type = NFCWriteType::CHANGE_COLOR;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
     memcpy(req.data.new_color, p.color, 4);
@@ -816,7 +824,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
 
     // Brand name
     memset(&req, 0, sizeof(req));
-    req.request_id = millis() + 2;
+    req.request_id = NFCManager::getInstance().generateRequestId();
     req.type = NFCWriteType::SET_BRAND_NAME;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
     strncpy(req.data.brand_name, p.manufacturer, sizeof(req.data.brand_name) - 1);
@@ -827,7 +835,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
         float consumed = p.initial_weight_g - p.remaining_g;
         if (consumed < 0) consumed = 0;
         memset(&req, 0, sizeof(req));
-        req.request_id = millis() + 3;
+        req.request_id = NFCManager::getInstance().generateRequestId();
         req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
         strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
         req.data.consumed_weight = consumed;
@@ -837,7 +845,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
     // Spoolman ID
     if (p.spoolman_id > 0) {
         memset(&req, 0, sizeof(req));
-        req.request_id = millis() + 4;
+        req.request_id = NFCManager::getInstance().generateRequestId();
         req.type = NFCWriteType::WRITE_SPOOLMAN_ID;
         strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
         req.data.spoolman_id = p.spoolman_id;

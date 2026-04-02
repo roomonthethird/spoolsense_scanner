@@ -69,6 +69,7 @@ public:
     void setAtomicWriteFields(const AtomicWriteFields& fields) { atomicWriteFields_ = fields; }
     bool writeSpoolmanDataToTag(int32_t spoolman_id, const char* expected_spool_id = nullptr);
     bool isRequestCompleted(uint32_t request_id);    // Check if request done
+    uint32_t generateRequestId();                    // Monotonic request ID
     void requestCurrentSpool();                      // Clear dedup to resend current spool
     bool scanOnce();                                 // Single scan cycle (for testing)
     bool getCurrentSpoolState(CurrentSpoolState& out);
@@ -130,7 +131,7 @@ private:
     // Deduplication
     void markRequestCompleted(uint32_t request_id);
     bool isDuplicateSpool(const uint8_t* uid, uint8_t uid_length);
-    uint32_t generateRequestId();
+
 
     // State
     CurrentSpoolState currentSpool;
