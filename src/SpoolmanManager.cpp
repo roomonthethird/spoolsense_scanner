@@ -604,7 +604,7 @@ static int findOrCreateVendor(const char* name) {
 
     String createResp;
     code = httpPost("/api/v1/vendor", body.c_str(), createResp);
-    if (code == 200) {
+    if (code == 200 || code == 201) {
         if (parseIdFromObject(createResp.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created vendor '%s' id=%d\n", name, id);
             return id;
