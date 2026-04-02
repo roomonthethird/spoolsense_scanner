@@ -480,23 +480,38 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
 bool PN5180::setRF_on() {
   PN5180DEBUG(F("Set RF ON\n"));
 
-  uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
+    pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+    transceiveCommand(cmd, 2);
+    pn5180_spi.endTransaction();
 
-  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
-  transceiveCommand(cmd, 2);
-  pn5180_spi.endTransaction();
-
-  {
     unsigned long t = millis();
-    while (0 == (TX_RFON_IRQ_STAT & getIRQStatus())) { // wait for RF field to set up
-      if (millis() - t > 500) {
-        PN5180DEBUG(F("TIMEOUT waiting for TX_RFON_IRQ\n"));
-        return false;
+    while (millis() - t < 200) {
+      uint32_t irq = getIRQStatus();
+      if (TX_RFON_IRQ_STAT & irq) {
+        clearIRQStatus(TX_RFON_IRQ_STAT);
+        if (attempt > 1) {
+          Serial.printf("PN5180: RF_ON succeeded after %d attempts\n", attempt);
+        }
+        return true;
       }
+      if (GENERAL_ERROR_IRQ_STAT & irq) {
+        Serial.printf("PN5180: RF_ON failed (attempt %d/3), retrying...\n", attempt);
+        clearIRQStatus(0xffffffff);
+        uint8_t offCmd[2] = { PN5180_RF_OFF, 0x00 };
+        pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+        transceiveCommand(offCmd, 2);
+        pn5180_spi.endTransaction();
+        delay(50);
+        break;
+      }
+      delay(1);
     }
   }
-  clearIRQStatus(TX_RFON_IRQ_STAT);
-  return true;
+
+  PN5180DEBUG(F("TIMEOUT waiting for TX_RFON_IRQ after 3 attempts\n"));
+  return false;
 }
 
 /*
