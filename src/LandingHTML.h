@@ -120,7 +120,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       if(d.firmware_version) document.getElementById('fwVersion').textContent = 'v' + d.firmware_version;
     }).catch(function(){});
     fetch('/api/config').then(function(r){return r.json()}).then(function(cfg){
-      if(cfg.hostname) document.getElementById('footerHostname').innerHTML = 'SpoolSense Scanner &mdash; ' + cfg.hostname + '.local';
+      if(cfg.hostname) document.getElementById('footerHostname').textContent = 'SpoolSense Scanner \u2014 ' + cfg.hostname + '.local';
     }).catch(function(){});
   </script>
 </body>
