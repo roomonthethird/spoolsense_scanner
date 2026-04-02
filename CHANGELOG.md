@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.5] - 2026-04-02
+
+### Added
+
+- **Configurable mDNS hostname** — set a custom hostname via the config page for multi-scanner setups (AFC lanes, toolchangers). Default remains `spoolsense.local`. Also sets WiFi DHCP hostname. Server-side and client-side validation. (#82)
+
+### Fixed
+
+- **snprintf buffer overflow in HA JSON** — clamped buffer length before conditional appends and closing brace in `handleSpoolDetected` to prevent memory corruption on long payloads. (#79)
+- **Monotonic NFC write request IDs** — replaced `millis()`-based IDs with centralized `NFCManager::generateRequestId()` counter to prevent collisions across batched writes. (#80)
+- **processMessages queue cap** — capped message loop at `QUEUE_SIZE` iterations to prevent timer starvation from rapid message bursts. (#81)
+
+---
+
 ## [1.6.4] - 2026-04-01
 
 ### Added
