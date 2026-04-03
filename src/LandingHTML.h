@@ -71,6 +71,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenTag3D format.</div>
       </a>
 
+      <a href="/reader" class="tool-card">
+        <img src="/img/openspool.png" alt="OpenSpool" style="height:48px;border-radius:6px" />
+        <div class="tool-name">OpenSpool</div>
+        <div class="tool-desc">Reads OpenSpool NFC tags. Write tags using the OpenSpool app.</div>
+      </a>
+
       <a href="/register/uid" class="tool-card">
         <div class="tool-icon">&#128179;</div>
         <div class="tool-name">NFC+ Registration</div>

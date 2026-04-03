@@ -40,6 +40,7 @@ private:
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
     void handleOpenTag3DLogo();
+    void handleOpenSpoolLogo();
     void handleUpdatePage();
     void handleConfigPage();
 

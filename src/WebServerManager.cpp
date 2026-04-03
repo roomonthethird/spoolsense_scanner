@@ -22,6 +22,7 @@
 #include "OpenPrintTagLogo.h"
 #include "TigerTagLogo.h"
 #include "OpenTag3DLogo.h"
+#include "OpenSpoolLogo.h"
 #include "UpdateHTML.h"
 #include "ConfigurationManager.h"
 #include "NFCManager.h"
@@ -102,6 +103,7 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/img/openprinttag.png", HTTP_GET, [this]() { handleOpenPrintTagLogo(); });
     _server.on("/img/tigertag.png",    HTTP_GET, [this]() { handleTigerTagLogo(); });
     _server.on("/img/opentag3d.png",   HTTP_GET, [this]() { handleOpenTag3DLogo(); });
+    _server.on("/img/openspool.png",   HTTP_GET, [this]() { handleOpenSpoolLogo(); });
 
     // Update page
     _server.on("/update",              HTTP_GET, [this]() { handleUpdatePage(); });
@@ -230,6 +232,11 @@ void WebServerManager::handleTigerTagLogo() {
 void WebServerManager::handleOpenTag3DLogo() {
     _server.sendHeader("Cache-Control", "public, max-age=86400");
     _server.send_P(200, "image/png", reinterpret_cast<const char*>(OPENTAG3D_LOGO_PNG), OPENTAG3D_LOGO_PNG_LEN);
+}
+
+void WebServerManager::handleOpenSpoolLogo() {
+    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.send_P(200, "image/jpeg", reinterpret_cast<const char*>(OPENSPOOL_LOGO_PNG), OPENSPOOL_LOGO_PNG_SIZE);
 }
 
 void WebServerManager::handleUpdatePage() {
