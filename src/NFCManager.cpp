@@ -1,6 +1,7 @@
 #include "NFCManager.h"
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
+#include "OpenSpoolParser.h"
 #ifndef NATIVE_TEST
   #include "ApplicationManager.h"
   #include "HardwareNFCConnection.h"
@@ -310,10 +311,12 @@ void NFCManager::scanLoop() {
                     Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
                     sendGenericTagMessage();
                 } else if (scan.kind == TagKind::GenericUidTag) {
-                    // ISO14443A tag — try TigerTag, then OpenTag3D, fall back to UID-only
+                    // ISO14443A tag — try TigerTag, then OpenTag3D, then OpenSpool, fall back to UID-only
                     bool isTigerTag = false;
                     bool isOpenTag3D = false;
+                    bool isOpenSpool = false;
                     TigerTagData tigerData;
+                    OpenSpoolData openSpoolData;
                     opentag3d_t ot3dData;
                     memset(&tigerData, 0, sizeof(tigerData));
                     memset(&ot3dData, 0, sizeof(ot3dData));
@@ -414,6 +417,51 @@ void NFCManager::scanLoop() {
                                                 }
                                             }
                                         }
+
+                                        // Check for OpenSpool (application/json + "protocol":"openspool")
+                                        if (!isOpenTag3D) {
+                                            const char* jsonMime = "application/json";
+                                            size_t jsonMimeLen = strlen(jsonMime);
+                                            if (typeLen == jsonMimeLen &&
+                                                memcmp(pageData + ndefStart + headerSize, jsonMime, jsonMimeLen) == 0) {
+                                                uint32_t osPayloadLen = 0;
+                                                if (sr) {
+                                                    osPayloadLen = pageData[ndefStart + 2];
+                                                } else {
+                                                    osPayloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
+                                                                   ((uint32_t)pageData[ndefStart + 3] << 16) |
+                                                                   ((uint32_t)pageData[ndefStart + 4] << 8) |
+                                                                   pageData[ndefStart + 5];
+                                                }
+                                                uint16_t osOffset = ndefStart + headerSize + typeLen;
+                                                uint8_t osPayload[256] = {0};
+                                                uint16_t osBytes = 0;
+
+                                                if (osOffset + osPayloadLen <= bytesRead) {
+                                                    osBytes = (uint16_t)osPayloadLen;
+                                                    if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
+                                                    memcpy(osPayload, pageData + osOffset, osBytes);
+                                                } else {
+                                                    uint8_t osStartPage = 4 + (osOffset / 4);
+                                                    uint16_t osPagesNeeded = (uint16_t)((osPayloadLen + 3) / 4) + 1;
+                                                    if (osPagesNeeded > 50) osPagesNeeded = 50;
+                                                    uint8_t osExtData[256] = {0};
+                                                    uint16_t osExtRead = connection_->readISO14443Pages(
+                                                        osStartPage, (uint8_t)osPagesNeeded, osExtData, sizeof(osExtData));
+                                                    uint16_t osOffInPage = osOffset % 4;
+                                                    if (osExtRead > osOffInPage) {
+                                                        osBytes = osExtRead - osOffInPage;
+                                                        if (osBytes > osPayloadLen) osBytes = (uint16_t)osPayloadLen;
+                                                        if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
+                                                        memcpy(osPayload, osExtData + osOffInPage, osBytes);
+                                                    }
+                                                }
+
+                                                if (osBytes > 0 && parseOpenSpool(osPayload, osBytes, openSpoolData)) {
+                                                    isOpenSpool = true;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 break;
@@ -449,14 +497,26 @@ void NFCManager::scanLoop() {
                             lastOpenTag3D_ = ot3dData;
                             lastOpenTag3DValid_ = true;
                             lastTigerTagValid_ = false;
+                            lastOpenSpoolValid_ = false;
                             Serial.printf("NFCManager: OpenTag3D detected — %s %s %.2fmm %ug\n",
                                           ot3dData.manufacturer, ot3dData.base_material,
                                           opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
+                        } else if (isOpenSpool) {
+                            currentSpool.kind = TagKind::OpenSpoolTag;
+                            currentSpool.tag_data_valid = false;
+                            lastOpenSpool_ = openSpoolData;
+                            lastOpenSpoolValid_ = true;
+                            lastTigerTagValid_ = false;
+                            lastOpenTag3DValid_ = false;
+                            Serial.printf("NFCManager: OpenSpool detected — %s %s #%s\n",
+                                          openSpoolData.brand, openSpoolData.material,
+                                          openSpoolData.color_hex);
                         } else {
                             currentSpool.kind = TagKind::GenericUidTag;
                             currentSpool.tag_data_valid = false;
                             lastTigerTagValid_ = false;
                             lastOpenTag3DValid_ = false;
+                            lastOpenSpoolValid_ = false;
                         }
                         xSemaphoreGive(tagMutex);
                     } else {
@@ -467,6 +527,8 @@ void NFCManager::scanLoop() {
                         sendTigerTagMessage(tigerData);
                     } else if (isOpenTag3D) {
                         sendOpenTag3DMessage(ot3dData);
+                    } else if (isOpenSpool) {
+                        sendOpenSpoolMessage(currentSpool.spool_id, openSpoolData);
                     } else {
                         sendGenericTagMessage();
                     }
@@ -1088,6 +1150,56 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
     if (ot3d.has_extended) {
         Serial.printf("  dry:          %d°C / %dh\n", s.dry_temp, s.dry_time_hours);
     }
+    Serial.println("---------------------------------------");
+
+    ApplicationManager::getInstance().sendMessage(msg);
+}
+
+void NFCManager::sendOpenSpoolMessage(const char* uid, const OpenSpoolData& os) {
+    AppMessage msg;
+    msg.type = AppMessageType::SPOOL_DETECTED;
+    auto& s = msg.payload.spoolDetected;
+    memset(&s, 0, sizeof(s));
+
+    strncpy(s.spool_id, uid, sizeof(s.spool_id) - 1);
+    strncpy(s.manufacturer, os.brand, sizeof(s.manufacturer) - 1);
+    strncpy(s.material_name, os.material, sizeof(s.material_name) - 1);
+
+    // Material type lookup
+    s.material_type = 0;
+    if (strcasecmp(os.material, "PLA") == 0) s.material_type = OPT_MATERIAL_TYPE_PLA;
+    else if (strcasecmp(os.material, "PETG") == 0) s.material_type = OPT_MATERIAL_TYPE_PETG;
+    else if (strcasecmp(os.material, "ABS") == 0) s.material_type = OPT_MATERIAL_TYPE_ABS;
+    else if (strcasecmp(os.material, "ASA") == 0) s.material_type = OPT_MATERIAL_TYPE_ASA;
+    else if (strcasecmp(os.material, "TPU") == 0) s.material_type = OPT_MATERIAL_TYPE_TPU;
+    else if (strcasecmp(os.material, "PA") == 0 || strcasecmp(os.material, "Nylon") == 0) s.material_type = OPT_MATERIAL_TYPE_PA6;
+    else if (strcasecmp(os.material, "PC") == 0) s.material_type = OPT_MATERIAL_TYPE_PC;
+
+    // Parse color hex to RGB
+    if (strlen(os.color_hex) == 6) {
+        unsigned int r, g, b;
+        if (sscanf(os.color_hex, "%02x%02x%02x", &r, &g, &b) == 3) {
+            s.primary_color[0] = (uint8_t)r;
+            s.primary_color[1] = (uint8_t)g;
+            s.primary_color[2] = (uint8_t)b;
+            s.primary_color[3] = 255;
+            s.has_color = true;
+        }
+    }
+
+    s.min_print_temp = os.min_temp;
+    s.max_print_temp = os.max_temp;
+
+    strncpy(s.tag_format, "OpenSpool", sizeof(s.tag_format) - 1);
+    s.spoolman_id = -1;
+
+    Serial.println("--- OpenSpool SpoolDetected payload ---");
+    Serial.printf("  uid:          %s\n", s.spool_id);
+    Serial.printf("  brand:        %s\n", s.manufacturer);
+    Serial.printf("  material:     %s\n", s.material_name);
+    Serial.printf("  color:        #%s\n", os.color_hex);
+    Serial.printf("  nozzle:       %d-%d°C\n", s.min_print_temp, s.max_print_temp);
+    Serial.printf("  version:      %s\n", os.version);
     Serial.println("---------------------------------------");
 
     ApplicationManager::getInstance().sendMessage(msg);
