@@ -762,9 +762,9 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     }
     createDoc["vendor_id"] = vendorId;
     createDoc["material"] = material;
-    createDoc["density"] = req.density;
-    createDoc["diameter"] = req.diameter;
-    createDoc["weight"] = req.initial_weight_g;
+    if (req.density > 0) createDoc["density"] = req.density;
+    if (req.diameter > 0) createDoc["diameter"] = req.diameter;
+    if (req.initial_weight_g > 0) createDoc["weight"] = req.initial_weight_g;
     createDoc["color_hex"] = colorHex;
 
     // Spoolman built-in temperature fields — average min/max from tag
@@ -832,8 +832,9 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
 
     StaticJsonDocument<JSON_MEDIUM_CAPACITY> doc;
     doc["filament_id"] = filamentId;
-    doc["remaining_weight"] = req.remaining_weight_g;
-    doc["initial_weight"] = req.initial_weight_g;
+    // Spoolman 0.23.x rejects weight fields with value 0 — omit when not set
+    if (req.remaining_weight_g > 0) doc["remaining_weight"] = req.remaining_weight_g;
+    if (req.initial_weight_g > 0) doc["initial_weight"] = req.initial_weight_g;
 
     // Spoolman expects extra field values to be valid JSON — wrap the string in quotes
     char nfcIdJson[34];
@@ -1572,10 +1573,16 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
         if (oldSpoolId > 0) {
             if (shouldArchiveAndReplace(oldSpoolId, filamentId, req)) {
                 // Filament changed or weight jump — archive old, create new
-                archiveSpool(oldSpoolId);
-                invalidateCachedSpoolmanId(req.spool_id);
-                spoolId = createSpool(filamentId, req);
-                success = (spoolId >= 0);
+                if (archiveSpool(oldSpoolId)) {
+                    invalidateCachedSpoolmanId(req.spool_id);
+                    spoolId = createSpool(filamentId, req);
+                    success = (spoolId >= 0);
+                } else {
+                    // Archive failed — reuse old spool to prevent duplicate
+                    Serial.printf("SpoolmanManager: Archive failed, reusing spool %d to prevent duplicate\n", oldSpoolId);
+                    spoolId = oldSpoolId;
+                    success = updateSpool(spoolId, filamentId, req.remaining_weight_g);
+                }
             } else {
                 // Same effective filament — reuse existing spool, update it
                 Serial.printf("SpoolmanManager: Reusing existing spool %d (same nfc_id, no archive needed)\n", oldSpoolId);
@@ -1590,10 +1597,14 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     } else {
         // Same filament + same nfc_id — check for weight jump (same type, fresh spool)
         if (shouldArchiveAndReplace(spoolId, filamentId, req)) {
-            archiveSpool(spoolId);
-            invalidateCachedSpoolmanId(req.spool_id);
-            spoolId = createSpool(filamentId, req);
-            success = (spoolId >= 0);
+            if (archiveSpool(spoolId)) {
+                invalidateCachedSpoolmanId(req.spool_id);
+                spoolId = createSpool(filamentId, req);
+                success = (spoolId >= 0);
+            } else {
+                Serial.printf("SpoolmanManager: Archive failed, keeping spool %d\n", spoolId);
+                success = updateSpool(spoolId, filamentId, req.remaining_weight_g);
+            }
         } else {
             // Check sync cache — skip PATCH if nothing changed
             if (isSyncCacheHit(req.spool_id, spoolId, filamentId, req.remaining_weight_g)) {
