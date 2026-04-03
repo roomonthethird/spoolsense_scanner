@@ -276,6 +276,62 @@ bool PN5180::readEEprom(uint8_t addr, uint8_t *buffer, int len) {
 }
 
 /*
+ * Attempt to recover from a stuck transceiver state.
+ * Step 1: IDLE command to abort stuck receive/transmit
+ * Step 2: Hardware reset with escalating delays (50µs → 1ms → 10ms)
+ */
+bool PN5180::recoverTransceiver() {
+    // Step 1: Send IDLE command to abort stuck receive/transmit
+    uint8_t cmd[2] = { PN5180_SWITCH_MODE, 0x00 };
+    pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+    transceiveCommand(cmd, 2);
+    pn5180_spi.endTransaction();
+
+    // Wait for state to return to idle
+    unsigned long t = millis();
+    while (millis() - t < 10) {
+        PN5180TransceiveStat state = getTransceiveState();
+        if (state == PN5180_TS_Idle || state == PN5180_TS_WaitTransmit) {
+            Serial.println("PN5180: recovered via IDLE command");
+            clearIRQStatus(0xffffffff);
+            loadRFConfig(0x00, 0x80);
+            setRF_on();
+            return true;
+        }
+        delay(1);
+    }
+
+    // Step 2: Hardware reset with escalating delays
+    static const uint16_t resetDelaysUs[] = { 50, 1000, 10000 };
+    static const uint16_t waitDelaysMs[] = { 10, 50, 100 };
+
+    for (int attempt = 0; attempt < 3; attempt++) {
+        Serial.printf("PN5180: hardware reset attempt %d/3 (delay %dms)\n",
+                      attempt + 1, waitDelaysMs[attempt]);
+
+        digitalWrite(PN5180_RST, LOW);
+        delayMicroseconds(resetDelaysUs[attempt]);
+        digitalWrite(PN5180_RST, HIGH);
+        delay(waitDelaysMs[attempt]);
+
+        t = millis();
+        while (millis() - t < 200) {
+            if (IDLE_IRQ_STAT & getIRQStatus()) {
+                clearIRQStatus(0xffffffff);
+                Serial.printf("PN5180: recovered via hardware reset (attempt %d)\n", attempt + 1);
+                loadRFConfig(0x00, 0x80);
+                setRF_on();
+                return true;
+            }
+            delay(1);
+        }
+    }
+
+    Serial.println("PN5180: recovery failed after 3 reset attempts");
+    return false;
+}
+
+/*
  * SEND_DATA - 0x09
  * This command writes data to the RF transmission buffer and starts the RF transmission.
  * The parameter 'Number of valid bits in last Byte' indicates the exact number of bits to be
@@ -327,9 +383,11 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
 
   PN5180TransceiveStat transceiveState = getTransceiveState();
   if (PN5180_TS_WaitTransmit != transceiveState) {
-    Serial.printf("PN5180: sendData FAILED - transceiver state=%d (expected %d=WaitTransmit)\n",
-                  (int)transceiveState, (int)PN5180_TS_WaitTransmit);
-    return false;
+    Serial.printf("PN5180: bad state %d, attempting recovery...\n", (int)transceiveState);
+    if (!recoverTransceiver()) {
+        Serial.println("PN5180: sendData FAILED - recovery unsuccessful");
+        return false;
+    }
   }
 
   pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
@@ -422,23 +480,38 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
 bool PN5180::setRF_on() {
   PN5180DEBUG(F("Set RF ON\n"));
 
-  uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
+    pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+    transceiveCommand(cmd, 2);
+    pn5180_spi.endTransaction();
 
-  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
-  transceiveCommand(cmd, 2);
-  pn5180_spi.endTransaction();
-
-  {
     unsigned long t = millis();
-    while (0 == (TX_RFON_IRQ_STAT & getIRQStatus())) { // wait for RF field to set up
-      if (millis() - t > 500) {
-        PN5180DEBUG(F("TIMEOUT waiting for TX_RFON_IRQ\n"));
-        return false;
+    while (millis() - t < 200) {
+      uint32_t irq = getIRQStatus();
+      if (TX_RFON_IRQ_STAT & irq) {
+        clearIRQStatus(TX_RFON_IRQ_STAT);
+        if (attempt > 1) {
+          Serial.printf("PN5180: RF_ON succeeded after %d attempts\n", attempt);
+        }
+        return true;
       }
+      if (GENERAL_ERROR_IRQ_STAT & irq) {
+        Serial.printf("PN5180: RF_ON failed (attempt %d/3), retrying...\n", attempt);
+        clearIRQStatus(0xffffffff);
+        uint8_t offCmd[2] = { PN5180_RF_OFF, 0x00 };
+        pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+        transceiveCommand(offCmd, 2);
+        pn5180_spi.endTransaction();
+        delay(50);
+        break;
+      }
+      delay(1);
     }
   }
-  clearIRQStatus(TX_RFON_IRQ_STAT);
-  return true;
+
+  PN5180DEBUG(F("TIMEOUT waiting for TX_RFON_IRQ after 3 attempts\n"));
+  return false;
 }
 
 /*
@@ -527,7 +600,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 1.
-  digitalWrite(PN5180_NSS, LOW); delay(2);
+  digitalWrite(PN5180_NSS, LOW); delayMicroseconds(10);
   // 2.
   for (uint8_t i=0; i<sendBufferLen; i++) {
     pn5180_spi.transfer(sendBuffer[i]);
@@ -544,7 +617,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 4.
-  digitalWrite(PN5180_NSS, HIGH); delay(1);
+  digitalWrite(PN5180_NSS, HIGH); delayMicroseconds(10);
   // 5.
   {
     unsigned long t = millis();
@@ -562,7 +635,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   PN5180DEBUG(F("Receiving SPI frame...\n"));
 
   // 1.
-  digitalWrite(PN5180_NSS, LOW); delay(2);
+  digitalWrite(PN5180_NSS, LOW); delayMicroseconds(10);
   // 2.
   for (uint8_t i=0; i<recvBufferLen; i++) {
     recvBuffer[i] = pn5180_spi.transfer(0xff);
@@ -579,7 +652,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
     }
   }
   // 4.
-  digitalWrite(PN5180_NSS, HIGH); delay(1);
+  digitalWrite(PN5180_NSS, HIGH); delayMicroseconds(10);
   // 5.
   {
     unsigned long t = millis();
