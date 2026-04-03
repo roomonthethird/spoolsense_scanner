@@ -9,7 +9,7 @@ struct DisplaySpoolData {
     char colorHex[8];        // "RRGGBB" no leading #
     float remainingWeight;   // grams
     float totalWeight;       // grams
-    uint8_t tagType;         // 0=unknown, 1=OpenPrintTag, 2=TigerTag, 3=OpenTag3D, 4=Bambu, 5=NFC+
+    uint8_t tagType;         // 0=unknown, 1=OpenPrintTag, 2=TigerTag, 3=OpenTag3D, 4=Bambu, 5=NFC+, 6=OpenSpool
 };
 
 // Display interface — implemented by LCDManager and TFTManager.
