@@ -32,9 +32,7 @@
 #define RX_WAIT_CONFIG      (0x11)
 #define CRC_RX_CONFIG       (0x12)
 #define RX_STATUS           (0x13)
-#define RX_BYTES_RECEIVED_MASK          (0x1FF)
-#define RX_STATUS_DATA_INTEGRITY_ERROR  (1<<17)
-#define RX_STATUS_PROTOCOL_ERROR        (1<<18)
+#define RX_BYTES_RECEIVED_MASK (0x1FF)
 #define CRC_TX_CONFIG       (0x19)
 #define RF_STATUS           (0x1d)
 #define SYSTEM_STATUS       (0x24)
@@ -146,7 +144,6 @@ public:
    */
 private:
   bool transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer = 0, size_t recvBufferLen = 0);
-  bool recoverTransceiver();
 
 };
 
