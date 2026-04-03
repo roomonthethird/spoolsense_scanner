@@ -1567,16 +1567,26 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
 
     if (spoolId < 0) {
         // No spool with this nfc_id under the new filament.
-        // Check if another spool (different filament) has this nfc_id — archive it.
+        // Check if another spool (different filament) has this nfc_id.
         int oldSpoolId = findSpoolByUuidGlobal(req.spool_id);
         if (oldSpoolId > 0) {
             if (shouldArchiveAndReplace(oldSpoolId, filamentId, req)) {
+                // Filament changed or weight jump — archive old, create new
                 archiveSpool(oldSpoolId);
                 invalidateCachedSpoolmanId(req.spool_id);
+                spoolId = createSpool(filamentId, req);
+                success = (spoolId >= 0);
+            } else {
+                // Same effective filament — reuse existing spool, update it
+                Serial.printf("SpoolmanManager: Reusing existing spool %d (same nfc_id, no archive needed)\n", oldSpoolId);
+                spoolId = oldSpoolId;
+                success = updateSpool(spoolId, filamentId, req.remaining_weight_g);
             }
+        } else {
+            // No existing spool anywhere — create new
+            spoolId = createSpool(filamentId, req);
+            success = (spoolId >= 0);
         }
-        spoolId = createSpool(filamentId, req);
-        success = (spoolId >= 0);
     } else {
         // Same filament + same nfc_id — check for weight jump (same type, fresh spool)
         if (shouldArchiveAndReplace(spoolId, filamentId, req)) {
