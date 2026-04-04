@@ -233,11 +233,35 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
 
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
 
+          <div id="readPrompt" class="hidden write-warning" style="background:#0d2a1a;border-color:#2a7a4a;color:#4adf8a;text-align:center;padding:10px">
+            Place tag on reader&hellip; <span style="font-size:11px;color:#5a9a6a">hold still until detected</span>
+          </div>
+
           <div class="actions">
             <button type="submit" class="btn-primary" id="writeBtn">Write Tag</button>
+            <button type="button" class="btn-secondary" id="readBtn">Read</button>
             <button type="reset" class="btn-ghost">Clear</button>
           </div>
+          <p class="card-subtitle" style="margin-top:4px;font-size:11px">
+            Use <strong>Read</strong> to load an existing tag before overwriting.
+          </p>
         </form>
+
+        <div id="spoolmanEnrichment" class="hidden" style="margin-top:16px;padding:14px;background:var(--card-alt,#1e1e35);border:1px solid var(--blue,#4a9eff);border-radius:8px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="color:var(--blue,#4a9eff);font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Spoolman Enrichment</span>
+            <span id="spoolmanMatchBadge" class="hidden" style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;padding:0 6px;color:#4a9eff;font-size:10px"></span>
+          </div>
+          <p class="card-subtitle" style="font-size:11px;margin-bottom:10px">
+            Spoolman-tracked remaining weight &mdash; saved to Spoolman on write.
+          </p>
+          <div class="grid-2">
+            <div class="field">
+              <label for="enrich-remaining">Remaining Weight (g)</label>
+              <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="0" max="10000" />
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
