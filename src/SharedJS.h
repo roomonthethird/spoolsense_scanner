@@ -386,12 +386,17 @@ function renderSpoolmanPicker(containerId, fieldMap) {
       container.innerHTML =
         '<div style="font-weight:600;color:var(--accent);margin-bottom:8px">Import from Spoolman</div>' +
         '<input type="text" id="spoolmanPickerSearch" placeholder="Search spools..." style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em;box-sizing:border-box;margin-bottom:8px" />' +
-        '<div id="spoolmanPickerResults" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>';
+        '<div id="spoolmanPickerResults" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;display:none"></div>';
 
       document.getElementById('spoolmanPickerSearch').addEventListener('input', function() {
-        filterSpoolmanPicker(spools, this.value, fieldMap);
+        var results = document.getElementById('spoolmanPickerResults');
+        if (this.value.length > 0) {
+          results.style.display = '';
+          filterSpoolmanPicker(spools, this.value, fieldMap);
+        } else {
+          results.style.display = 'none';
+        }
       });
-      filterSpoolmanPicker(spools, '', fieldMap);
     })
     .catch(function() {
       container.innerHTML = '<div style="padding:12px;opacity:0.6;font-size:0.9em">Configure Spoolman in <a href="/config" style="color:var(--accent)">settings</a> to import spool data.</div>';

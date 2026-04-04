@@ -90,6 +90,34 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
             </div>
           </section>
 
+          <div id="spoolmanEnrichment" class="hidden" style="margin-top:16px;padding:14px;background:var(--card-alt,#1e1e35);border:1px solid var(--blue,#4a9eff);border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="color:var(--blue,#4a9eff);font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Spoolman Enrichment</span>
+              <span id="spoolmanMatchBadge" class="hidden" style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;padding:0 6px;color:#4a9eff;font-size:10px"></span>
+            </div>
+            <p class="card-subtitle" style="font-size:11px;margin-bottom:10px">
+              Extra data Spoolman stores that OpenSpool format cannot &mdash; saved to Spoolman on write.
+            </p>
+            <div class="grid-2">
+              <div class="field">
+                <label for="enrich-bed-temp">Bed Temp (&deg;C)</label>
+                <input id="enrich-bed-temp" type="number" placeholder="e.g. 60" min="0" max="150" />
+              </div>
+              <div class="field">
+                <label for="enrich-diameter">Diameter (mm)</label>
+                <input id="enrich-diameter" type="number" placeholder="1.75" min="0.1" max="5" step="0.01" />
+              </div>
+              <div class="field">
+                <label for="enrich-density">Density (g/cm&sup3;)</label>
+                <input id="enrich-density" type="number" placeholder="1.24" min="0.1" max="5" step="0.001" />
+              </div>
+              <div class="field">
+                <label for="enrich-remaining">Remaining Weight (g)</label>
+                <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="0" max="10000" />
+              </div>
+            </div>
+          </div>
+
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
 
           <div id="readPrompt" class="hidden write-warning" style="background:#0d2a1a;border-color:#2a7a4a;color:#4adf8a;text-align:center;padding:10px">
@@ -105,34 +133,6 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
             Use <strong>Read</strong> to load an existing tag before overwriting.
           </p>
         </form>
-
-        <div id="spoolmanEnrichment" class="hidden" style="margin-top:16px;padding:14px;background:var(--card-alt,#1e1e35);border:1px solid var(--blue,#4a9eff);border-radius:8px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span style="color:var(--blue,#4a9eff);font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Spoolman Enrichment</span>
-            <span id="spoolmanMatchBadge" class="hidden" style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;padding:0 6px;color:#4a9eff;font-size:10px"></span>
-          </div>
-          <p class="card-subtitle" style="font-size:11px;margin-bottom:10px">
-            Extra data Spoolman stores that OpenSpool format cannot &mdash; saved to Spoolman on write.
-          </p>
-          <div class="grid-2">
-            <div class="field">
-              <label for="enrich-bed-temp">Bed Temp (&deg;C)</label>
-              <input id="enrich-bed-temp" type="number" placeholder="e.g. 60" min="0" max="150" />
-            </div>
-            <div class="field">
-              <label for="enrich-diameter">Diameter (mm)</label>
-              <input id="enrich-diameter" type="number" placeholder="1.75" min="0.1" max="5" step="0.01" />
-            </div>
-            <div class="field">
-              <label for="enrich-density">Density (g/cm&sup3;)</label>
-              <input id="enrich-density" type="number" placeholder="1.24" min="0.1" max="5" step="0.001" />
-            </div>
-            <div class="field">
-              <label for="enrich-remaining">Remaining Weight (g)</label>
-              <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="0" max="10000" />
-            </div>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -219,15 +219,14 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       remaining: 'enrich-remaining'
     });
 
-    // Show enrichment section if Spoolman is configured (spools endpoint succeeds)
-    (async function() {
-      try {
-        var r = await fetch('/api/spoolman/spools');
-        if (r.ok) {
-          document.getElementById('spoolmanEnrichment').classList.remove('hidden');
-        }
-      } catch(e) {}
-    })();
+    // Show enrichment section once spool picker loads (confirms Spoolman is configured)
+    var _enrichCheck = setInterval(function() {
+      if (document.querySelector('#spoolmanPickerSearch')) {
+        document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        clearInterval(_enrichCheck);
+      }
+    }, 500);
+    setTimeout(function() { clearInterval(_enrichCheck); }, 15000);
 
     var readBtn = document.getElementById('readBtn');
     var writeBtn = document.getElementById('writeBtn');

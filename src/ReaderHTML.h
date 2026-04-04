@@ -372,6 +372,26 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       poll();
     }
 
+    var lastTagStatus = null;
+
+    function pollForEnrichment() {
+      var attempts = 0;
+      var timer = setInterval(function() {
+        attempts++;
+        if (attempts > 8) { clearInterval(timer); return; }
+        api('/api/status').then(function(s) {
+          if (s.spoolman) {
+            // Merge enrichment into last tag status and re-render
+            if (lastTagStatus) {
+              lastTagStatus.spoolman = s.spoolman;
+              render(lastTagStatus);
+            }
+            clearInterval(timer);
+          }
+        }).catch(function(){});
+      }, 1000);
+    }
+
     function poll() {
       api('/api/status').then(function(s){
         if (s.present) {
@@ -380,8 +400,13 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
           var isGenericPending = (s.tag_kind === 'GenericUidTag') && !s.material_name;
           if (!tagFound && !isGenericPending) {
             tagFound = true;
+            lastTagStatus = s;
             stopPolling();
             scanBtn.classList.remove('hidden');
+            // Smart tags: poll in background for enrichment data
+            if (s.tag_kind && s.tag_kind !== 'GenericUidTag' && !s.spoolman) {
+              pollForEnrichment();
+            }
           } else if (!tagFound) {
             // Still waiting for Spoolman lookup — keep polling
             render(s);

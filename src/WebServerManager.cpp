@@ -1203,6 +1203,20 @@ void WebServerManager::handleApiStatus() {
         doc["tag_data_valid"] = false;
     }
 
+    // Include enrichment even when tag is not present (persists until next scan)
+    {
+        SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
+        if (enrichment.valid && !doc.containsKey("spoolman")) {
+            JsonObject sp = doc.createNestedObject("spoolman");
+            sp["spool_id"] = enrichment.spoolman_id;
+            sp["remaining_g"] = enrichment.remaining_g;
+            if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
+            if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
+            if (enrichment.density > 0) sp["density"] = enrichment.density;
+            if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
+        }
+    }
+
     String body;
     serializeJson(doc, body);
     _server.send(200, "application/json", body);

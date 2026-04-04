@@ -816,7 +816,8 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     Serial.printf("EVENT: TagRemoved - spool_id=%s\n",
         msg.payload.tagRemoved.spool_id);
 
-    smartTagEnrichment_ = SmartTagEnrichment{};
+    // smartTagEnrichment_ NOT cleared here — persists until next tag scan
+    // so the reader page can pick it up even after tag removal
 
     // LED intentionally not changed — keep showing last filament color until next scan
 
