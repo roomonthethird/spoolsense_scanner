@@ -33,6 +33,7 @@
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
 #include "HomeAssistantManager.h"
+#include "SpoolmanManager.h"
 #include "DisplayI.h"
 
 // Shared HTTP mutex — serializes all outbound HTTP requests across tasks
@@ -133,6 +134,9 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
     _server.on("/api/spoolman/spools", HTTP_GET,  [this]() { handleApiSpoolmanSpools(); });
     _server.on("/api/spoolman/link",   HTTP_POST, [this]() { handleApiSpoolmanLink(); });
+    _server.on("/api/spoolman/find-vendor",     HTTP_GET,  [this]() { handleApiSpoolmanFindVendor(); });
+    _server.on("/api/spoolman/find-filament",   HTTP_GET,  [this]() { handleApiSpoolmanFindFilament(); });
+    _server.on("/api/spoolman/save-enrichment", HTTP_POST, [this]() { handleApiSpoolmanSaveEnrichment(); });
 
     // Captive portal detection endpoints (AP mode)
     if (apMode) {
@@ -1018,7 +1022,7 @@ void WebServerManager::handleApiStatus() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     CurrentSpoolState state;
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<1536> doc;
 
     // Always include device ID and firmware version
     char deviceId[8];
@@ -1175,6 +1179,24 @@ void WebServerManager::handleApiStatus() {
             if (opt_get_preheat_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["preheat_temp"] = t;
             if (opt_get_min_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["min_bed_temp"] = t;
             if (opt_get_max_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["max_bed_temp"] = t;
+        }
+
+        // Smart tag enrichment — include Spoolman data if available
+        {
+            SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
+            if (enrichment.valid &&
+                (state.kind == TagKind::TigerTag ||
+                 state.kind == TagKind::OpenTag3D ||
+                 state.kind == TagKind::OpenSpoolTag ||
+                 state.kind == TagKind::OpenPrintTag)) {
+                JsonObject sp = doc.createNestedObject("spoolman");
+                sp["spool_id"] = enrichment.spoolman_id;
+                sp["remaining_g"] = enrichment.remaining_g;
+                if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
+                if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
+                if (enrichment.density > 0) sp["density"] = enrichment.density;
+                if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
+            }
         }
     } else {
         doc["present"] = false;
@@ -1589,6 +1611,375 @@ void WebServerManager::handleApiWriteOpenSpool() {
     }
 
     _server.send(200, "application/json", "{\"success\":true}");
+}
+
+// ---------------------------------------------------------------------------
+// API: Spoolman enrichment — find-vendor, find-filament, save-enrichment
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiSpoolmanFindVendor() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    String name = _server.arg("name");
+    if (name.isEmpty()) {
+        _server.send(400, "application/json", "{\"error\":\"name required\"}");
+        return;
+    }
+
+    if (!SpoolmanManager::getInstance().isConfigured()) {
+        _server.send(503, "application/json", "{\"error\":\"Spoolman not configured\"}");
+        return;
+    }
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    String encoded = urlEncode(name.c_str());
+    char url[256];
+    snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encoded.c_str());
+
+    http.begin(client, url);
+    http.setTimeout(5000);
+    int code = http.GET();
+    if (code != 200) {
+        http.end();
+        xSemaphoreGive(g_httpMutex);
+        _server.send(200, "application/json", "{\"found\":false}");
+        return;
+    }
+
+    String resp = http.getString();
+    http.end();
+
+    // Search array for case-insensitive name match
+    DynamicJsonDocument doc(2048);
+    if (deserializeJson(doc, resp)) {
+        xSemaphoreGive(g_httpMutex);
+        _server.send(200, "application/json", "{\"found\":false}");
+        return;
+    }
+
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject v : arr) {
+        const char* vname = v["name"] | "";
+        if (strcasecmp(vname, name.c_str()) == 0) {
+            StaticJsonDocument<128> result;
+            result["found"] = true;
+            result["id"] = v["id"] | -1;
+            result["name"] = vname;
+            String out;
+            serializeJson(result, out);
+            xSemaphoreGive(g_httpMutex);
+            _server.send(200, "application/json", out);
+            return;
+        }
+    }
+
+    xSemaphoreGive(g_httpMutex);
+    _server.send(200, "application/json", "{\"found\":false}");
+}
+
+void WebServerManager::handleApiSpoolmanFindFilament() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    String vendorId = _server.arg("vendor_id");
+    String material = _server.arg("material");
+    String colorHex = _server.arg("color_hex");
+
+    if (vendorId.isEmpty() || material.isEmpty()) {
+        _server.send(400, "application/json", "{\"error\":\"vendor_id and material required\"}");
+        return;
+    }
+
+    if (!SpoolmanManager::getInstance().isConfigured()) {
+        _server.send(503, "application/json", "{\"error\":\"Spoolman not configured\"}");
+        return;
+    }
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    char url[256];
+    snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%s&material=%s",
+             baseUrl, vendorId.c_str(), urlEncode(material.c_str()).c_str());
+
+    http.begin(client, url);
+    http.setTimeout(5000);
+    int code = http.GET();
+    if (code != 200) {
+        http.end();
+        xSemaphoreGive(g_httpMutex);
+        _server.send(200, "application/json", "{\"found\":false}");
+        return;
+    }
+
+    String resp = http.getString();
+    http.end();
+
+    // Use DynamicJsonDocument for potentially large filament list
+    DynamicJsonDocument doc(4096);
+    if (deserializeJson(doc, resp)) {
+        xSemaphoreGive(g_httpMutex);
+        _server.send(200, "application/json", "{\"found\":false}");
+        return;
+    }
+
+    // Return the first filament that matches vendor + material (optionally color)
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject f : arr) {
+        const char* fmat = f["material"] | "";
+        if (strcasecmp(fmat, material.c_str()) == 0) {
+            if (!colorHex.isEmpty()) {
+                const char* fc = f["color_hex"] | "";
+                const char* cmp = colorHex.c_str();
+                if (cmp[0] == '#') cmp++;
+                if (strcasecmp(fc[0] == '#' ? fc + 1 : fc, cmp) != 0) continue;
+            }
+            StaticJsonDocument<256> result;
+            result["found"] = true;
+            result["id"] = f["id"] | -1;
+            result["name"] = f["name"] | "";
+            result["material"] = fmat;
+            result["color_hex"] = f["color_hex"] | "";
+            String out;
+            serializeJson(result, out);
+            xSemaphoreGive(g_httpMutex);
+            _server.send(200, "application/json", out);
+            return;
+        }
+    }
+
+    xSemaphoreGive(g_httpMutex);
+    _server.send(200, "application/json", "{\"found\":false}");
+}
+
+void WebServerManager::handleApiSpoolmanSaveEnrichment() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<512> doc;
+    if (deserializeJson(doc, _server.arg("plain"))) {
+        _server.send(400, "application/json", "{\"error\":\"bad JSON\"}");
+        return;
+    }
+
+    if (!SpoolmanManager::getInstance().isConfigured()) {
+        _server.send(503, "application/json", "{\"error\":\"Spoolman not configured\"}");
+        return;
+    }
+
+    const char* uid          = doc["uid"]          | "";
+    const char* manufacturer = doc["manufacturer"] | "";
+    const char* material     = doc["material"]     | "";
+    const char* colorHex     = doc["color_hex"]    | "";
+    float diameter   = doc["diameter_mm"]  | 1.75f;
+    float density    = doc["density"]      | 0.0f;
+    float remainingG = doc["remaining_g"]  | 0.0f;
+    int   bedTemp    = doc["bed_temp"]     | 0;
+    int   nozzleTemp = doc["nozzle_temp"]  | 0;
+    int   confirmedVendorId   = doc["vendor_id"]   | -1;
+    int   confirmedFilamentId = doc["filament_id"] | -1;
+
+    if (uid[0] == '\0') {
+        _server.send(400, "application/json", "{\"error\":\"uid required\"}");
+        return;
+    }
+
+    const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
+
+    if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        sendError(503, "Busy — try again");
+        return;
+    }
+
+    WiFiClient client;
+    HTTPClient http;
+    char url[256];
+    String response;
+    int code;
+
+    // Step 1: Find or create vendor
+    int vendorId = confirmedVendorId;
+    if (vendorId < 0 && manufacturer[0] != '\0') {
+        String encodedMfg = urlEncode(manufacturer);
+        snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encodedMfg.c_str());
+        http.begin(client, url);
+        http.setTimeout(5000);
+        code = http.GET();
+        if (code == 200) {
+            response = http.getString();
+            DynamicJsonDocument vDoc(2048);
+            if (!deserializeJson(vDoc, response)) {
+                for (JsonObject v : vDoc.as<JsonArray>()) {
+                    if (strcasecmp(v["name"] | "", manufacturer) == 0) {
+                        vendorId = v["id"] | -1;
+                        break;
+                    }
+                }
+            }
+        }
+        http.end();
+
+        if (vendorId < 0) {
+            StaticJsonDocument<128> vBody;
+            vBody["name"] = manufacturer;
+            String vJson;
+            serializeJson(vBody, vJson);
+            snprintf(url, sizeof(url), "%s/api/v1/vendor", baseUrl);
+            http.begin(client, url);
+            http.setTimeout(5000);
+            http.addHeader("Content-Type", "application/json");
+            code = http.POST(vJson);
+            if (code == 200 || code == 201) {
+                response = http.getString();
+                StaticJsonDocument<256> vResp;
+                if (!deserializeJson(vResp, response)) vendorId = vResp["id"] | -1;
+            }
+            http.end();
+        }
+    }
+
+    // Step 2: Find or create filament
+    int filamentId = confirmedFilamentId;
+    if (filamentId < 0 && material[0] != '\0') {
+        // Search for existing filament before creating
+        if (vendorId > 0) {
+            String encodedMat = urlEncode(material);
+            snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%d&material=%s",
+                     baseUrl, vendorId, encodedMat.c_str());
+            http.begin(client, url);
+            http.setTimeout(5000);
+            code = http.GET();
+            if (code == 200) {
+                response = http.getString();
+                DynamicJsonDocument fSearchDoc(4096);
+                if (!deserializeJson(fSearchDoc, response)) {
+                    for (JsonObject f : fSearchDoc.as<JsonArray>()) {
+                        if (strcasecmp(f["material"] | "", material) == 0) {
+                            filamentId = f["id"] | -1;
+                            break;
+                        }
+                    }
+                }
+            }
+            http.end();
+        }
+
+        // Create if not found
+        if (filamentId < 0) {
+            StaticJsonDocument<512> fBody;
+            fBody["name"] = material;
+            fBody["material"] = material;
+            if (vendorId > 0) fBody["vendor_id"] = vendorId;
+            if (density > 0) fBody["density"] = density;
+            if (diameter > 0) fBody["diameter"] = diameter;
+            if (colorHex[0] != '\0') {
+                const char* ch = colorHex;
+                if (ch[0] == '#') ch++;
+                fBody["color_hex"] = ch;
+            }
+            if (bedTemp > 0) fBody["settings_bed_temp"] = bedTemp;
+            if (nozzleTemp > 0) fBody["settings_extruder_temp"] = nozzleTemp;
+            String fJson;
+            serializeJson(fBody, fJson);
+            snprintf(url, sizeof(url), "%s/api/v1/filament", baseUrl);
+            http.begin(client, url);
+            http.setTimeout(5000);
+            http.addHeader("Content-Type", "application/json");
+            code = http.POST(fJson);
+            if (code == 200 || code == 201) {
+                response = http.getString();
+                StaticJsonDocument<256> fResp;
+                if (!deserializeJson(fResp, response)) filamentId = fResp["id"] | -1;
+            }
+            http.end();
+        }
+    }
+
+    if (filamentId < 0) {
+        xSemaphoreGive(g_httpMutex);
+        _server.send(500, "application/json", "{\"error\":\"filament create failed\"}");
+        return;
+    }
+
+    // Step 3: Find or create spool by UID
+    // nfc_id is stored as a double-quoted JSON string value — match that in the query
+    int spoolId = -1;
+    char quotedUid[130];
+    snprintf(quotedUid, sizeof(quotedUid), "\"%s\"", uid);
+    String encodedUid = urlEncode(quotedUid);
+    snprintf(url, sizeof(url), "%s/api/v1/spool?extra_field=nfc_id:%s", baseUrl, encodedUid.c_str());
+    http.begin(client, url);
+    http.setTimeout(5000);
+    code = http.GET();
+    if (code == 200) {
+        response = http.getString();
+        StaticJsonDocument<2048> sDoc;
+        if (!deserializeJson(sDoc, response)) {
+            JsonArray arr = sDoc.as<JsonArray>();
+            if (arr.size() > 0) spoolId = arr[0]["id"] | -1;
+        }
+    }
+    http.end();
+
+    if (spoolId > 0) {
+        // Update existing spool
+        StaticJsonDocument<256> patch;
+        patch["filament_id"] = filamentId;
+        if (remainingG > 0) patch["remaining_weight"] = remainingG;
+        String pJson;
+        serializeJson(patch, pJson);
+        snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, spoolId);
+        http.begin(client, url);
+        http.setTimeout(5000);
+        http.addHeader("Content-Type", "application/json");
+        int patchCode = http.PATCH(pJson);
+        http.end();
+        if (patchCode < 200 || patchCode >= 300) {
+            xSemaphoreGive(g_httpMutex);
+            _server.send(500, "application/json", "{\"error\":\"spool update failed\"}");
+            return;
+        }
+    } else {
+        // Create new spool
+        StaticJsonDocument<512> sBody;
+        sBody["filament_id"] = filamentId;
+        if (remainingG > 0) sBody["remaining_weight"] = remainingG;
+        JsonObject extra = sBody.createNestedObject("extra");
+        // Spoolman extra fields require JSON-encoded string values (double-quoted)
+        extra["nfc_id"] = quotedUid;
+        String sJson;
+        serializeJson(sBody, sJson);
+        snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
+        http.begin(client, url);
+        http.setTimeout(5000);
+        http.addHeader("Content-Type", "application/json");
+        code = http.POST(sJson);
+        if (code == 200 || code == 201) {
+            response = http.getString();
+            StaticJsonDocument<256> sResp;
+            if (!deserializeJson(sResp, response)) spoolId = sResp["id"] | -1;
+        }
+        http.end();
+    }
+
+    StaticJsonDocument<128> result;
+    result["success"] = spoolId > 0;
+    result["spool_id"] = spoolId;
+    result["filament_id"] = filamentId;
+    String out;
+    serializeJson(result, out);
+    xSemaphoreGive(g_httpMutex);
+    _server.send(200, "application/json", out);
 }
 
 // ---------------------------------------------------------------------------
