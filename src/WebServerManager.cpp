@@ -1561,22 +1561,19 @@ void WebServerManager::handleApiWriteOpenSpool() {
         return;
     }
 
-    const char* protocol = doc["protocol"] | "openspool";
-    const char* version = doc["version"] | "1.0";
-    const char* type = doc["type"] | "PLA";
-    const char* color_hex = doc["color_hex"] | "FF0000";
-    const char* brand = doc["brand"] | "";
-    const char* min_temp = doc["min_temp"] | "210";
-    const char* max_temp = doc["max_temp"] | "230";
+    // Build the tag payload using ArduinoJson to properly escape all values
+    StaticJsonDocument<256> tagDoc;
+    tagDoc["protocol"] = doc["protocol"] | "openspool";
+    tagDoc["version"] = doc["version"] | "1.0";
+    tagDoc["type"] = doc["type"] | "PLA";
+    tagDoc["color_hex"] = doc["color_hex"] | "FF0000";
+    tagDoc["brand"] = doc["brand"] | "";
+    tagDoc["min_temp"] = doc["min_temp"] | "210";
+    tagDoc["max_temp"] = doc["max_temp"] | "230";
 
-    char jsonPayload[200];
-    int jsonLen = snprintf(jsonPayload, sizeof(jsonPayload),
-        "{\"protocol\":\"%s\",\"version\":\"%s\",\"type\":\"%s\","
-        "\"color_hex\":\"%s\",\"brand\":\"%s\","
-        "\"min_temp\":\"%s\",\"max_temp\":\"%s\"}",
-        protocol, version, type, color_hex, brand, min_temp, max_temp);
-
-    if (jsonLen <= 0 || jsonLen >= (int)sizeof(jsonPayload)) {
+    char jsonPayload[256];
+    size_t jsonLen = serializeJson(tagDoc, jsonPayload, sizeof(jsonPayload));
+    if (jsonLen == 0 || jsonLen >= sizeof(jsonPayload)) {
         sendError(400, "Payload too large");
         return;
     }
