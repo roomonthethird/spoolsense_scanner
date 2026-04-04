@@ -573,6 +573,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             setStepState('step-verify', 'done');
             setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
             setResult('resultBox', 'OpenTag3D data written and verified successfully.', 'success');
+            await saveEnrichment(presentStatus.uid);
             backBtn.classList.remove('hidden');
             anotherBtn.classList.remove('hidden');
             return;
@@ -722,6 +723,83 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     }
 
     readBtn.onclick = startRead;
+
+    function enrichmentHasData() {
+      var ids = ['enrich-remaining'];
+      return ids.some(function(id) {
+        var el = document.getElementById(id);
+        return el && el.value && parseFloat(el.value) > 0;
+      });
+    }
+
+    async function saveEnrichment(uid) {
+      if (!enrichmentHasData()) return;
+
+      var manufacturer = document.getElementById('manufacturer').value.trim();
+      var material = document.getElementById('base_material').value.trim();
+      var colorHex = document.getElementById('colorHex').value || '';
+      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
+      var density = parseFloat(document.getElementById('density').value) || 0;
+      var diameter = parseInt(document.getElementById('diameter_um').value) || 0;
+      var diameterMm = diameter > 0 ? diameter / 1000.0 : 0;
+      var nozzleMin = parseInt(document.getElementById('min_print_temp_c').value) || 0;
+      var nozzleMax = parseInt(document.getElementById('max_print_temp_c').value) || 0;
+      var nozzleTemp = nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0;
+      var bedMin = parseInt(document.getElementById('min_bed_temp_c').value) || 0;
+      var bedMax = parseInt(document.getElementById('max_bed_temp_c').value) || 0;
+      var bedTemp = bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0;
+
+      var vendorId = -1;
+      if (manufacturer) {
+        try {
+          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
+          if (vr.found) {
+            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
+            if (confirmed) vendorId = vr.id;
+          }
+        } catch(e) {}
+      }
+
+      var filamentId = -1;
+      if (vendorId > 0 && material) {
+        try {
+          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
+                           + '&material=' + encodeURIComponent(material)
+                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
+          if (fr.found) {
+            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
+            if (fconfirmed) filamentId = fr.id;
+          }
+        } catch(e) {}
+      }
+
+      try {
+        var resp = await fetch('/api/spoolman/save-enrichment', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            uid: uid,
+            manufacturer: manufacturer,
+            material: material,
+            color_hex: colorHex.replace('#', ''),
+            remaining_g: remainingG,
+            bed_temp: bedTemp,
+            nozzle_temp: nozzleTemp,
+            diameter_mm: diameterMm,
+            density: density,
+            vendor_id: vendorId,
+            filament_id: filamentId
+          })
+        });
+        var result = await resp.json();
+        if (!resp.ok || result.success === false) {
+          throw new Error(result.error || 'save failed');
+        }
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
+      } catch(e) {
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+      }
+    }
 
   </script>
 </body>

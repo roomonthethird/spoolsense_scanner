@@ -623,6 +623,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
               setStepState('step-verify', 'done');
               setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
               setResult('resultBox', 'TigerTag data written and verified successfully.', 'success');
+              await saveEnrichment(presentStatus.uid);
               backBtn.classList.remove('hidden');
               anotherBtn.classList.remove('hidden');
               return;
@@ -764,6 +765,81 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     }
 
     readBtn.onclick = startRead;
+
+    function enrichmentHasData() {
+      var ids = ['enrich-remaining', 'enrich-density'];
+      return ids.some(function(id) {
+        var el = document.getElementById(id);
+        return el && el.value && parseFloat(el.value) > 0;
+      });
+    }
+
+    async function saveEnrichment(uid) {
+      if (!enrichmentHasData()) return;
+
+      var manufacturer = document.getElementById('brand_name').value.trim();
+      var material = document.getElementById('material_search').value.trim();
+      var colorHex = document.getElementById('colorHex').value || '';
+      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
+      var density = parseFloat(document.getElementById('enrich-density').value) || 0;
+      var nozzleMin = parseInt(document.getElementById('nozzle_min').value) || 0;
+      var nozzleMax = parseInt(document.getElementById('nozzle_max').value) || 0;
+      var bedMin = parseInt(document.getElementById('bed_min').value) || 0;
+      var bedMax = parseInt(document.getElementById('bed_max').value) || 0;
+      var bedTemp = bedMin || bedMax;
+      var nozzleTemp = nozzleMin || nozzleMax;
+
+      var vendorId = -1;
+      if (manufacturer) {
+        try {
+          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
+          if (vr.found) {
+            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
+            if (confirmed) vendorId = vr.id;
+          }
+        } catch(e) {}
+      }
+
+      var filamentId = -1;
+      if (vendorId > 0 && material) {
+        try {
+          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
+                           + '&material=' + encodeURIComponent(material)
+                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
+          if (fr.found) {
+            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
+            if (fconfirmed) filamentId = fr.id;
+          }
+        } catch(e) {}
+      }
+
+      try {
+        var resp = await fetch('/api/spoolman/save-enrichment', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            uid: uid,
+            manufacturer: manufacturer,
+            material: material,
+            color_hex: colorHex.replace('#', ''),
+            remaining_g: remainingG,
+            bed_temp: bedTemp,
+            nozzle_temp: nozzleTemp,
+            diameter_mm: 0,
+            density: density,
+            vendor_id: vendorId,
+            filament_id: filamentId
+          })
+        });
+        var result = await resp.json();
+        if (!resp.ok || result.success === false) {
+          throw new Error(result.error || 'save failed');
+        }
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
+      } catch(e) {
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+      }
+    }
 
   </script>
 </body>
