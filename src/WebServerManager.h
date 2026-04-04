@@ -65,6 +65,9 @@ private:
     void handleApiRegisterUid();
     void handleApiSpoolmanSpools();
     void handleApiSpoolmanLink();
+    void handleApiSpoolmanFindVendor();
+    void handleApiSpoolmanFindFilament();
+    void handleApiSpoolmanSaveEnrichment();
 
     // OTA download state
     static void otaDownloadTask(void* param);

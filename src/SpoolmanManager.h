@@ -39,6 +39,8 @@ struct SpoolDetails {
     char material_type[32];      // e.g., "PLA", "PETG"
     int16_t extruder_temp;       // Spoolman settings_extruder_temp (0 = not set)
     int16_t bed_temp;            // Spoolman settings_bed_temp (0 = not set)
+    float density;               // g/cm³ from filament record (0 = not set)
+    float diameter_mm;           // mm from filament record (0 = not set)
     bool valid;                  // indicates successful retrieval
 };
 

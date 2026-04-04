@@ -231,12 +231,36 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             </div>
           </section>
 
+          <div id="spoolmanEnrichment" class="hidden" style="margin-top:16px;padding:14px;background:var(--card-alt,#1e1e35);border:1px solid var(--blue,#4a9eff);border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="color:var(--blue,#4a9eff);font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Spoolman Enrichment</span>
+              <span id="spoolmanMatchBadge" class="hidden" style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;padding:0 6px;color:#4a9eff;font-size:10px"></span>
+            </div>
+            <p class="card-subtitle" style="font-size:11px;margin-bottom:10px">
+              Spoolman-tracked remaining weight &mdash; saved to Spoolman on write.
+            </p>
+            <div class="grid-2">
+              <div class="field">
+                <label for="enrich-remaining">Remaining Weight (g)</label>
+                <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="1" max="10000" />
+              </div>
+            </div>
+          </div>
+
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
+
+          <div id="readPrompt" class="hidden write-warning" style="background:#0d2a1a;border-color:#2a7a4a;color:#4adf8a;text-align:center;padding:10px">
+            Place tag on reader&hellip; <span style="font-size:11px;color:#5a9a6a">hold still until detected</span>
+          </div>
 
           <div class="actions">
             <button type="submit" class="btn-primary" id="writeBtn">Write Tag</button>
+            <button type="button" class="btn-secondary" id="readBtn">Read</button>
             <button type="reset" class="btn-ghost">Clear</button>
           </div>
+          <p class="card-subtitle" style="margin-top:4px;font-size:11px">
+            Use <strong>Read</strong> to load an existing tag before overwriting.
+          </p>
         </form>
       </div>
     </section>
@@ -549,6 +573,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             setStepState('step-verify', 'done');
             setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
             setResult('resultBox', 'OpenTag3D data written and verified successfully.', 'success');
+            await saveEnrichment(presentStatus.uid);
             backBtn.classList.remove('hidden');
             anotherBtn.classList.remove('hidden');
             return;
@@ -597,6 +622,183 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       bed_min: 'min_bed_temp_c',
       bed_max: 'max_bed_temp_c'
     });
+
+    // Show enrichment section once spool picker loads (confirms Spoolman is configured)
+    var _enrichCheck = setInterval(function() {
+      if (document.querySelector('#spoolmanPickerSearch')) {
+        document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        clearInterval(_enrichCheck);
+      }
+    }, 500);
+    setTimeout(function() { clearInterval(_enrichCheck); }, 15000);
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    function showMatchBadge(text) {
+      var badge = document.getElementById('spoolmanMatchBadge');
+      badge.textContent = text;
+      badge.classList.remove('hidden');
+    }
+
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    }
+
+    function fillEnrichmentFromStatus(status) {
+      var sp = status.spoolman || {};
+      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'OpenTag3D') {
+            var ot = status.opentag3d || {};
+            setVal('base_material', ot.base_material || '');
+            setVal('manufacturer', ot.manufacturer || '');
+            if (ot.color_hex) {
+              var c = ot.color_hex.startsWith('#') ? ot.color_hex : '#' + ot.color_hex;
+              setVal('colorHex', c);
+              setVal('colorPicker', c);
+            }
+            if (ot.target_weight_g) setVal('target_weight_g', ot.target_weight_g);
+            if (ot.density) setVal('density', ot.density);
+            if (ot.print_temp) setVal('print_temp_c', ot.print_temp);
+            if (ot.bed_temp) setVal('bed_temp_c', ot.bed_temp);
+            if (ot.min_print_temp) setVal('min_print_temp_c', ot.min_print_temp);
+            if (ot.max_print_temp) setVal('max_print_temp_c', ot.max_print_temp);
+            if (ot.min_bed_temp) setVal('min_bed_temp_c', ot.min_bed_temp);
+            if (ot.max_bed_temp) setVal('max_bed_temp_c', ot.max_bed_temp);
+            if (ot.dry_temp) setVal('max_dry_temp_c', ot.dry_temp);
+            if (ot.dry_time_hours) setVal('dry_time_hours', ot.dry_time_hours);
+            if (ot.diameter_mm) {
+              var dEl = document.getElementById('diameter_um');
+              if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
+            }
+            if (ot.color_name) setVal('color_name', ot.color_name);
+            // Trigger material auto-fill
+            var matEl = document.getElementById('base_material');
+            if (matEl) matEl.dispatchEvent(new Event('input'));
+            fillEnrichmentFromStatus(status);
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              showMatchBadge('no Spoolman match');
+            }
+            break;
+          } else if (status.present) {
+            showMatchBadge('wrong format \u2014 expected OpenTag3D');
+            break;
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
+
+    function enrichmentHasData() {
+      var ids = ['enrich-remaining'];
+      return ids.some(function(id) {
+        var el = document.getElementById(id);
+        return el && el.value && parseFloat(el.value) > 0;
+      });
+    }
+
+    async function saveEnrichment(uid) {
+      if (!enrichmentHasData()) return;
+
+      var manufacturer = document.getElementById('manufacturer').value.trim();
+      var material = document.getElementById('base_material').value.trim();
+      var colorHex = document.getElementById('colorHex').value || '';
+      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
+      var density = parseFloat(document.getElementById('density').value) || 0;
+      var diameter = parseInt(document.getElementById('diameter_um').value) || 0;
+      var diameterMm = diameter > 0 ? diameter / 1000.0 : 0;
+      var nozzleMin = parseInt(document.getElementById('min_print_temp_c').value) || 0;
+      var nozzleMax = parseInt(document.getElementById('max_print_temp_c').value) || 0;
+      var nozzleTemp = nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0;
+      var bedMin = parseInt(document.getElementById('min_bed_temp_c').value) || 0;
+      var bedMax = parseInt(document.getElementById('max_bed_temp_c').value) || 0;
+      var bedTemp = bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0;
+
+      var vendorId = -1;
+      if (manufacturer) {
+        try {
+          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
+          if (vr.found) {
+            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
+            vendorId = confirmed ? vr.id : -2;
+          }
+        } catch(e) {}
+      }
+
+      var filamentId = -1;
+      if (vendorId > 0 && material) {
+        try {
+          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
+                           + '&material=' + encodeURIComponent(material)
+                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
+          if (fr.found) {
+            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
+            filamentId = fconfirmed ? fr.id : -2;
+          }
+        } catch(e) {}
+      }
+
+      try {
+        var resp = await fetch('/api/spoolman/save-enrichment', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            uid: uid,
+            manufacturer: manufacturer,
+            material: material,
+            color_hex: colorHex.replace('#', ''),
+            remaining_g: remainingG,
+            bed_temp: bedTemp,
+            nozzle_temp: nozzleTemp,
+            diameter_mm: diameterMm,
+            density: density,
+            vendor_id: vendorId,
+            filament_id: filamentId
+          })
+        });
+        var result = await resp.json();
+        if (!resp.ok || result.success === false) {
+          throw new Error(result.error || 'save failed');
+        }
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
+      } catch(e) {
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+      }
+    }
 
   </script>
 </body>

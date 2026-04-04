@@ -90,12 +90,48 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
             </div>
           </section>
 
+          <div id="spoolmanEnrichment" class="hidden" style="margin-top:16px;padding:14px;background:var(--card-alt,#1e1e35);border:1px solid var(--blue,#4a9eff);border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="color:var(--blue,#4a9eff);font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Spoolman Enrichment</span>
+              <span id="spoolmanMatchBadge" class="hidden" style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;padding:0 6px;color:#4a9eff;font-size:10px"></span>
+            </div>
+            <p class="card-subtitle" style="font-size:11px;margin-bottom:10px">
+              Extra data Spoolman stores that OpenSpool format cannot &mdash; saved to Spoolman on write.
+            </p>
+            <div class="grid-2">
+              <div class="field">
+                <label for="enrich-bed-temp">Bed Temp (&deg;C)</label>
+                <input id="enrich-bed-temp" type="number" placeholder="e.g. 60" min="0" max="150" />
+              </div>
+              <div class="field">
+                <label for="enrich-diameter">Diameter (mm)</label>
+                <input id="enrich-diameter" type="number" placeholder="1.75" min="0.1" max="5" step="0.01" />
+              </div>
+              <div class="field">
+                <label for="enrich-density">Density (g/cm&sup3;)</label>
+                <input id="enrich-density" type="number" placeholder="1.24" min="0.1" max="5" step="0.001" />
+              </div>
+              <div class="field">
+                <label for="enrich-remaining">Remaining Weight (g)</label>
+                <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="1" max="10000" />
+              </div>
+            </div>
+          </div>
+
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
+
+          <div id="readPrompt" class="hidden write-warning" style="background:#0d2a1a;border-color:#2a7a4a;color:#4adf8a;text-align:center;padding:10px">
+            Place tag on reader&hellip; <span style="font-size:11px;color:#5a9a6a">hold still until detected</span>
+          </div>
 
           <div class="actions">
             <button type="submit" class="btn-primary" id="writeBtn">Write Tag</button>
+            <button type="button" class="btn-secondary" id="readBtn">Read</button>
             <button type="reset" class="btn-ghost">Clear</button>
           </div>
+          <p class="card-subtitle" style="margin-top:4px;font-size:11px">
+            Use <strong>Read</strong> to load an existing tag before overwriting.
+          </p>
         </form>
       </div>
     </section>
@@ -175,8 +211,174 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       color: 'colorHex',
       colorPicker: 'colorPicker',
       nozzle_min: 'min_temp',
-      nozzle_max: 'max_temp'
+      nozzle_max: 'max_temp',
+      // enrichment fields:
+      bed_single: 'enrich-bed-temp',
+      diameter: 'enrich-diameter',
+      density: 'enrich-density',
+      remaining: 'enrich-remaining'
     });
+
+    // Show enrichment section once spool picker loads (confirms Spoolman is configured)
+    var _enrichCheck = setInterval(function() {
+      if (document.querySelector('#spoolmanPickerSearch')) {
+        document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        clearInterval(_enrichCheck);
+      }
+    }, 500);
+    setTimeout(function() { clearInterval(_enrichCheck); }, 15000);
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    function showMatchBadge(text) {
+      var badge = document.getElementById('spoolmanMatchBadge');
+      badge.textContent = text;
+      badge.classList.remove('hidden');
+    }
+
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    }
+
+    function fillEnrichmentFromStatus(status) {
+      var sp = status.spoolman || {};
+      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+      if (sp.bed_temp && sp.bed_temp > 0) setVal('enrich-bed-temp', sp.bed_temp);
+      if (sp.diameter_mm && sp.diameter_mm > 0) setVal('enrich-diameter', sp.diameter_mm);
+      if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'OpenSpoolTag') {
+            var os = status.openspool || {};
+            setVal('brand', os.brand || '');
+            setVal('type', os.material || '');
+            if (os.color_hex) {
+              setVal('colorHex', os.color_hex);
+              setVal('colorPicker', os.color_hex.startsWith('#') ? os.color_hex : '#' + os.color_hex);
+            }
+            if (os.min_temp) setVal('min_temp', os.min_temp);
+            if (os.max_temp) setVal('max_temp', os.max_temp);
+            fillEnrichmentFromStatus(status);
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              showMatchBadge('no Spoolman match');
+            }
+            break;
+          } else if (status.present) {
+            showMatchBadge('wrong format \u2014 expected OpenSpool');
+            break;
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
+
+    function enrichmentHasData() {
+      var ids = ['enrich-remaining', 'enrich-bed-temp',
+                 'enrich-diameter', 'enrich-density'];
+      return ids.some(function(id) {
+        var el = document.getElementById(id);
+        return el && el.value && parseFloat(el.value) > 0;
+      });
+    }
+
+    async function saveEnrichment(uid) {
+      if (!enrichmentHasData()) return;
+
+      var manufacturer = document.getElementById('brand').value.trim();
+      var material = document.getElementById('type').value;
+      var colorHex = document.getElementById('colorHex').value || '';
+      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
+      var bedTemp = parseInt(document.getElementById('enrich-bed-temp').value) || 0;
+      var diameter = parseFloat(document.getElementById('enrich-diameter').value) || 0;
+      var density = parseFloat(document.getElementById('enrich-density').value) || 0;
+      var nozzleMin = parseInt(document.getElementById('min_temp').value) || 0;
+      var nozzleMax = parseInt(document.getElementById('max_temp').value) || 0;
+      var nozzleTemp = nozzleMin || nozzleMax;
+
+      var vendorId = -1;
+      if (manufacturer) {
+        try {
+          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
+          if (vr.found) {
+            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
+            vendorId = confirmed ? vr.id : -2;
+          }
+        } catch(e) {}
+      }
+
+      var filamentId = -1;
+      if (vendorId > 0 && material) {
+        try {
+          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
+                           + '&material=' + encodeURIComponent(material)
+                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
+          if (fr.found) {
+            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
+            filamentId = fconfirmed ? fr.id : -2;
+          }
+        } catch(e) {}
+      }
+
+      try {
+        var resp = await fetch('/api/spoolman/save-enrichment', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            uid: uid,
+            manufacturer: manufacturer,
+            material: material,
+            color_hex: colorHex.replace('#', ''),
+            remaining_g: remainingG,
+            bed_temp: bedTemp,
+            nozzle_temp: nozzleTemp,
+            diameter_mm: diameter,
+            density: density,
+            vendor_id: vendorId,
+            filament_id: filamentId
+          })
+        });
+        var result = await resp.json();
+        if (!resp.ok || result.success === false) {
+          throw new Error(result.error || 'save failed');
+        }
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
+      } catch(e) {
+        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+      }
+    }
 
     function showStatusView() {
       createView.classList.add('hidden');
@@ -270,6 +472,7 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
             setStepState('step-verify', 'done');
             setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
             setResult('resultBox', 'OpenSpool tag written and verified successfully.', 'success');
+            await saveEnrichment(presentStatus.uid);
             backBtn.classList.remove('hidden');
             anotherBtn.classList.remove('hidden');
             return;

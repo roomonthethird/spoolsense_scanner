@@ -192,10 +192,18 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
           <div class="write-warning">Keep the tag still &mdash; do not remove until writing is complete.</div>
 
+          <div id="readPrompt" class="hidden write-warning" style="background:#0d2a1a;border-color:#2a7a4a;color:#4adf8a;text-align:center;padding:10px">
+            Place tag on reader&hellip; <span style="font-size:11px;color:#5a9a6a">hold still until detected</span>
+          </div>
+
           <div class="actions">
             <button type="submit" class="btn-primary" id="writeBtn">Write Tag</button>
+            <button type="button" class="btn-secondary" id="readBtn">Read</button>
             <button type="reset" class="btn-ghost">Clear</button>
           </div>
+          <p class="card-subtitle" style="margin-top:4px;font-size:11px">
+            Use <strong>Read</strong> to load an existing tag before overwriting.
+          </p>
         </form>
       </div>
     </section>
@@ -607,6 +615,49 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       bed_max: 'max_bed_temp',
       spoolman_id: 'spoolman_id'
     });
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'OpenPrintTag') {
+            prefillFromStatus(status);
+            break;
+          } else if (status.present) {
+            break; // wrong format
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
   </script>
 </body>
 </html>
