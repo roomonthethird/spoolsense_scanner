@@ -1421,6 +1421,8 @@ void SpoolmanManager::taskLoop() {
                 msg.payload.spoolmanSynced.color_hex[sizeof(msg.payload.spoolmanSynced.color_hex) - 1] = '\0';
                 msg.payload.spoolmanSynced.extruder_temp = found ? details.extruder_temp : 0;
                 msg.payload.spoolmanSynced.bed_temp = found ? details.bed_temp : 0;
+                msg.payload.spoolmanSynced.density = found ? details.density : 0.0f;
+                msg.payload.spoolmanSynced.diameter_mm = found ? details.diameter_mm : 0.0f;
             } else {
                 Serial.printf("SpoolmanManager: Syncing spool %s\n", req.spool_id);
                 int resolvedSpoolmanId = -1;

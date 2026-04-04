@@ -306,7 +306,9 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         msg.payload.spoolDetected.spool_id,
         msg.payload.spoolDetected.material_type,
         msg.payload.spoolDetected.kg_remaining);
-    
+
+    smartTagEnrichment_ = SmartTagEnrichment{};  // clear on new tag
+
     #ifndef NATIVE_TEST
     if (ConfigurationManager::getInstance().isLedEnabled()) {
         // Set target first so task restores it after the flash
@@ -412,6 +414,25 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         SpoolmanManager::getInstance().isConfigured() &&
         !msg.payload.spoolDetected.suppress_spoolman_sync) {
         enqueueSpoolmanSync(msg.payload.spoolDetected);
+    }
+#endif
+
+#ifndef NATIVE_TEST
+    // Trigger UID lookup for Spoolman enrichment on smart tags (read-only, any mode)
+    if (SpoolmanManager::getInstance().isConfigured() &&
+        !msg.payload.spoolDetected.suppress_spoolman_sync) {
+        const char* fmt = msg.payload.spoolDetected.tag_format;
+        bool isSmart = (strcmp(fmt, "TigerTag") == 0 ||
+                        strcmp(fmt, "OpenTag3D") == 0 ||
+                        strcmp(fmt, "OpenSpool") == 0 ||
+                        strcmp(fmt, "OpenPrintTag") == 0);
+        if (isSmart) {
+            SpoolmanSyncRequest req = {};
+            strncpy(req.spool_id, msg.payload.spoolDetected.spool_id,
+                    sizeof(req.spool_id) - 1);
+            req.lookup_only = true;
+            SpoolmanManager::getInstance().enqueueSync(req);
+        }
     }
 #endif
 }
@@ -702,21 +723,52 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 
     if (display_) {
         if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup) {
-            // UID lookup — show spool graphic with Spoolman data (tag had no data)
-            DisplaySpoolData spool{};
-            strncpy(spool.brand, msg.payload.spoolmanSynced.manufacturer, sizeof(spool.brand) - 1);
-            strncpy(spool.material, materialName, sizeof(spool.material) - 1);
-            const char* colorSrc = msg.payload.spoolmanSynced.color_hex;
-            if (colorSrc[0] == '#') colorSrc++;
-            strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
-            spool.remainingWeight = kgRemaining * 1000.0f;
-            spool.totalWeight = msg.payload.spoolmanSynced.initial_weight_g;
-            spool.tagType = 5;
-            display_->showSpool(spool);
+            // Determine if the current tag is a generic UID tag or a smart tag
+#ifndef NATIVE_TEST
+            CurrentSpoolState state;
+            bool gotState = NFCManager::getInstance().getCurrentSpoolState(state);
+            bool isGeneric = !gotState || state.kind == TagKind::GenericUidTag;
+#else
+            bool isGeneric = true;
+#endif
+            if (isGeneric) {
+                // Original path: show spool graphic with Spoolman data (tag had no data)
+                DisplaySpoolData spool{};
+                strncpy(spool.brand, msg.payload.spoolmanSynced.manufacturer, sizeof(spool.brand) - 1);
+                strncpy(spool.material, materialName, sizeof(spool.material) - 1);
+                const char* colorSrc = msg.payload.spoolmanSynced.color_hex;
+                if (colorSrc[0] == '#') colorSrc++;
+                strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
+                spool.remainingWeight = kgRemaining * 1000.0f;
+                spool.totalWeight = msg.payload.spoolmanSynced.initial_weight_g;
+                spool.tagType = 5;
+                display_->showSpool(spool);
+            } else {
+                // Smart tag enrichment — store result, don't change display
+                smartTagEnrichment_.valid = true;
+                smartTagEnrichment_.spoolman_id = msg.payload.spoolmanSynced.spoolman_id;
+                smartTagEnrichment_.remaining_g = kgRemaining * 1000.0f;
+                smartTagEnrichment_.bed_temp = msg.payload.spoolmanSynced.bed_temp;
+                smartTagEnrichment_.extruder_temp = msg.payload.spoolmanSynced.extruder_temp;
+                smartTagEnrichment_.density = msg.payload.spoolmanSynced.density;
+                smartTagEnrichment_.diameter_mm = msg.payload.spoolmanSynced.diameter_mm;
+                Serial.printf("ApplicationManager: Smart tag enrichment stored — spool %d, %.0fg remaining\n",
+                              smartTagEnrichment_.spoolman_id, smartTagEnrichment_.remaining_g);
+            }
         } else if (msg.payload.spoolmanSynced.success) {
             // Smart tag — don't overwrite, handleSpoolDetected already showed correct data
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
-            display_->showText("Generic Tag", "Not in Spoolman");
+#ifndef NATIVE_TEST
+            CurrentSpoolState state;
+            bool gotState = NFCManager::getInstance().getCurrentSpoolState(state);
+            bool isGeneric = !gotState || state.kind == TagKind::GenericUidTag;
+#else
+            bool isGeneric = true;
+#endif
+            if (isGeneric) {
+                display_->showText("Generic Tag", "Not in Spoolman");
+            }
+            // For smart tags: lookup failed, but tag already showed its own data — no display change needed
         } else {
             char line1[17];
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
@@ -732,7 +784,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 
 #ifndef NATIVE_TEST
     // Update recent spool sync status
-    if (msg.payload.spoolmanSynced.success) {
+    if (msg.payload.spoolmanSynced.success && !msg.payload.spoolmanSynced.is_uid_lookup) {
         NFCManager::getInstance().updateRecentSpoolSyncStatus(
             msg.payload.spoolmanSynced.spool_id, true);
     }
@@ -763,6 +815,9 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     Serial.printf("EVENT: TagRemoved - spool_id=%s\n",
         msg.payload.tagRemoved.spool_id);
+
+    smartTagEnrichment_ = SmartTagEnrichment{};
+
     // LED intentionally not changed — keep showing last filament color until next scan
 
     // Clear displayed spool so next scan re-displays

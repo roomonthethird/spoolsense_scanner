@@ -39,6 +39,16 @@ enum class AutomationMode : uint8_t {
 
 enum class AppState { IDLE, MONITORING_PRINT };
 
+struct SmartTagEnrichment {
+    bool valid = false;
+    int32_t spoolman_id = -1;
+    float remaining_g = 0.0f;
+    int16_t bed_temp = 0;
+    int16_t extruder_temp = 0;
+    float density = 0.0f;
+    float diameter_mm = 0.0f;
+};
+
 struct SpoolDetectedPayload {
     char spool_id[17];           // UID hex string
     uint8_t material_type;       // OPT_MATERIAL_TYPE_PLA, etc.
@@ -89,6 +99,8 @@ struct SpoolmanSyncedPayload {
     char color_hex[8];           // "#RRGGBB" (populated for UID lookups)
     int16_t extruder_temp;       // Spoolman settings_extruder_temp (0 = not set)
     int16_t bed_temp;            // Spoolman settings_bed_temp (0 = not set)
+    float density;               // g/cm³ (0 = not available)
+    float diameter_mm;           // mm (0 = not available)
     bool is_uid_lookup;          // True = result of a UID-only lookup (generic tag)
 };
 
@@ -167,6 +179,7 @@ public:
     bool hasSpoolChangedDuringPrint() const { return spoolChangedDuringPrint; }
     AutomationMode getAutomationMode() const { return automationMode; }
     void setAutomationMode(AutomationMode mode) { automationMode = mode; }
+    SmartTagEnrichment getSmartTagEnrichment() const { return smartTagEnrichment_; }
 #ifdef NATIVE_TEST
     void resetForTest() {
         if (messageQueue) { vQueueDelete(messageQueue); messageQueue = nullptr; }
@@ -187,6 +200,7 @@ public:
         keypadBuffer_[0] = '\0';
         keypadBufferLen_ = 0;
         lastHAStateJson_[0] = '\0';
+        smartTagEnrichment_ = SmartTagEnrichment{};
     }
 #endif
 
@@ -229,6 +243,9 @@ private:
 
     // Last published HA spool state — cached for retention on tag removal
     char lastHAStateJson_[512] = {0};
+
+    // Enrichment data from Spoolman UID lookup for the current smart tag
+    SmartTagEnrichment smartTagEnrichment_;
 
     // Handlers
     void handlePrintStarted(const AppMessage& msg);
