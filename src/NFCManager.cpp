@@ -1763,6 +1763,91 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
         return ok;
     }
 
+    // Handle WRITE_OPENSPOOL — write NDEF-wrapped JSON payload to NTAG pages
+    if (request.type == NFCWriteType::WRITE_OPENSPOOL) {
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("NFCManager: WRITE_OPENSPOOL - could not acquire tagMutex");
+            return false;
+        }
+        if (request.expected_spool_id[0] != '\0' &&
+            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+            xSemaphoreGive(tagMutex);
+            Serial.println("NFCManager: WRITE_OPENSPOOL rejected - UID mismatch");
+            return false;
+        }
+        xSemaphoreGive(tagMutex);
+
+        if (!rawWritePending_ || rawWriteBufferSize_ == 0) {
+            Serial.println("NFCManager: WRITE_OPENSPOOL - no raw data available");
+            return false;
+        }
+
+        const uint8_t* jsonPayload = rawWriteBuffer_;
+        uint16_t payloadLen = (uint16_t)rawWriteBufferSize_;
+        rawWritePending_ = false;
+
+        const char* mime = "application/json";
+        uint8_t mimeLen = (uint8_t)strlen(mime);
+        bool sr = (payloadLen <= 255);
+        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
+        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
+
+        bool longTlv = (ndefRecordLen > 254);
+        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
+        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
+
+        uint8_t ndefBuf[256];
+        if (totalSize > sizeof(ndefBuf)) {
+            Serial.printf("NFCManager: WRITE_OPENSPOOL - NDEF too large (%u bytes)\n", totalSize);
+            return false;
+        }
+
+        uint16_t idx = 0;
+        ndefBuf[idx++] = 0x03;
+        if (longTlv) {
+            ndefBuf[idx++] = 0xFF;
+            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
+            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
+        } else {
+            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
+        }
+
+        uint8_t ndefFlags = 0xC0 | 0x02;
+        if (sr) ndefFlags |= 0x10;
+        ndefBuf[idx++] = ndefFlags;
+        ndefBuf[idx++] = mimeLen;
+        if (sr) {
+            ndefBuf[idx++] = (uint8_t)payloadLen;
+        } else {
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
+            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
+        }
+
+        memcpy(ndefBuf + idx, mime, mimeLen);
+        idx += mimeLen;
+        memcpy(ndefBuf + idx, jsonPayload, payloadLen);
+        idx += payloadLen;
+        ndefBuf[idx++] = 0xFE;
+
+        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
+
+        uint8_t pagesNeeded = (uint8_t)(idx / 4);
+        Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", idx, pagesNeeded);
+        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
+        if (ok) {
+            Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
+            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                currentSpool.present = false;
+                xSemaphoreGive(tagMutex);
+            }
+        } else {
+            Serial.println("NFCManager: WRITE_OPENSPOOL failed");
+        }
+        return ok;
+    }
+
     // Handle WRITE_ATOMIC — build complete CBOR map from sidecar fields, write once
     if (request.type == NFCWriteType::WRITE_ATOMIC) {
         if (!atomicWriteFields_.pending) {

@@ -23,6 +23,7 @@
 #include "TigerTagLogo.h"
 #include "OpenTag3DLogo.h"
 #include "OpenSpoolLogo.h"
+#include "OpenSpoolWriterHTML.h"
 #include "UpdateHTML.h"
 #include "ConfigurationManager.h"
 #include "NFCManager.h"
@@ -96,6 +97,7 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/writer/openprinttag", HTTP_GET, [this]() { handleOpenPrintTagWriter(); });
     _server.on("/writer/tigertag",     HTTP_GET, [this]() { handleTigerTagWriter(); });
     _server.on("/writer/opentag3d",    HTTP_GET, [this]() { handleOpenTag3DWriter(); });
+    _server.on("/writer/openspool",    HTTP_GET, [this]() { handleOpenSpoolWriter(); });
 
     // Static assets
     _server.on("/css/shared.css",      HTTP_GET, [this]() { handleSharedCSS(); });
@@ -126,6 +128,7 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/api/format-tag",      HTTP_POST, [this]() { handleApiFormatTag(); });
     _server.on("/api/write-tigertag",  HTTP_POST, [this]() { handleApiWriteTigerTag(); });
     _server.on("/api/write-opentag3d", HTTP_POST, [this]() { handleApiWriteOpenTag3D(); });
+    _server.on("/api/write-openspool", HTTP_POST, [this]() { handleApiWriteOpenSpool(); });
     _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
     _server.on("/api/spoolman/spools", HTTP_GET,  [this]() { handleApiSpoolmanSpools(); });
     _server.on("/api/spoolman/link",   HTTP_POST, [this]() { handleApiSpoolmanLink(); });
@@ -205,6 +208,11 @@ void WebServerManager::handleTigerTagWriter() {
 void WebServerManager::handleOpenTag3DWriter() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", OPENTAG3D_WRITER_HTML);
+}
+
+void WebServerManager::handleOpenSpoolWriter() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", OPENSPOOL_WRITER_HTML);
 }
 
 void WebServerManager::handleSharedCSS() {
@@ -1517,6 +1525,54 @@ void WebServerManager::handleApiWriteOpenTag3D() {
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
 
     if (!NFCManager::getInstance().enqueueRawWrite(req, (const uint8_t*)&ot3d, sizeof(ot3d))) {
+        sendError(503, "Write queue full or busy");
+        return;
+    }
+
+    _server.send(200, "application/json", "{\"success\":true}");
+}
+
+// ---------------------------------------------------------------------------
+// API: Write OpenSpool
+// ---------------------------------------------------------------------------
+
+void WebServerManager::handleApiWriteOpenSpool() {
+    Serial.println("WebServerManager: POST /api/write-openspool received");
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    const char* protocol = doc["protocol"] | "openspool";
+    const char* version = doc["version"] | "1.0";
+    const char* type = doc["type"] | "PLA";
+    const char* color_hex = doc["color_hex"] | "FF0000";
+    const char* brand = doc["brand"] | "";
+    const char* min_temp = doc["min_temp"] | "210";
+    const char* max_temp = doc["max_temp"] | "230";
+
+    char jsonPayload[200];
+    int jsonLen = snprintf(jsonPayload, sizeof(jsonPayload),
+        "{\"protocol\":\"%s\",\"version\":\"%s\",\"type\":\"%s\","
+        "\"color_hex\":\"%s\",\"brand\":\"%s\","
+        "\"min_temp\":\"%s\",\"max_temp\":\"%s\"}",
+        protocol, version, type, color_hex, brand, min_temp, max_temp);
+
+    if (jsonLen <= 0 || jsonLen >= (int)sizeof(jsonPayload)) {
+        sendError(400, "Payload too large");
+        return;
+    }
+
+    NFCWriteRequest req;
+    memset(&req, 0, sizeof(req));
+    req.request_id = NFCManager::getInstance().generateRequestId();
+    req.type = NFCWriteType::WRITE_OPENSPOOL;
+
+    if (!NFCManager::getInstance().enqueueRawWrite(req, (const uint8_t*)jsonPayload, (size_t)jsonLen)) {
         sendError(503, "Write queue full or busy");
         return;
     }
