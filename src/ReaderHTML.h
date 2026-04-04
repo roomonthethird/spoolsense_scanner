@@ -199,7 +199,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
         if (s.spoolman.bed_temp !== undefined && s.spoolman.bed_temp > 0) {
           html += row('Bed Temp', s.spoolman.bed_temp + ' \u00B0C' + spoolmanBadge());
         }
-        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+        if (!s.spoolman_id && s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
           html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
         }
       }
@@ -362,6 +362,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
 
     function startPolling() {
       stopPolling();
+      if (enrichTimer) { clearInterval(enrichTimer); enrichTimer = null; }
       tagFound = false;
       lastJson = '';
       noTag.classList.remove('hidden');
@@ -373,12 +374,14 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
     }
 
     var lastTagStatus = null;
+    var enrichTimer = null;
 
     function pollForEnrichment() {
+      if (enrichTimer) clearInterval(enrichTimer);
       var attempts = 0;
-      var timer = setInterval(function() {
+      enrichTimer = setInterval(function() {
         attempts++;
-        if (attempts > 8) { clearInterval(timer); return; }
+        if (attempts > 8) { clearInterval(enrichTimer); enrichTimer = null; return; }
         api('/api/status').then(function(s) {
           if (s.spoolman) {
             // Merge enrichment into last tag status and re-render
@@ -386,7 +389,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
               lastTagStatus.spoolman = s.spoolman;
               render(lastTagStatus);
             }
-            clearInterval(timer);
+            clearInterval(enrichTimer); enrichTimer = null;
           }
         }).catch(function(){});
       }, 1000);

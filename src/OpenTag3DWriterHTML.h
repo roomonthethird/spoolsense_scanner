@@ -242,7 +242,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
             <div class="grid-2">
               <div class="field">
                 <label for="enrich-remaining">Remaining Weight (g)</label>
-                <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="0" max="10000" />
+                <input id="enrich-remaining" type="number" placeholder="e.g. 1000" min="1" max="10000" />
               </div>
             </div>
           </div>
@@ -754,7 +754,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
           var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
           if (vr.found) {
             var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
-            if (confirmed) vendorId = vr.id;
+            vendorId = confirmed ? vr.id : -2;
           }
         } catch(e) {}
       }
@@ -767,7 +767,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
                            + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
           if (fr.found) {
             var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
-            if (fconfirmed) filamentId = fr.id;
+            filamentId = fconfirmed ? fr.id : -2;
           }
         } catch(e) {}
       }

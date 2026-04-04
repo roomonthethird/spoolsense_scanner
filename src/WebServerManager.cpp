@@ -1821,9 +1821,9 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     String response;
     int code;
 
-    // Step 1: Find or create vendor
+    // Step 1: Find or create vendor (-1 = not searched, -2 = user declined match)
     int vendorId = confirmedVendorId;
-    if (vendorId < 0 && manufacturer[0] != '\0') {
+    if (vendorId == -1 && manufacturer[0] != '\0') {
         String encodedMfg = urlEncode(manufacturer);
         snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encodedMfg.c_str());
         http.begin(client, url);
@@ -1862,9 +1862,9 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
         }
     }
 
-    // Step 2: Find or create filament
+    // Step 2: Find or create filament (-1 = not searched, -2 = user declined match)
     int filamentId = confirmedFilamentId;
-    if (filamentId < 0 && material[0] != '\0') {
+    if (filamentId == -1 && material[0] != '\0') {
         // Search for existing filament before creating
         if (vendorId > 0) {
             String encodedMat = urlEncode(material);
