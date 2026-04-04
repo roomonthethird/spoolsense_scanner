@@ -1099,6 +1099,19 @@ void WebServerManager::handleApiStatus() {
                     if (ot3d.dry_time_hours > 0) otObj["dry_time_hours"] = ot3d.dry_time_hours;
                 }
             }
+        } else if (state.kind == TagKind::OpenSpoolTag) {
+            OpenSpoolData os;
+            if (NFCManager::getInstance().getLastOpenSpoolData(os) && os.valid) {
+                JsonObject osObj = doc.createNestedObject("openspool");
+                osObj["brand"] = os.brand;
+                osObj["material"] = os.material;
+                char osColorHex[8];
+                snprintf(osColorHex, sizeof(osColorHex), "#%s", os.color_hex);
+                osObj["color_hex"] = osColorHex;
+                osObj["version"] = os.version;
+                if (os.min_temp > 0) osObj["min_temp"] = os.min_temp;
+                if (os.max_temp > 0) osObj["max_temp"] = os.max_temp;
+            }
         } else if (state.kind == TagKind::GenericUidTag) {
             // Generic UID tag — include resolved Spoolman data if available
             GenericTagSpoolInfo spoolInfo;

@@ -144,6 +144,20 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       return html;
     }
 
+    function renderOpenSpool(s) {
+      var t = s.openspool || {};
+      var html = '';
+      html += row('Format', 'OpenSpool v' + (t.version || '1.0'));
+      html += row('UID', s.uid || '&mdash;');
+      if (t.brand) html += row('Brand', t.brand);
+      if (t.material) html += row('Material', t.material);
+      if (t.color_hex) html += row('Color', colorValue(t.color_hex));
+      if (t.min_temp > 0 && t.max_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u2013 ' + t.max_temp + ' \u00B0C');
+      else if (t.min_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u00B0C');
+      if (s.spoolman_id > 0) html += row('Spoolman ID', '<a href="' + spoolmanUrl + '/#/spool/' + s.spoolman_id + '" target="_blank">' + s.spoolman_id + '</a>');
+      return html;
+    }
+
     function renderGenericUid(s) {
       var html = '';
       html += row('Format', tagKindLabel(s.tag_kind));
@@ -283,6 +297,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
         html = renderTigerTag(s);
       } else if (kind === 'OpenTag3D' && s.opentag3d) {
         html = renderOpenTag3D(s);
+      } else if (kind === 'OpenSpoolTag' && s.openspool) {
+        html = renderOpenSpool(s);
       } else if (kind === 'OpenPrintTag' || (s.tag_data_valid && !kind)) {
         html = renderOpenPrintTag(s);
       } else {

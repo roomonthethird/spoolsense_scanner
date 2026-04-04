@@ -76,6 +76,7 @@ public:
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
     bool getLastOpenTag3DData(opentag3d_t& out);
+    bool getLastOpenSpoolData(OpenSpoolData& out);
     // Returns reader identification string (e.g. "PN5180 v3.4", "PN532 v1.6")
     bool getNfcReaderInfo(char* buf, size_t len) const;
     void pauseScanTask();

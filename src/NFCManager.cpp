@@ -113,6 +113,15 @@ bool NFCManager::getLastOpenTag3DData(opentag3d_t& out) {
     return valid;
 }
 
+bool NFCManager::getLastOpenSpoolData(OpenSpoolData& out) {
+    if (tagMutex == nullptr) return false;
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool valid = lastOpenSpoolValid_;
+    if (valid) out = lastOpenSpool_;
+    xSemaphoreGive(tagMutex);
+    return valid;
+}
+
 void NFCManager::setGenericTagSpoolInfo(const GenericTagSpoolInfo& info) {
     if (tagMutex && xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         lastGenericTagSpoolInfo_ = info;
