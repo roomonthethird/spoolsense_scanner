@@ -76,6 +76,12 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       return '<div class="tag-row"><span class="label">' + label + '</span><span class="value">' + value + '</span></div>';
     }
 
+    function spoolmanBadge() {
+      return '<span style="background:#4a9eff22;border:1px solid #4a9eff55;border-radius:3px;'
+           + 'padding:0 5px;color:#4a9eff;font-size:10px;margin-left:6px;vertical-align:middle">'
+           + 'Spoolman</span>';
+    }
+
     function colorValue(hex) {
       if (!hex) return '&mdash;';
       return '<span class="color-swatch" style="background:' + hex + '"></span>' + hex;
@@ -96,6 +102,15 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (s.preheat_temp) html += row('Preheat', s.preheat_temp + ' \u00B0C');
       if (s.min_bed_temp) html += row('Bed Temp', s.min_bed_temp + ' \u2013 ' + (s.max_bed_temp || '?') + ' \u00B0C');
       if (s.spoolman_id > 0) html += row('Spoolman ID', s.spoolman_id);
+      if (s.spoolman) {
+        // remaining_g suppressed: OPT already shows remaining weight from tag data
+        if (s.spoolman.bed_temp !== undefined && s.spoolman.bed_temp > 0) {
+          html += row('Bed Temp', s.spoolman.bed_temp + ' \u00B0C' + spoolmanBadge());
+        }
+        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+          html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
+        }
+      }
       return html;
     }
 
@@ -113,6 +128,17 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (t.nozzle_temp_min) html += row('Nozzle Temp', t.nozzle_temp_min + ' \u2013 ' + (t.nozzle_temp_max || '?') + ' \u00B0C');
       if (t.bed_temp_min) html += row('Bed Temp', t.bed_temp_min + ' \u2013 ' + (t.bed_temp_max || '?') + ' \u00B0C');
       if (t.dry_temp) html += row('Dry', t.dry_temp + ' \u00B0C / ' + (t.dry_time_hours || '?') + ' hrs');
+      if (s.spoolman) {
+        if (s.spoolman.remaining_g !== undefined) {
+          html += row('Remaining', s.spoolman.remaining_g.toFixed(1) + ' g' + spoolmanBadge());
+        }
+        if (s.spoolman.bed_temp !== undefined && s.spoolman.bed_temp > 0) {
+          html += row('Bed Temp', s.spoolman.bed_temp + ' \u00B0C' + spoolmanBadge());
+        }
+        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+          html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
+        }
+      }
       return html;
     }
 
@@ -141,6 +167,17 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (t.dry_temp) html += row('Dry', t.dry_temp + ' \u00B0C / ' + (t.dry_time_hours || '?') + ' hrs');
       if (t.serial_number) html += row('Serial', t.serial_number);
       if (t.empty_spool_g) html += row('Empty Spool', t.empty_spool_g + ' g');
+      if (s.spoolman) {
+        if (s.spoolman.remaining_g !== undefined) {
+          html += row('Remaining', s.spoolman.remaining_g.toFixed(1) + ' g' + spoolmanBadge());
+        }
+        if (s.spoolman.bed_temp !== undefined && s.spoolman.bed_temp > 0) {
+          html += row('Bed Temp', s.spoolman.bed_temp + ' \u00B0C' + spoolmanBadge());
+        }
+        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+          html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
+        }
+      }
       return html;
     }
 
@@ -155,6 +192,17 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (t.min_temp > 0 && t.max_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u2013 ' + t.max_temp + ' \u00B0C');
       else if (t.min_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u00B0C');
       if (s.spoolman_id > 0) html += row('Spoolman ID', '<a href="' + spoolmanUrl + '/#/spool/' + s.spoolman_id + '" target="_blank">' + s.spoolman_id + '</a>');
+      if (s.spoolman) {
+        if (s.spoolman.remaining_g !== undefined) {
+          html += row('Remaining', s.spoolman.remaining_g.toFixed(1) + ' g' + spoolmanBadge());
+        }
+        if (s.spoolman.bed_temp !== undefined && s.spoolman.bed_temp > 0) {
+          html += row('Bed Temp', s.spoolman.bed_temp + ' \u00B0C' + spoolmanBadge());
+        }
+        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+          html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
+        }
+      }
       return html;
     }
 
