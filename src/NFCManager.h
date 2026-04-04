@@ -12,6 +12,7 @@
 #include "NFCTypes.h"
 #include "NFCConnectionI.h"
 #include "TigerTagParser.h"
+#include "OpenSpoolParser.h"
 #include "opentag3d_lib.h"
 
 // Sidecar for WRITE_ATOMIC: filled by HTTP handler, consumed by scan task.
@@ -75,6 +76,7 @@ public:
     bool getCurrentSpoolState(CurrentSpoolState& out);
     bool getLastTigerTagData(TigerTagData& out);
     bool getLastOpenTag3DData(opentag3d_t& out);
+    bool getLastOpenSpoolData(OpenSpoolData& out);
     // Returns reader identification string (e.g. "PN5180 v3.4", "PN532 v1.6")
     bool getNfcReaderInfo(char* buf, size_t len) const;
     void pauseScanTask();
@@ -123,6 +125,7 @@ private:
     void sendGenericTagMessage();
     void sendTigerTagMessage(const TigerTagData& tt);
     void sendOpenTag3DMessage(const opentag3d_t& ot3d);
+    void sendOpenSpoolMessage(const char* uid, const OpenSpoolData& data);
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);
@@ -153,6 +156,8 @@ private:
     // Last parsed OpenTag3D data (retained for /api/status)
     opentag3d_t lastOpenTag3D_;
     bool lastOpenTag3DValid_ = false;
+    OpenSpoolData lastOpenSpool_;
+    bool lastOpenSpoolValid_ = false;
 
     // Resolved Spoolman data for the current generic UID tag
     GenericTagSpoolInfo lastGenericTagSpoolInfo_ = {};

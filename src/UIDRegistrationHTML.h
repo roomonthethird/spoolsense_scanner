@@ -24,6 +24,7 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/writer/openspool">OpenSpool</a>
       <a href="/register/uid" class="active">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
