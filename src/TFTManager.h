@@ -13,6 +13,7 @@
 #define TAG_TYPE_OPENTAG3D    3
 #define TAG_TYPE_BAMBU        4
 #define TAG_TYPE_NFC_PLAIN    5
+#define TAG_TYPE_OPENSPOOL    6
 
 // ---------------------------------------------------------------------------
 // Display states

@@ -25,6 +25,7 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/writer/openspool">OpenSpool</a>
       <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>

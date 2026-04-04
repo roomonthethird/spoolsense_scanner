@@ -558,6 +558,10 @@ void TFTManager::drawTagIcon(uint8_t tagType, int x, int y) {
             label = "NFC+";
             color = 0x00BCD4;
             break;
+        case TAG_TYPE_OPENSPOOL:
+            label = "OS";
+            color = 0xE91E63;
+            break;
         default:
             return;
     }

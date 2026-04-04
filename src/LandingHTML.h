@@ -21,6 +21,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/writer/openspool">OpenSpool</a>
       <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
@@ -69,6 +70,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <img src="/img/opentag3d.png" alt="OpenTag3D" style="height:48px;border-radius:6px" />
         <div class="tool-name">OpenTag3D Writer</div>
         <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenTag3D format.</div>
+      </a>
+
+      <a href="/writer/openspool" class="tool-card">
+        <img src="/img/openspool.png" alt="OpenSpool" style="height:48px;border-radius:6px" />
+        <div class="tool-name">OpenSpool Writer</div>
+        <div class="tool-desc">Write filament data to NTAG215/216 tags using the OpenSpool format.</div>
       </a>
 
       <a href="/register/uid" class="tool-card">

@@ -35,11 +35,13 @@ private:
     void handleOpenPrintTagWriter();
     void handleTigerTagWriter();
     void handleOpenTag3DWriter();
+    void handleOpenSpoolWriter();
     void handleSharedCSS();
     void handleSharedJS();
     void handleOpenPrintTagLogo();
     void handleTigerTagLogo();
     void handleOpenTag3DLogo();
+    void handleOpenSpoolLogo();
     void handleUpdatePage();
     void handleConfigPage();
 
@@ -49,6 +51,7 @@ private:
     void handleApiFormatTag();
     void handleApiWriteTigerTag();
     void handleApiWriteOpenTag3D();
+    void handleApiWriteOpenSpool();
     void handleApiVersion();
     void handleApiUploadFirmwareComplete();
     void handleApiUploadFirmwareChunk();

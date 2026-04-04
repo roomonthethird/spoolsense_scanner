@@ -21,6 +21,7 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       <a href="/writer/openprinttag">OpenPrintTag</a>
       <a href="/writer/tigertag">TigerTag</a>
       <a href="/writer/opentag3d">OpenTag3D</a>
+      <a href="/writer/openspool">OpenSpool</a>
       <a href="/register/uid">NFC+</a>
       <a href="/update">Update</a>
       <a href="/troubleshooting">Troubleshooting</a>
@@ -140,6 +141,20 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       if (t.dry_temp) html += row('Dry', t.dry_temp + ' \u00B0C / ' + (t.dry_time_hours || '?') + ' hrs');
       if (t.serial_number) html += row('Serial', t.serial_number);
       if (t.empty_spool_g) html += row('Empty Spool', t.empty_spool_g + ' g');
+      return html;
+    }
+
+    function renderOpenSpool(s) {
+      var t = s.openspool || {};
+      var html = '';
+      html += row('Format', 'OpenSpool v' + (t.version || '1.0'));
+      html += row('UID', s.uid || '&mdash;');
+      if (t.brand) html += row('Brand', t.brand);
+      if (t.material) html += row('Material', t.material);
+      if (t.color_hex) html += row('Color', colorValue(t.color_hex));
+      if (t.min_temp > 0 && t.max_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u2013 ' + t.max_temp + ' \u00B0C');
+      else if (t.min_temp > 0) html += row('Nozzle Temp', t.min_temp + ' \u00B0C');
+      if (s.spoolman_id > 0) html += row('Spoolman ID', '<a href="' + spoolmanUrl + '/#/spool/' + s.spoolman_id + '" target="_blank">' + s.spoolman_id + '</a>');
       return html;
     }
 
@@ -282,6 +297,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
         html = renderTigerTag(s);
       } else if (kind === 'OpenTag3D' && s.opentag3d) {
         html = renderOpenTag3D(s);
+      } else if (kind === 'OpenSpoolTag' && s.openspool) {
+        html = renderOpenSpool(s);
       } else if (kind === 'OpenPrintTag' || (s.tag_data_valid && !kind)) {
         html = renderOpenPrintTag(s);
       } else {

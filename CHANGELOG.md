@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.7] - 2026-04-03
+
+### Added
+
+- **OpenSpool tag format support** — reads and writes OpenSpool NFC tags (NTAG215/216 with NDEF JSON payload). Standalone parser detects `application/json` NDEF records with `"protocol":"openspool"`. Writer page at `/writer/openspool` with Spoolman spool picker integration. Reader page shows brand, material, color, and nozzle temps. TFT "OS" label (pink). Logo on landing page. Nav link on all pages. (#93)
+
+### Fixed
+
+- **Duplicate spool prevention** — reuse existing spool when Spoolman archive fails instead of creating a duplicate. Prevents the cascade where intermittent API failures caused new spools on every scan. (#91)
+- **Zero weight Spoolman rejection** — omit weight, density, and diameter fields from Spoolman API when zero. Fixes 422 errors on Spoolman 0.23.x which rejects `"weight": 0`. (#91)
+- **JSON injection in write API** — OpenSpool write endpoint uses ArduinoJson to build tag payload instead of snprintf with raw user input. (#93)
+
+---
+
 ## [1.6.6] - 2026-04-02
 
 ### Fixed

@@ -364,6 +364,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         else if (strcmp(s.tag_format, "TigerTag") == 0) spool.tagType = 2;
         else if (strcmp(s.tag_format, "OpenTag3D") == 0) spool.tagType = 3;
         else if (strcmp(s.tag_format, "BambuTag") == 0) spool.tagType = 4;
+        else if (strcmp(s.tag_format, "OpenSpool") == 0) spool.tagType = 6;
         else spool.tagType = 0;
         display_->showSpool(spool);
     } else if (display_) {
