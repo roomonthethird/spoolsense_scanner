@@ -1116,6 +1116,18 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
                     if (readIntValue(reader, temp)) {
                         outDetails.bed_temp = static_cast<int16_t>(temp);
                     }
+                } else if (strcmp(currentField, "density") == 0) {
+                    if (reader.value_type() == json_value_type::real) {
+                        outDetails.density = static_cast<float>(reader.value_real());
+                    } else if (reader.value_type() == json_value_type::integer) {
+                        outDetails.density = static_cast<float>(reader.value_int());
+                    }
+                } else if (strcmp(currentField, "diameter") == 0) {
+                    if (reader.value_type() == json_value_type::real) {
+                        outDetails.diameter_mm = static_cast<float>(reader.value_real());
+                    } else if (reader.value_type() == json_value_type::integer) {
+                        outDetails.diameter_mm = static_cast<float>(reader.value_int());
+                    }
                 } else if (strcmp(currentField, "weight") == 0) {
                     // Fallback capacity if initial_weight is not set
                     if (outDetails.initial_weight_g == 0.0f && reader.value_type() == json_value_type::real) {
