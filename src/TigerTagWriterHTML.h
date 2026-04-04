@@ -666,8 +666,104 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       nozzle_min: 'nozzle_min',
       nozzle_max: 'nozzle_max',
       bed_min: 'bed_min',
-      bed_max: 'bed_max'
+      bed_max: 'bed_max',
+      density: 'enrich-density'
     });
+
+    // Show enrichment section if Spoolman is configured (spools endpoint succeeds)
+    (async function() {
+      try {
+        var r = await fetch('/api/spoolman/spools');
+        if (r.ok) {
+          document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        }
+      } catch(e) {}
+    })();
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    function showMatchBadge(text) {
+      var badge = document.getElementById('spoolmanMatchBadge');
+      badge.textContent = text;
+      badge.classList.remove('hidden');
+    }
+
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    }
+
+    function fillEnrichmentFromStatus(status) {
+      var sp = status.spoolman || {};
+      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+      if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'TigerTag') {
+            var tt = status.tigertag || {};
+            setVal('material_search', tt.material_name || '');
+            setVal('brand_name', tt.brand_name || '');
+            if (tt.color_hex) {
+              var c = tt.color_hex.startsWith('#') ? tt.color_hex : '#' + tt.color_hex;
+              setVal('colorHex', c);
+              setVal('colorPicker', c);
+            }
+            if (tt.weight_g) setVal('weight_g', tt.weight_g);
+            if (tt.nozzle_temp_min) setVal('nozzle_min', tt.nozzle_temp_min);
+            if (tt.nozzle_temp_max) setVal('nozzle_max', tt.nozzle_temp_max);
+            if (tt.bed_temp_min) setVal('bed_min', tt.bed_temp_min);
+            if (tt.bed_temp_max) setVal('bed_max', tt.bed_temp_max);
+            if (tt.dry_temp) setVal('dry_temp', tt.dry_temp);
+            if (tt.dry_time_hours) setVal('dry_time', tt.dry_time_hours);
+            if (tt.material_id !== undefined) document.getElementById('material_id').value = tt.material_id;
+            if (tt.brand_id !== undefined) document.getElementById('brand_id').value = tt.brand_id;
+            // Sync material ID from name if not set directly
+            syncMaterialId();
+            fillEnrichmentFromStatus(status);
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              showMatchBadge('no Spoolman match');
+            }
+            break;
+          } else if (status.present) {
+            showMatchBadge('wrong format \u2014 expected TigerTag');
+            break;
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
 
   </script>
 </body>

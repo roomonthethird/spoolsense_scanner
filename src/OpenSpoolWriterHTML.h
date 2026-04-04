@@ -215,8 +215,104 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       color: 'colorHex',
       colorPicker: 'colorPicker',
       nozzle_min: 'min_temp',
-      nozzle_max: 'max_temp'
+      nozzle_max: 'max_temp',
+      // enrichment fields:
+      bed_min: 'enrich-bed-min',
+      bed_max: 'enrich-bed-max',
+      diameter: 'enrich-diameter',
+      density: 'enrich-density',
+      remaining: 'enrich-remaining'
     });
+
+    // Show enrichment section if Spoolman is configured (spools endpoint succeeds)
+    (async function() {
+      try {
+        var r = await fetch('/api/spoolman/spools');
+        if (r.ok) {
+          document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        }
+      } catch(e) {}
+    })();
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    function showMatchBadge(text) {
+      var badge = document.getElementById('spoolmanMatchBadge');
+      badge.textContent = text;
+      badge.classList.remove('hidden');
+    }
+
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    }
+
+    function fillEnrichmentFromStatus(status) {
+      var sp = status.spoolman || {};
+      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+      if (sp.bed_temp && sp.bed_temp > 0) {
+        setVal('enrich-bed-min', sp.bed_temp);
+        setVal('enrich-bed-max', sp.bed_temp);
+      }
+      if (sp.diameter_mm && sp.diameter_mm > 0) setVal('enrich-diameter', sp.diameter_mm);
+      if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'OpenSpoolTag') {
+            var os = status.openspool || {};
+            setVal('brand', os.brand || '');
+            setVal('type', os.material || '');
+            if (os.color_hex) {
+              setVal('colorHex', os.color_hex);
+              setVal('colorPicker', os.color_hex.startsWith('#') ? os.color_hex : '#' + os.color_hex);
+            }
+            if (os.min_temp) setVal('min_temp', os.min_temp);
+            if (os.max_temp) setVal('max_temp', os.max_temp);
+            fillEnrichmentFromStatus(status);
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              showMatchBadge('no Spoolman match');
+            }
+            break;
+          } else if (status.present) {
+            showMatchBadge('wrong format \u2014 expected OpenSpool');
+            break;
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
 
     function showStatusView() {
       createView.classList.add('hidden');

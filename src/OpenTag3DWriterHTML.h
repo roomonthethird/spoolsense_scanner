@@ -622,6 +622,107 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       bed_max: 'max_bed_temp_c'
     });
 
+    // Show enrichment section if Spoolman is configured (spools endpoint succeeds)
+    (async function() {
+      try {
+        var r = await fetch('/api/spoolman/spools');
+        if (r.ok) {
+          document.getElementById('spoolmanEnrichment').classList.remove('hidden');
+        }
+      } catch(e) {}
+    })();
+
+    var readBtn = document.getElementById('readBtn');
+    var writeBtn = document.getElementById('writeBtn');
+    var readWaiting = false;
+
+    function setReadWaiting(active) {
+      readWaiting = active;
+      writeBtn.disabled = active;
+      if (active) {
+        readBtn.textContent = 'Cancel';
+        readBtn.onclick = cancelRead;
+        document.getElementById('readPrompt').classList.remove('hidden');
+      } else {
+        readBtn.textContent = 'Read';
+        readBtn.onclick = startRead;
+        document.getElementById('readPrompt').classList.add('hidden');
+      }
+    }
+
+    function cancelRead() {
+      readWaiting = false;
+      setReadWaiting(false);
+    }
+
+    function showMatchBadge(text) {
+      var badge = document.getElementById('spoolmanMatchBadge');
+      badge.textContent = text;
+      badge.classList.remove('hidden');
+    }
+
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    }
+
+    function fillEnrichmentFromStatus(status) {
+      var sp = status.spoolman || {};
+      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+    }
+
+    async function startRead() {
+      setReadWaiting(true);
+      var deadline = Date.now() + 30000;
+      while (readWaiting && Date.now() < deadline) {
+        try {
+          var status = await fetch('/api/status').then(r => r.json());
+          if (status.present && status.tag_kind === 'OpenTag3D') {
+            var ot = status.opentag3d || {};
+            setVal('base_material', ot.base_material || '');
+            setVal('manufacturer', ot.manufacturer || '');
+            if (ot.color_hex) {
+              var c = ot.color_hex.startsWith('#') ? ot.color_hex : '#' + ot.color_hex;
+              setVal('colorHex', c);
+              setVal('colorPicker', c);
+            }
+            if (ot.target_weight_g) setVal('target_weight_g', ot.target_weight_g);
+            if (ot.density) setVal('density', ot.density);
+            if (ot.print_temp) setVal('print_temp_c', ot.print_temp);
+            if (ot.bed_temp) setVal('bed_temp_c', ot.bed_temp);
+            if (ot.min_print_temp) setVal('min_print_temp_c', ot.min_print_temp);
+            if (ot.max_print_temp) setVal('max_print_temp_c', ot.max_print_temp);
+            if (ot.min_bed_temp) setVal('min_bed_temp_c', ot.min_bed_temp);
+            if (ot.max_bed_temp) setVal('max_bed_temp_c', ot.max_bed_temp);
+            if (ot.dry_temp) setVal('max_dry_temp_c', ot.dry_temp);
+            if (ot.dry_time_hours) setVal('dry_time_hours', ot.dry_time_hours);
+            if (ot.diameter_mm) {
+              var dEl = document.getElementById('diameter_um');
+              if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
+            }
+            if (ot.color_name) setVal('color_name', ot.color_name);
+            // Trigger material auto-fill
+            var matEl = document.getElementById('base_material');
+            if (matEl) matEl.dispatchEvent(new Event('input'));
+            fillEnrichmentFromStatus(status);
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              showMatchBadge('no Spoolman match');
+            }
+            break;
+          } else if (status.present) {
+            showMatchBadge('wrong format \u2014 expected OpenTag3D');
+            break;
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setReadWaiting(false);
+    }
+
+    readBtn.onclick = startRead;
+
   </script>
 </body>
 </html>
