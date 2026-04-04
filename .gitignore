@@ -25,3 +25,4 @@ CODE-REVIEW.md
 test-preview/
 .gstack/
 build/
+.worktrees/
