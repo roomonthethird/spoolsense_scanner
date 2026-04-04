@@ -67,12 +67,11 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
             <h2 class="section-title">Color</h2>
             <div class="grid-2">
               <div class="field">
-                <label for="color_hex">Color</label>
-                <input id="color_hex" type="color" value="#FF0000" />
-              </div>
-              <div class="field">
-                <label>Preview</label>
-                <div id="colorPreview" style="width:48px;height:48px;border-radius:8px;border:1px solid var(--border);background:#FF0000"></div>
+                <label>Color</label>
+                <div class="color-row">
+                  <input id="colorPicker" type="color" value="#FF0000" />
+                  <input id="colorHex" type="text" value="#FF0000" maxlength="7" placeholder="#FF0000" required />
+                </div>
               </div>
             </div>
           </section>
@@ -168,28 +167,16 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
 
     var STEP_IDS = ['step-wait', 'step-detect', 'step-write', 'step-verify'];
 
-    document.getElementById('color_hex').addEventListener('input', function() {
-      document.getElementById('colorPreview').style.background = this.value;
-    });
+    syncColorPicker('colorPicker', 'colorHex');
 
-    // Spoolman spool picker (if configured)
-    if (typeof renderSpoolmanPicker === 'function') {
-      renderSpoolmanPicker('spoolmanPicker', function(spool) {
-        if (spool.filament) {
-          var f = spool.filament;
-          if (f.vendor && f.vendor.name) document.getElementById('brand').value = f.vendor.name;
-          if (f.material) document.getElementById('type').value = f.material;
-          if (f.color_hex) {
-            document.getElementById('color_hex').value = '#' + f.color_hex;
-            document.getElementById('colorPreview').style.background = '#' + f.color_hex;
-          }
-          if (f.settings_extruder_temp) {
-            document.getElementById('min_temp').value = f.settings_extruder_temp;
-            document.getElementById('max_temp').value = f.settings_extruder_temp;
-          }
-        }
-      });
-    }
+    renderSpoolmanPicker('spoolmanPicker', {
+      manufacturer: 'brand',
+      material: 'type',
+      color: 'colorHex',
+      colorPicker: 'colorPicker',
+      nozzle_min: 'min_temp',
+      nozzle_max: 'max_temp'
+    });
 
     function showStatusView() {
       createView.classList.add('hidden');
@@ -207,11 +194,12 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
     anotherBtn.addEventListener('click', function() {
       showCreateView();
       writerForm.reset();
-      document.getElementById('colorPreview').style.background = '#FF0000';
+      document.getElementById('colorPicker').value = '#FF0000';
+      document.getElementById('colorHex').value = '#FF0000';
     });
 
     function buildPayload(uid) {
-      var colorHex = document.getElementById('color_hex').value.replace('#', '').toUpperCase();
+      var colorHex = normalizeHex(document.getElementById('colorHex').value).replace('#', '');
       return {
         uid: uid || '',
         protocol: 'openspool',
