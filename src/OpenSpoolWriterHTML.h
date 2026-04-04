@@ -116,12 +116,8 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
           </p>
           <div class="grid-2">
             <div class="field">
-              <label for="enrich-bed-min">Bed Temp Min (&deg;C)</label>
-              <input id="enrich-bed-min" type="number" placeholder="e.g. 55" min="0" max="150" />
-            </div>
-            <div class="field">
-              <label for="enrich-bed-max">Bed Temp Max (&deg;C)</label>
-              <input id="enrich-bed-max" type="number" placeholder="e.g. 65" min="0" max="150" />
+              <label for="enrich-bed-temp">Bed Temp (&deg;C)</label>
+              <input id="enrich-bed-temp" type="number" placeholder="e.g. 60" min="0" max="150" />
             </div>
             <div class="field">
               <label for="enrich-diameter">Diameter (mm)</label>
@@ -217,8 +213,7 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       nozzle_min: 'min_temp',
       nozzle_max: 'max_temp',
       // enrichment fields:
-      bed_min: 'enrich-bed-min',
-      bed_max: 'enrich-bed-max',
+      bed_single: 'enrich-bed-temp',
       diameter: 'enrich-diameter',
       density: 'enrich-density',
       remaining: 'enrich-remaining'
@@ -271,10 +266,7 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
     function fillEnrichmentFromStatus(status) {
       var sp = status.spoolman || {};
       if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
-      if (sp.bed_temp && sp.bed_temp > 0) {
-        setVal('enrich-bed-min', sp.bed_temp);
-        setVal('enrich-bed-max', sp.bed_temp);
-      }
+      if (sp.bed_temp && sp.bed_temp > 0) setVal('enrich-bed-temp', sp.bed_temp);
       if (sp.diameter_mm && sp.diameter_mm > 0) setVal('enrich-diameter', sp.diameter_mm);
       if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
     }
@@ -315,7 +307,7 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
     readBtn.onclick = startRead;
 
     function enrichmentHasData() {
-      var ids = ['enrich-remaining', 'enrich-bed-min', 'enrich-bed-max',
+      var ids = ['enrich-remaining', 'enrich-bed-temp',
                  'enrich-diameter', 'enrich-density'];
       return ids.some(function(id) {
         var el = document.getElementById(id);
@@ -330,13 +322,11 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       var material = document.getElementById('type').value;
       var colorHex = document.getElementById('colorHex').value || '';
       var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
-      var bedMin = parseInt(document.getElementById('enrich-bed-min').value) || 0;
-      var bedMax = parseInt(document.getElementById('enrich-bed-max').value) || 0;
+      var bedTemp = parseInt(document.getElementById('enrich-bed-temp').value) || 0;
       var diameter = parseFloat(document.getElementById('enrich-diameter').value) || 0;
       var density = parseFloat(document.getElementById('enrich-density').value) || 0;
       var nozzleMin = parseInt(document.getElementById('min_temp').value) || 0;
       var nozzleMax = parseInt(document.getElementById('max_temp').value) || 0;
-      var bedTemp = bedMin || bedMax;
       var nozzleTemp = nozzleMin || nozzleMax;
 
       var vendorId = -1;
