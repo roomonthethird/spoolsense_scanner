@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.8] - 2026-04-04
+
+### Added
+
+- **Spoolman enrichment on reader page** — smart tag scans (OpenTag3D, TigerTag, OpenSpool, OpenPrintTag) now trigger a Spoolman UID lookup. Spoolman-sourced fields (remaining weight, bed temp, spool ID) appear inline with a blue "Spoolman" badge. (#97)
+- **Spoolman Enrichment section on writer pages** — OpenSpool, TigerTag, and OpenTag3D writers gain a bottom section for fields Spoolman can store that the tag format cannot. Editable and saved to Spoolman on Write Tag with vendor/filament deduplication and user confirmation. (#97)
+- **Read button on all writer pages** — queues the scanner to read an existing tag for re-write scenarios. Fills both the tag form and enrichment section from a Spoolman UID match. (#97)
+- **New API endpoints** — `GET /api/spoolman/find-vendor`, `GET /api/spoolman/find-filament`, `POST /api/spoolman/save-enrichment` for the enrichment write flow. (#97)
+- **Spool picker UX** — results list hidden until user starts typing in the search box.
+
+### Fixed
+
+- **OpenSpool enrichment bed temp** — collapsed to a single field (Spoolman stores one value, not min/max).
+- **Enrichment persistence** — Spoolman enrichment data persists on reader page after tag removal until the next scan.
+- **Vendor/filament confirmation** — user's choice to decline reusing an existing vendor or filament is now respected (creates new entry instead of silently reusing).
+
+---
+
 ## [1.6.7] - 2026-04-03
 
 ### Added
