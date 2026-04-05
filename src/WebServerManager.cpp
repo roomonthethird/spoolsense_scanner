@@ -712,6 +712,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["nfc_reader"] = cfg.nfc_reader;
     doc["hostname"] = cfg.hostname;
     doc["tft_enabled"] = cfg.tft_enabled;
+    doc["tft_driver"] = cfg.tft_driver;
     doc["ap_mode"] = _apMode;
     if (_apMode) {
         extern char g_apSSID[];
@@ -749,6 +750,7 @@ void WebServerManager::handleApiPostConfig() {
     update.led_enabled = doc["led_enabled"] | (uint8_t)0;
     update.keypad_enabled = doc["keypad_enabled"] | (uint8_t)0;
     update.tft_enabled = doc["tft_enabled"] | (uint8_t)0;
+    strncpy(update.tft_driver, doc["tft_driver"] | "st7789", sizeof(update.tft_driver) - 1);
     // TFT and LCD share GPIO 22/23 on WROOM — auto-disable LCD when TFT enabled
     if (update.tft_enabled && update.lcd_enabled) {
         update.lcd_enabled = 0;
