@@ -192,11 +192,12 @@ static int httpGet(const char* path, String& response) {
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
     spoolmanHttp.begin(spoolmanClient, url);
-    spoolmanHttp.setReuse(true);
+    spoolmanHttp.setReuse(false);
     int code = spoolmanHttp.GET();
     if (code > 0) {
         response = spoolmanHttp.getString();
     }
+    spoolmanHttp.end();
     return code;
 }
 
@@ -205,12 +206,13 @@ static int httpPost(const char* path, const char* body, String& response) {
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
     spoolmanHttp.begin(spoolmanClient, url);
-    spoolmanHttp.setReuse(true);
+    spoolmanHttp.setReuse(false);
     spoolmanHttp.addHeader("Content-Type", "application/json");
     int code = spoolmanHttp.POST(body);
     if (code > 0) {
         response = spoolmanHttp.getString();
     }
+    spoolmanHttp.end();
     return code;
 }
 
@@ -219,12 +221,13 @@ static int httpPatch(const char* path, const char* body, String& response) {
     char url[256];
     snprintf(url, sizeof(url), "%s%s", baseUrl, path);
     spoolmanHttp.begin(spoolmanClient, url);
-    spoolmanHttp.setReuse(true);
+    spoolmanHttp.setReuse(false);
     spoolmanHttp.addHeader("Content-Type", "application/json");
     int code = spoolmanHttp.PATCH(body);
     if (code > 0) {
         response = spoolmanHttp.getString();
     }
+    spoolmanHttp.end();
     return code;
 }
 
