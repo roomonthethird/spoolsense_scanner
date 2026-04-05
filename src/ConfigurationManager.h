@@ -27,6 +27,7 @@ struct ConfigUpdate {
     uint8_t led_enabled;
     uint8_t keypad_enabled;
     uint8_t tft_enabled;
+    char tft_driver[8];   // "st7789" or "gc9a01"
     // Klipper / Moonraker
     char moonraker_url[128];
     // PrusaLink integration
@@ -79,6 +80,7 @@ public:
     bool isLedEnabled() const;
     bool isKeypadEnabled() const;
     bool isTftEnabled() const;
+    const char* getTftDriver() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -127,6 +129,7 @@ private:
     bool _ledEnabled = false;
     bool _keypadEnabled = false;
     bool _tftEnabled = false;
+    char _tftDriver[8] = "st7789";
 
     bool _initialized = false;
 };

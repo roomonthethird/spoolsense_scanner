@@ -45,7 +45,7 @@ struct TFTMessage {
 // ---------------------------------------------------------------------------
 class TFTManager : public DisplayI {
 public:
-    TFTManager();
+    TFTManager(TFTDriver driver = TFTDriver::ST7789);
 
     void begin();
     void startTask();
@@ -96,7 +96,8 @@ private:
     uint32_t dimColor(uint32_t color, uint8_t brightness); // for low-spool breathing
 
     LGFX _tft;
-    LGFX_Sprite _sprite; // full-screen sprite for flicker-free rendering
+    LGFX_Sprite _sprite;
+    TFTDriver _driver;
 
     QueueHandle_t _messageQueue;
     TaskHandle_t _taskHandle;

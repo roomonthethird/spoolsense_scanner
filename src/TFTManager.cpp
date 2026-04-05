@@ -29,8 +29,9 @@ static const uint32_t COLOR_ACCENT    = 0x4FC3F7;
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
-TFTManager::TFTManager()
-    : _sprite(&_tft),
+TFTManager::TFTManager(TFTDriver driver)
+    : _tft(driver),
+      _sprite(&_tft),
       _messageQueue(nullptr),
       _taskHandle(nullptr),
       _screenTimeoutMs(DEFAULT_SCREEN_TIMEOUT_MS),
@@ -41,7 +42,8 @@ TFTManager::TFTManager()
       _breathDirection(-1),
       _lastBreathMs(0),
       _isBreathing(false),
-      _breathColor(0xFFFFFF) {}
+      _breathColor(0xFFFFFF),
+      _driver(driver) {}
 
 // ---------------------------------------------------------------------------
 // begin / startTask
@@ -350,8 +352,8 @@ void TFTManager::renderSpoolScanned(const DisplaySpoolData& spool) {
     // "SpoolSense" in header
     _sprite.setTextColor(COLOR_ACCENT);
     _sprite.setTextSize(1);
-    _sprite.setTextDatum(ML_DATUM);
-    _sprite.drawString("SpoolSense", 30, 14);
+    _sprite.setTextDatum(MC_DATUM);
+    _sprite.drawString("SpoolSense", _tft.width() / 2, 14);
 
     // ---- Spool graphic ----
     uint32_t fillColor = hexToRgb(spool.colorHex);
