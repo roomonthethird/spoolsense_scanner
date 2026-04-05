@@ -1724,8 +1724,9 @@ void WebServerManager::handleApiSpoolmanFindFilament() {
     WiFiClient client;
     HTTPClient http;
     char url[256];
-    snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%s&material=%s",
-             baseUrl, vendorId.c_str(), urlEncode(material.c_str()).c_str());
+    // Spoolman's ?material= filter is unreliable (#92) — match client-side
+    snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%s",
+             baseUrl, vendorId.c_str());
 
     http.begin(client, url);
     http.setTimeout(5000);
@@ -1796,6 +1797,7 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     const char* material     = doc["material"]     | "";
     const char* colorHex     = doc["color_hex"]    | "";
     float diameter   = doc["diameter_mm"]  | 1.75f;
+    if (diameter <= 0) diameter = 1.75f;
     float density    = doc["density"]      | 0.0f;
     float remainingG = doc["remaining_g"]  | 0.0f;
     int   bedTemp    = doc["bed_temp"]     | 0;
@@ -1865,23 +1867,27 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     // Step 2: Find or create filament (-1 = not searched, -2 = user declined match)
     int filamentId = confirmedFilamentId;
     if (filamentId == -1 && material[0] != '\0') {
-        // Search for existing filament before creating
         if (vendorId > 0) {
-            String encodedMat = urlEncode(material);
-            snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%d&material=%s",
-                     baseUrl, vendorId, encodedMat.c_str());
+            // Spoolman's ?material= filter is unreliable (#92) — match client-side
+            snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%d", baseUrl, vendorId);
             http.begin(client, url);
             http.setTimeout(5000);
             code = http.GET();
             if (code == 200) {
                 response = http.getString();
-                DynamicJsonDocument fSearchDoc(4096);
+                DynamicJsonDocument fSearchDoc(8192);
                 if (!deserializeJson(fSearchDoc, response)) {
+                    const char* colorCmp = colorHex;
+                    if (colorCmp[0] == '#') colorCmp++;
                     for (JsonObject f : fSearchDoc.as<JsonArray>()) {
-                        if (strcasecmp(f["material"] | "", material) == 0) {
-                            filamentId = f["id"] | -1;
-                            break;
+                        if (strcasecmp(f["material"] | "", material) != 0) continue;
+                        if (colorHex[0] != '\0') {
+                            const char* fc = f["color_hex"] | "";
+                            if (fc[0] == '#') fc++;
+                            if (strcasecmp(fc, colorCmp) != 0) continue;
                         }
+                        filamentId = f["id"] | -1;
+                        break;
                     }
                 }
             }
@@ -1895,7 +1901,7 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
             fBody["material"] = material;
             if (vendorId > 0) fBody["vendor_id"] = vendorId;
             if (density > 0) fBody["density"] = density;
-            if (diameter > 0) fBody["diameter"] = diameter;
+            fBody["diameter"] = diameter;
             if (colorHex[0] != '\0') {
                 const char* ch = colorHex;
                 if (ch[0] == '#') ch++;
