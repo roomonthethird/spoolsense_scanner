@@ -5,7 +5,7 @@
 # SpoolSense Scanner
 
 ## Overview
-SpoolSense Scanner is an ESP32-based NFC scanner designed for managing 3D printer filament spools using NFC tags. It integrates with the SpoolSense ecosystem and supports multiple NFC tag formats including OpenPrintTag, TigerTag, and OpenTag3D.
+SpoolSense Scanner is an ESP32-based NFC scanner designed for managing 3D printer filament spools using NFC tags. It integrates with the SpoolSense ecosystem and supports multiple NFC tag formats including OpenPrintTag, TigerTag, OpenTag3D, and OpenSpool.
 
 The scanner allows users to tap a filament spool to identify it, retrieve metadata from the NFC tag, and trigger external automation or spool tracking workflows. A built-in web UI at `spoolsense.local` provides tag reading, writing, device configuration, and over-the-air firmware updates — no apps or external tools required.
 
@@ -13,10 +13,11 @@ The scanner allows users to tap a filament spool to identify it, retrieve metada
 
 After connecting to WiFi, open **`http://spoolsense.local`** from any browser on your local network. The landing page provides access to all tools:
 
-- **Tag Reader** — Auto-detects tag format (OpenPrintTag, TigerTag, OpenTag3D, generic UID) and displays all data read-only
+- **Tag Reader** — Auto-detects tag format (OpenPrintTag, TigerTag, OpenTag3D, OpenSpool, generic UID) and displays all data read-only
 - **OpenPrintTag Writer** — Write filament data to ISO15693 tags using the OpenPrintTag format
 - **TigerTag Writer** — Write filament data to NTAG213/215 tags using the TigerTag binary format
 - **OpenTag3D Writer** — Write filament data to NTAG215/216 tags using the OpenTag3D NDEF format
+- **OpenSpool Writer** — Write filament data to NTAG215/216 tags using the OpenSpool NDEF JSON format
 - **Configuration** — Change WiFi, MQTT, Spoolman, and hardware settings from the browser
 - **Firmware Update** — Check for new firmware versions from GitHub, view release notes, and update over WiFi with one click
 
@@ -28,19 +29,21 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 
 ## Features
 
-* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), and OpenTag3D (ISO14443A NTAG215/216) tags. NFC+ (UID-only) tags and Bambu Lab tags are also detected for Spoolman registration.
+* **Multi-format NFC Support:** Read and write OpenPrintTag (ISO15693), TigerTag (ISO14443A NTAG213/215), OpenTag3D (ISO14443A NTAG215/216), and OpenSpool (ISO14443A NTAG215/216) tags. NFC+ (UID-only) tags and Bambu Lab tags are also detected for Spoolman registration.
 * **Dual NFC Reader Support:** PN5180 (ISO15693 + ISO14443A, all tag formats) and PN532 (ISO14443A only). Selected at runtime via NVS — both compiled into a single binary.
 * **3x4 Matrix Keypad (optional):** Scan a spool, type a tool number, press # to assign via Moonraker's ASSIGN_SPOOL macro. For toolchanger and multi-tool setups.
-* **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format. Material and brand fields are type-to-search with auto-fill for temperatures and density.
+* **Built-in Tag Writer:** Write filament metadata directly from the web UI — material, manufacturer, weight, color, density, diameter, temperatures, and more. Separate writer pages for each tag format. Material and brand fields are type-to-search with auto-fill for temperatures and density. A Read button on each writer page loads an existing tag's data for re-writing.
 * **NFC+ Registration:** Register plain NFC tags (NTAG215, etc.) in Spoolman using the tag's UID as identifier. No data written to the tag — fill in filament details in the web UI and create the Spoolman entry directly.
 * **Tag Reader:** Auto-detect any supported tag format and display all data in a clean read-only view.
+* **Spoolman Enrichment:** When a smart tag is scanned, the reader page shows Spoolman-sourced fields (remaining weight, bed temp, spool ID) with blue badges. Writer pages include an editable Spoolman Enrichment section for data Spoolman can store that the tag format cannot — saved to Spoolman on write with vendor/filament deduplication and confirmation.
 * **Web Configuration:** Change WiFi, MQTT, Spoolman, and hardware settings from the browser at `spoolsense.local/config`. Settings saved to NVS and persist across OTA updates.
 * **OTA Firmware Updates:** Check for updates from GitHub releases with release notes, one-click download and flash, or manual .bin upload. Dual partition layout with automatic rollback on failed update.
 * **MQTT Integration:** Publishes spool state to MQTT for use by the SpoolSense middleware or any MQTT subscriber. Includes optional Home Assistant auto-discovery.
 * **Automatic Spoolman Registration:** When a tagged spool is scanned, the scanner automatically creates or updates the spool entry in Spoolman — no manual data entry needed. If a tag is re-written with different filament, the old spool is automatically archived and a new one created. Requires the `nfc_id` extra field in Spoolman (the [installer](https://github.com/SpoolSense/spoolsense-installer) can create this for you).
 * **Device ID on Landing Page:** The scanner's unique device ID is displayed prominently on the home page for easy middleware configuration.
 * **PrusaLink Integration (Experimental):** Automatic print monitoring and filament tracking for Prusa printers via PrusaLink API. Pre-print filament mismatch and temperature warnings. Multi-tool XL support. Enable via web config at `spoolsense.local/config`. **Looking for testers — if you have a Prusa printer, please try it and report issues.**
-* **LCD Display (optional):** Displays device status, NFC scan results, and system information.
+* **TFT Display (optional):** ST7789 240x240 color display with filament color swatch, tag format labels, and spool info. Alternative to the 16x2 LCD.
+* **LCD Display (optional):** 16x2 I2C LCD for device status, NFC scan results, and system information.
 * **Status LED:** Visual feedback for boot, WiFi, tag detection, write progress, and filament color display.
 
 ## Supported Tag Formats
@@ -50,12 +53,14 @@ After connecting to WiFi, open **`http://spoolsense.local`** from any browser on
 | OpenPrintTag | ISO15693 | Full read/write — CBOR/NDEF filament data, weight tracking, Spoolman sync |
 | TigerTag | ISO14443A (NTAG213/215) | Full read/write — binary format with material, brand, color, weight, temperatures |
 | OpenTag3D | ISO14443A (NTAG215/216) | Full read/write — NDEF binary format with material, color, weight, density, temperatures, extended fields |
+| OpenSpool | ISO14443A (NTAG215/216) | Full read/write — NDEF JSON format with brand, material, color, nozzle temperatures |
 | Bambu Lab | ISO14443A (MIFARE Classic) | UID detection only (encrypted, no data access) |
 | UID-only (NTAG215, etc.) | ISO14443A | UID detected and published; middleware looks up spool by UID |
 
 - OpenPrintTag spec: [openprinttag.org](https://openprinttag.org/generator/)
 - TigerTag spec: [TigerTag RFID Guide](https://github.com/TigerTag-Project/TigerTag-RFID-Guide)
 - OpenTag3D spec: [OpenTag3D](https://opentag3d.com/)
+- OpenSpool spec: [OpenSpool](https://github.com/spuder/OpenSpool)
 
 ## Requirements
 
