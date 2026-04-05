@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.9] - 2026-04-05
+
+### Fixed
+
+- **Filament deduplication** — fetch all filaments per vendor and match client-side instead of relying on Spoolman's unreliable server-side filter. Case-insensitive matching on material, color, and name prevents duplicate filament creation. (#92)
+- **HTTP connection reuse** — disabled TCP connection reuse for Spoolman API calls. Stale keepalive connections caused intermittent 400 errors on every request after the first. Root cause of the filament churn. (#92)
+- **Filament lookup failsafe** — when Spoolman API returns an error, skip filament creation instead of creating a duplicate. Retries on next scan. (#92)
+- **Filament naming convention** — filament name built from material + modifier (e.g. "PLA Silk", "PETG CF") for consistent deduplication across tag formats. (#103)
+- **Temperature averaging** — when a tag stores min/max nozzle or bed temps, average them for Spoolman's single-value field instead of silently dropping one. (#100)
+- **Diameter default** — default to 1.75mm when diameter is not specified by the tag or user, at every layer. TigerTag now converts its diameter ID to mm. (#102)
+
+---
+
 ## [1.6.8] - 2026-04-04
 
 ### Added

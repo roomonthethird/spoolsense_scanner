@@ -785,8 +785,8 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       var nozzleMax = parseInt(document.getElementById('nozzle_max').value) || 0;
       var bedMin = parseInt(document.getElementById('bed_min').value) || 0;
       var bedMax = parseInt(document.getElementById('bed_max').value) || 0;
-      var bedTemp = bedMin || bedMax;
-      var nozzleTemp = nozzleMin || nozzleMax;
+      var bedTemp = (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax);
+      var nozzleTemp = (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax);
 
       var vendorId = -1;
       if (manufacturer) {
@@ -824,7 +824,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
             remaining_g: remainingG,
             bed_temp: bedTemp,
             nozzle_temp: nozzleTemp,
-            diameter_mm: 0,
+            diameter_mm: (parseInt(document.getElementById('diameter_id').value) || 56) === 221 ? 2.85 : 1.75,
             density: density,
             vendor_id: vendorId,
             filament_id: filamentId
