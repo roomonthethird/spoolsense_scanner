@@ -616,31 +616,36 @@ static int findOrCreateVendor(const char* name) {
 }
 
 // Find the first array item whose "material" field exactly matches the target.
-// Spoolman's API does substring matching (ABS matches PC-ABS), so we filter client-side.
-// Uses ArduinoJson for reliable parsing of nested objects (vendor, etc.).
+// Client-side match: Spoolman's ?material= filter does substring matching (ABS matches PC-ABS).
+// Match on material + color + name. Name includes variant (e.g. "PLA Silk" vs "PLA").
+// Filaments with no name are treated as matching bare material.
 static bool findExactFilament(const char* jsonText, const char* targetMaterial,
-                               const char* targetColorHex, int& outId) {
+                               const char* targetColorHex, const char* targetName, int& outId) {
     outId = -1;
-    StaticJsonDocument<JSON_LARGE_CAPACITY> doc;
-    DeserializationError err = deserializeJson(doc, jsonText);
-    if (err) {
-        Serial.printf("SpoolmanManager: findExactFilament parse error: %s\n", err.c_str());
-        return false;
-    }
+    DynamicJsonDocument doc(8192);
+    if (deserializeJson(doc, jsonText)) return false;
 
     JsonArray arr = doc.as<JsonArray>();
     for (JsonObject obj : arr) {
         const char* mat = obj["material"] | "";
         const char* color = obj["color_hex"] | "";
-        if (strcmp(mat, targetMaterial) == 0 && strcasecmp(color, targetColorHex) == 0) {
-            outId = obj["id"] | -1;
-            return (outId >= 0);
+        if (strcasecmp(mat, targetMaterial) != 0) continue;
+        if (strcasecmp(color, targetColorHex) != 0) continue;
+
+        const char* objName = obj["name"] | "";
+        if (targetName[0] != '\0') {
+            const char* nameToCheck = (objName[0] != '\0') ? objName : mat;
+            if (strcasecmp(nameToCheck, targetName) != 0) continue;
+        } else if (objName[0] != '\0' && strcasecmp(objName, mat) != 0) {
+            continue;
         }
+
+        outId = obj["id"] | -1;
+        return (outId >= 0);
     }
     return false;
 }
 
-// Average min/max temps — if both set, average; if one set, use it; if neither, return 0
 static int16_t avgTemp(int16_t minT, int16_t maxT) {
     if (minT > 0 && maxT > 0) return (minT + maxT) / 2;
     if (maxT > 0) return maxT;
@@ -654,20 +659,29 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     char colorHex[7];
     snprintf(colorHex, sizeof(colorHex), "%02X%02X%02X", req.color[0], req.color[1], req.color[2]);
 
-    // Search for existing filament by vendor + material + color
-    char path[256];
-    snprintf(path, sizeof(path), "/api/v1/filament?vendor_id=%d&material=%s", vendorId, material);
+    // Name formula: "PLA Silk", "PETG CF", or bare "PLA"
+    char filamentName[64];
+    if (req.aspect[0] != '\0') {
+        snprintf(filamentName, sizeof(filamentName), "%s %s", material, req.aspect);
+    } else {
+        strncpy(filamentName, material, sizeof(filamentName) - 1);
+        filamentName[sizeof(filamentName) - 1] = '\0';
+    }
+
+    // Fetch all filaments for vendor — Spoolman's ?material= filter is unreliable (#92)
+    char path[128];
+    snprintf(path, sizeof(path), "/api/v1/filament?vendor_id=%d", vendorId);
     String response;
     int code = httpGet(path, response);
     if (code == 200) {
         int id = -1;
-        if (findExactFilament(response.c_str(), material, colorHex, id)) {
+        if (findExactFilament(response.c_str(), material, colorHex, filamentName, id)) {
             Serial.printf("SpoolmanManager: Found filament material=%s color=#%s id=%d\n", material, colorHex, id);
 
             // Fill in blank fields on existing filament — Spoolman is source of truth,
             // so only write values that are currently unset (null/0/empty).
             if (req.max_print_temp > 0 || req.min_print_temp > 0 || req.max_bed_temp > 0 ||
-                req.min_bed_temp > 0 || req.material_name[0] != '\0') {
+                req.min_bed_temp > 0 || req.aspect[0] != '\0') {
                 char filPath[64];
                 snprintf(filPath, sizeof(filPath), "/api/v1/filament/%d", id);
                 String filResp;
@@ -692,10 +706,11 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
                             hasUpdate = true;
                         }
 
+                        // Promote bare name to variant name if aspect now known
                         const char* existingName = filDoc["name"] | "";
-                        if ((existingName[0] == '\0' || strcmp(existingName, material) == 0) &&
-                            req.material_name[0] != '\0') {
-                            patchDoc["name"] = req.material_name;
+                        if ((existingName[0] == '\0' || strcasecmp(existingName, material) == 0) &&
+                            strcasecmp(filamentName, material) != 0) {
+                            patchDoc["name"] = filamentName;
                             hasUpdate = true;
                         }
 
@@ -754,12 +769,8 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     // Create new filament
 
     StaticJsonDocument<JSON_MEDIUM_CAPACITY> createDoc;
-    // Use custom material name if available (e.g. "Blood Red PLA"), otherwise material type
-    if (req.material_name[0] != '\0') {
-        createDoc["name"] = req.material_name;
-    } else {
-        createDoc["name"] = material;
-    }
+    // Name formula: "material aspect" (e.g. "PLA Silk") or just "PLA" when no aspect
+    createDoc["name"] = filamentName;
     createDoc["vendor_id"] = vendorId;
     createDoc["material"] = material;
     if (req.density > 0) createDoc["density"] = req.density;
