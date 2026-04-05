@@ -30,10 +30,14 @@ class LGFX : public lgfx::LGFX_Device {
 
 public:
     LGFX(TFTDriver driver = TFTDriver::ST7789) {
-        // SPI bus
+        // SPI bus — S3-DevKitC uses SPI3 (PN5180 on SPI2), S3-Zero uses SPI2
         {
             auto cfg = _bus_instance.config();
-            cfg.spi_host   = SPI2_HOST;  // FSPI on S3
+#if defined(BOARD_S3_DEVKITC)
+            cfg.spi_host   = SPI3_HOST;  // SPI3 — PN5180 uses SPI2/FSPI
+#else
+            cfg.spi_host   = SPI2_HOST;  // FSPI on S3-Zero
+#endif
             cfg.spi_mode   = 0;
             cfg.freq_write = 40000000;
             cfg.freq_read  = 16000000;

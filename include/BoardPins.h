@@ -2,18 +2,59 @@
 
 #include "UserConfig.h"
 
-#if defined(BOARD_ESP32_S3)
+#if defined(BOARD_S3_DEVKITC)
+  // --- ESP32-S3-DevKitC-1-N16R8 pin mapping ---
+  // PN5180 SPI (SPI2/FSPI — hardware SPI for speed)
+  #define PIN_PN5180_RST   7
+  #define PIN_PN5180_NSS   10
+  #define PIN_PN5180_MOSI  11  // FSPID
+  #define PIN_PN5180_MISO  9   // FSPIQ
+  #define PIN_PN5180_SCK   12  // FSPICLK
+  #define PIN_PN5180_BUSY  6
+  #define PIN_PN5180_GPIO  4
+  #define PIN_PN5180_IRQ   5
+  #define PIN_PN5180_AUX   2
+  // PN532 SPI (shares pins with PN5180; only one active at runtime)
+  #define PIN_PN532_SCK    PIN_PN5180_SCK
+  #define PIN_PN532_MOSI   PIN_PN5180_MOSI
+  #define PIN_PN532_MISO   PIN_PN5180_MISO
+  #define PIN_PN532_SS     PIN_PN5180_NSS
+  #define PIN_PN532_IRQ    PIN_PN5180_IRQ
+  #define PIN_PN532_RST    PIN_PN5180_RST
+  // LCD I2C
+  #define PIN_LCD_SDA      17
+  #define PIN_LCD_SCL      18
+  // Status LED — onboard WS2812 RGB on GPIO 48
+  #define PIN_STATUS_LED   48
+  // 3x4 Matrix Keypad (JTAG pins repurposed — safe after boot)
+  #define PIN_KEYPAD_ROW1  39
+  #define PIN_KEYPAD_ROW2  40
+  #define PIN_KEYPAD_ROW3  41
+  #define PIN_KEYPAD_ROW4  42
+  #define PIN_KEYPAD_COL1  47
+  #define PIN_KEYPAD_COL2  1
+  #define PIN_KEYPAD_COL3  8
+  // TFT SPI display (SPI3 — separate bus from PN5180)
+  #define PIN_TFT_MOSI     14
+  #define PIN_TFT_SCLK     13
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS       15
+  #define PIN_TFT_DC       16
+  #define PIN_TFT_RST      -1  // Software reset via LovyanGFX
+  #define PIN_TFT_BL       -1
+
+#elif defined(BOARD_S3_ZERO)
   // --- ESP32-S3-Zero pin mapping ---
   // PN5180 SPI
-  #define PIN_PN5180_RST   4   // Hardware reset (active low)
-  #define PIN_PN5180_NSS   5   // SPI chip select (active low)
-  #define PIN_PN5180_MOSI  6   // SPI master-out slave-in
-  #define PIN_PN5180_MISO  7   // SPI master-in slave-out
-  #define PIN_PN5180_SCK   8   // SPI clock
-  #define PIN_PN5180_BUSY  9   // Busy signal (input)
-  #define PIN_PN5180_GPIO  10  // General purpose I/O (card detection)
-  #define PIN_PN5180_IRQ   11  // Interrupt request (active HIGH)
-  #define PIN_PN5180_AUX   12  // Auxiliary monitoring (future use)
+  #define PIN_PN5180_RST   4
+  #define PIN_PN5180_NSS   5
+  #define PIN_PN5180_MOSI  6
+  #define PIN_PN5180_MISO  7
+  #define PIN_PN5180_SCK   8
+  #define PIN_PN5180_BUSY  9
+  #define PIN_PN5180_GPIO  10
+  #define PIN_PN5180_IRQ   11
+  #define PIN_PN5180_AUX   12
   // PN532 SPI (shares physical pins with PN5180; only one active at runtime)
   #define PIN_PN532_SCK    PIN_PN5180_SCK
   #define PIN_PN532_MOSI   PIN_PN5180_MOSI
@@ -27,10 +68,6 @@
   // Status LED — onboard WS2812 RGB (always available, no external wiring)
   #define PIN_STATUS_LED   21
   // 3x4 Matrix Keypad (ENABLE_KEYPAD)
-  // NOTE: GPIO 19/20 are USB D-/D+ on S3 and unavailable as GPIO.
-  // NOTE: If using LCD + keypad simultaneously on S3, pin conflicts may occur.
-  //       For LCD + keypad builds, the ESP32-WROOM is strongly recommended
-  //       due to its larger number of freely available GPIO pins.
   #define PIN_KEYPAD_ROW1  38
   #define PIN_KEYPAD_ROW2  39
   #define PIN_KEYPAD_ROW3  40
@@ -39,8 +76,6 @@
   #define PIN_KEYPAD_COL2  18
   #define PIN_KEYPAD_COL3  42
   // TFT SPI display — S3-Zero + PN532 only (GPIO 1-13 are side headers)
-  // PN532 uses GPIO 4-8,11. TFT uses the remaining header pins.
-  // Not compatible with PN5180 (not enough free header pins).
   #define PIN_TFT_MOSI     13
   #define PIN_TFT_SCLK     12
   #define PIN_TFT_MISO     -1
@@ -48,18 +83,54 @@
   #define PIN_TFT_DC         3
   #define PIN_TFT_RST        9
   #define PIN_TFT_BL        -1
+
+#elif defined(BOARD_ESP32_S3)
+  // --- Generic ESP32-S3 fallback (same as S3-Zero) ---
+  #define PIN_PN5180_RST   4
+  #define PIN_PN5180_NSS   5
+  #define PIN_PN5180_MOSI  6
+  #define PIN_PN5180_MISO  7
+  #define PIN_PN5180_SCK   8
+  #define PIN_PN5180_BUSY  9
+  #define PIN_PN5180_GPIO  10
+  #define PIN_PN5180_IRQ   11
+  #define PIN_PN5180_AUX   12
+  #define PIN_PN532_SCK    PIN_PN5180_SCK
+  #define PIN_PN532_MOSI   PIN_PN5180_MOSI
+  #define PIN_PN532_MISO   PIN_PN5180_MISO
+  #define PIN_PN532_SS     PIN_PN5180_NSS
+  #define PIN_PN532_IRQ    PIN_PN5180_IRQ
+  #define PIN_PN532_RST    PIN_PN5180_RST
+  #define PIN_LCD_SDA      1
+  #define PIN_LCD_SCL      2
+  #define PIN_STATUS_LED   21
+  #define PIN_KEYPAD_ROW1  38
+  #define PIN_KEYPAD_ROW2  39
+  #define PIN_KEYPAD_ROW3  40
+  #define PIN_KEYPAD_ROW4  41
+  #define PIN_KEYPAD_COL1  17
+  #define PIN_KEYPAD_COL2  18
+  #define PIN_KEYPAD_COL3  42
+  #define PIN_TFT_MOSI     13
+  #define PIN_TFT_SCLK     12
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS        10
+  #define PIN_TFT_DC         3
+  #define PIN_TFT_RST        9
+  #define PIN_TFT_BL        -1
+
 #else
   // --- ESP32-WROOM-32 pin mapping (default) ---
   // PN5180 SPI
-  #define PIN_PN5180_RST   13  // Hardware reset (active low)
-  #define PIN_PN5180_NSS   14  // SPI chip select (active low)
-  #define PIN_PN5180_MOSI  27  // SPI master-out slave-in
-  #define PIN_PN5180_MISO  26  // SPI master-in slave-out
-  #define PIN_PN5180_SCK   25  // SPI clock
-  #define PIN_PN5180_BUSY  33  // Busy signal (input)
-  #define PIN_PN5180_GPIO  32  // General purpose I/O (card detection)
-  #define PIN_PN5180_IRQ   35  // Interrupt request (active HIGH, input-only pin)
-  #define PIN_PN5180_AUX   34  // Auxiliary monitoring (input-only pin)
+  #define PIN_PN5180_RST   13
+  #define PIN_PN5180_NSS   14
+  #define PIN_PN5180_MOSI  27
+  #define PIN_PN5180_MISO  26
+  #define PIN_PN5180_SCK   25
+  #define PIN_PN5180_BUSY  33
+  #define PIN_PN5180_GPIO  32
+  #define PIN_PN5180_IRQ   35  // Input-only pin
+  #define PIN_PN5180_AUX   34  // Input-only pin
   // PN532 SPI (shares physical pins with PN5180; only one active at runtime)
   #define PIN_PN532_SCK    PIN_PN5180_SCK
   #define PIN_PN532_MOSI   PIN_PN5180_MOSI
@@ -81,12 +152,11 @@
   #define PIN_KEYPAD_COL2  21
   #define PIN_KEYPAD_COL3  17
   // TFT SPI display (ENABLE_TFT — mutually exclusive with LCD I2C)
-  // Uses VSPI. Pins 23/22 freed from LCD when TFT replaces it.
-  #define PIN_TFT_MOSI     23  // VSPI MOSI (shared with LCD SDA when LCD enabled)
-  #define PIN_TFT_SCLK     22  // VSPI SCLK (shared with LCD SCL when LCD enabled)
-  #define PIN_TFT_MISO     -1  // Not needed for write-only TFT
-  #define PIN_TFT_CS        2  // Free GPIO
-  #define PIN_TFT_DC        4  // Freed from LED when TFT is enabled
-  #define PIN_TFT_RST      -1  // Software reset via LovyanGFX
-  #define PIN_TFT_BL       -1  // No backlight control (always on), or pick a free pin
+  #define PIN_TFT_MOSI     23
+  #define PIN_TFT_SCLK     22
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS        2
+  #define PIN_TFT_DC        4
+  #define PIN_TFT_RST      -1
+  #define PIN_TFT_BL       -1
 #endif
