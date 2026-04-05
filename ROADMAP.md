@@ -18,18 +18,17 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Target | Issue |
 |---------|------|--------|-------|
-| Tag writer: populate from Spoolman | Scanner | v1.6.3 | #32 |
+| GC9A01 round TFT display | Scanner | — | — |
 | NTAG variant detection (GET_VERSION) | Scanner | — | #22 |
 | TigerTag partial write (changed fields only) | Scanner | — | #13 |
 | PN5180 Phase 2 reliability | Scanner | — | #20 |
-| HA publish queue fix (silent drops) | Scanner | — | #28 |
 | ISO15693 selected-mode writes | Scanner | — | #21 |
-| Nozzle/bed temps to AFC lane_data | Middleware | — | #36 |
+| Shared write flow UX refactor | Scanner | — | #96 |
+| Spoolman enrichment follow-ups | Scanner | — | #101 |
 | Resync AFC lock state on MQTT reconnect | Middleware | — | #13 |
 | Moonraker websocket (replace polling) | Middleware | needs testing | #11 |
 | Sync ownership clarification (scanner vs middleware) | Middleware | — | #22 |
 | Tag writeback architecture review | Scanner + Middleware | — | — |
-| Smarter Spoolman lookups (filter by NFC ID) | Middleware | — | — |
 | Low spool push notification (HA) | Middleware | — | — |
 | Klipper error alerts via LED (per-toolhead) | Scanner | — | — |
 | Wiring photos and assembly guides | Docs | — | — |
@@ -39,13 +38,27 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 
 | Feature | Repo | Notes |
 |---------|------|-------|
-| Prusa PrusaLink integration | Scanner | Experimental, looking for testers |
+| Direct Moonraker mode | Scanner | Design doc at context/direct-moonraker-mode.md (#6) |
 | Creality rooted printer guide | Docs | Compatible via Moonraker |
 
 ## Completed
 
 | Feature | Repo | Version |
 |---------|------|---------|
+| Filament deduplication (client-side matching) | Scanner | v1.6.9 |
+| HTTP connection reuse disabled (stale TCP fix) | Scanner | v1.6.9 |
+| Temperature averaging for Spoolman | Scanner | v1.6.9 |
+| Diameter default to 1.75mm | Scanner | v1.6.9 |
+| Filament naming convention (material + modifier) | Scanner | v1.6.9 |
+| Spoolman enrichment on reader + writer pages | Scanner | v1.6.8 |
+| Read button on all writer pages | Scanner | v1.6.8 |
+| Spool picker UX (search-only) | Scanner | v1.6.8 |
+| OpenSpool tag format support | Scanner | v1.6.7 |
+| Configurable mDNS hostname | Scanner | v1.6.5 |
+| SpoolSense Mobile REST API | Scanner | v1.6.4 |
+| Prusa PrusaLink integration | Scanner | v1.6.3 |
+| Tag writer: populate from Spoolman | Scanner | v1.6.3 |
+| HA publish queue fix | Scanner | v1.6.3 |
 | WiFi reconnection with exponential backoff | Scanner | v1.6.2 |
 | Bambu AMS blueprint (HA) | Scanner | v1.6.2 |
 | Bambu → Spoolman deduction blueprint (HA) | Scanner | v1.6.2 |
@@ -55,12 +68,10 @@ Feature roadmap across the SpoolSense ecosystem (scanner, middleware, installer,
 | Tag writer auto-populate from scanned tag | Scanner | v1.6.1 |
 | NFC+ reader shows temps from Spoolman | Scanner | v1.6.1 |
 | HA discovery traffic reduced ~80% | Scanner | v1.6.1 |
-| HTTP connection reuse for Spoolman | Scanner | v1.6.1 |
 | TFT display support (ST7789 240x240) | Scanner | v1.6.0 |
 | DisplayI interface (pluggable displays) | Scanner | v1.6.0 |
 | Spoolman color_hex parsing fix | Scanner | v1.6.0 |
 | NFC+ registration temps to Spoolman | Scanner | v1.6.0 |
-|---------|------|---------|
 | AP mode fallback + captive portal | Scanner | v1.5.10 |
 | Web flasher (browser-based firmware flash) | Docs | v1.5.10 |
 | Tag writer dry temp/time auto-populate | Scanner | v1.5.10 |
