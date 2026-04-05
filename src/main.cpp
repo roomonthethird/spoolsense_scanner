@@ -312,15 +312,16 @@ void setup() {
 
   // Initialize NFCManager
   if (!NFCManager::getInstance().begin()) {
-    Serial.println("NFCManager init failed - halting");
-    if (config.isLcdEnabled()) {
+    Serial.println("NFCManager init failed - continuing without NFC");
+    if (config.isTftEnabled() && tftManagerPtr) {
+      tftManagerPtr->showError("NFC FAILED");
+    } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("NFC FAILED", "");
     }
-    while (1) { delay(1000); }
+  } else {
+    // Start NFC scan task
+    NFCManager::getInstance().startScanTask();
   }
-
-  // Start NFC scan task
-  NFCManager::getInstance().startScanTask();
 
   if (!g_apModeActive) {
     // Start SpoolmanManager task
