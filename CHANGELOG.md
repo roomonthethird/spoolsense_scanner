@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.10] - 2026-04-05
+
+### Added
+
+- **GC9A01 round TFT display** — 240x240 round TFT support as an alternative to the ST7789 square TFT. Runtime selectable via the config page (TFT Driver dropdown). Same pins, same resolution, different panel driver. (#113)
+- **ESP32-S3-DevKitC-1-N16R8 board support** — new build environment `esp32s3devkitc` for the 16MB flash / 8MB PSRAM variant. PN5180 on SPI2/FSPI + TFT on SPI3 (separate buses, no conflicts). PSRAM enabled for future use. (#114)
+
+### Fixed
+
+- **Centered SpoolSense header** — "SpoolSense" text centered at top of TFT display on all screens.
+
+---
+
 ## [1.6.9] - 2026-04-05
 
 ### Fixed

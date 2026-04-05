@@ -45,8 +45,8 @@ static constexpr uint16_t HTTP_PORT = 80;
 // Always declared; only initialized if isLcdEnabled() at runtime
 LCDManager lcdManager(0x27, 16, 2);
 
-// TFT display — replaces LCD when enabled via NVS
-TFTManager tftManager;
+// TFT display — constructed in setup() after NVS config loads (needs driver type)
+TFTManager* tftManagerPtr = nullptr;
 
 // Always declared; only initialized if isLedEnabled() at runtime
 LEDManager ledManager;
@@ -71,8 +71,8 @@ void startAPMode() {
   Serial.printf("AP started: %s @ 192.168.4.1\n", g_apSSID);
 
   auto& config = ConfigurationManager::getInstance();
-  if (config.isTftEnabled()) {
-    tftManager.showError(g_apSSID);
+  if (config.isTftEnabled() && tftManagerPtr) {
+    tftManagerPtr->showError(g_apSSID);
   } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen(g_apSSID, "Go to 192.168.4.1");
   }
@@ -93,8 +93,8 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
-  if (config.isTftEnabled()) {
-    tftManager.showWifiConnecting();
+  if (config.isTftEnabled() && tftManagerPtr) {
+    tftManagerPtr->showWifiConnecting();
   } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen("Connecting WiFi", "");
   }
@@ -114,8 +114,8 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
-    if (config.isTftEnabled()) {
-      tftManager.showWifiConnected(WiFi.localIP().toString().c_str());
+    if (config.isTftEnabled() && tftManagerPtr) {
+      tftManagerPtr->showWifiConnected(WiFi.localIP().toString().c_str());
     } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
     }
@@ -129,8 +129,8 @@ void initWiFi() {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
       Serial.println("Failed to obtain time");
-      if (config.isTftEnabled()) {
-        tftManager.showError("NTP FAILED");
+      if (config.isTftEnabled() && tftManagerPtr) {
+        tftManagerPtr->showError("NTP FAILED");
       } else if (config.isLcdEnabled()) {
         lcdManager.updateScreen("NTP FAILED", "");
       }
@@ -161,8 +161,8 @@ void checkWiFi() {
     // WiFi just dropped
     Serial.println("WiFi: Connection lost — starting reconnection");
     auto& config = ConfigurationManager::getInstance();
-    if (config.isTftEnabled()) {
-      tftManager.showText("WiFi Lost", "Reconnecting...");
+    if (config.isTftEnabled() && tftManagerPtr) {
+      tftManagerPtr->showText("WiFi Lost", "Reconnecting...");
     } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi Lost", "Reconnecting...");
     }
@@ -187,8 +187,8 @@ void checkWiFi() {
     // WiFi just reconnected
     Serial.printf("WiFi: Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
     auto& config = ConfigurationManager::getInstance();
-    if (config.isTftEnabled()) {
-      tftManager.showText("WiFi OK", WiFi.localIP().toString().c_str());
+    if (config.isTftEnabled() && tftManagerPtr) {
+      tftManagerPtr->showText("WiFi OK", WiFi.localIP().toString().c_str());
     } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
     }
@@ -229,10 +229,15 @@ void setup() {
   }
 
   if (config.isTftEnabled()) {
-    // TFT display — mutually exclusive with LCD on WROOM
-    tftManager.begin();
-    tftManager.startTask();
-    tftManager.showBoot(FIRMWARE_VERSION);
+    // TFT display — select driver from NVS (st7789 or gc9a01)
+    TFTDriver tftDriver = TFTDriver::ST7789;
+    if (strcmp(config.getTftDriver(), "gc9a01") == 0) {
+        tftDriver = TFTDriver::GC9A01;
+    }
+    tftManagerPtr = new TFTManager(tftDriver);
+    tftManagerPtr->begin();
+    tftManagerPtr->startTask();
+    tftManagerPtr->showBoot(FIRMWARE_VERSION);
     Serial.println("TFT initialized");
   } else if (config.isLcdEnabled()) {
     // Initialize I2C with custom pins for LCD
@@ -254,7 +259,7 @@ void setup() {
   // Initialize ApplicationManager (message queue) with display reference
   DisplayI* activeDisplay = nullptr;
   if (config.isTftEnabled()) {
-    activeDisplay = &tftManager;
+    activeDisplay = tftManagerPtr;
   } else if (config.isLcdEnabled()) {
     activeDisplay = &lcdManager;
   }
@@ -343,7 +348,7 @@ void setup() {
   }
 
   if (config.isTftEnabled()) {
-    tftManager.showReady();
+    if (tftManagerPtr) tftManagerPtr->showReady();
   } else if (config.isLcdEnabled()) {
     ApplicationManager::getInstance().showStatusScreen();
   }
