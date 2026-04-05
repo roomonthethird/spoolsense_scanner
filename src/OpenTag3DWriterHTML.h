@@ -743,10 +743,10 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       var diameterMm = diameter > 0 ? diameter / 1000.0 : 0;
       var nozzleMin = parseInt(document.getElementById('min_print_temp_c').value) || 0;
       var nozzleMax = parseInt(document.getElementById('max_print_temp_c').value) || 0;
-      var nozzleTemp = nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0;
+      var nozzleTemp = (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0);
       var bedMin = parseInt(document.getElementById('min_bed_temp_c').value) || 0;
       var bedMax = parseInt(document.getElementById('max_bed_temp_c').value) || 0;
-      var bedTemp = bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0;
+      var bedTemp = (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0);
 
       var vendorId = -1;
       if (manufacturer) {

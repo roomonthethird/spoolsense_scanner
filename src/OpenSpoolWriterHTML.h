@@ -326,7 +326,7 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
       var density = parseFloat(document.getElementById('enrich-density').value) || 0;
       var nozzleMin = parseInt(document.getElementById('min_temp').value) || 0;
       var nozzleMax = parseInt(document.getElementById('max_temp').value) || 0;
-      var nozzleTemp = nozzleMin || nozzleMax;
+      var nozzleTemp = (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax);
 
       var vendorId = -1;
       if (manufacturer) {
