@@ -763,7 +763,7 @@ static int findOrCreateFilament(int vendorId, const SpoolmanSyncRequest& req) {
     createDoc["vendor_id"] = vendorId;
     createDoc["material"] = material;
     if (req.density > 0) createDoc["density"] = req.density;
-    if (req.diameter > 0) createDoc["diameter"] = req.diameter;
+    createDoc["diameter"] = (req.diameter > 0) ? req.diameter : 1.75f;
     if (req.initial_weight_g > 0) createDoc["weight"] = req.initial_weight_g;
     createDoc["color_hex"] = colorHex;
 

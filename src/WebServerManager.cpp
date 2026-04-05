@@ -1796,6 +1796,7 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     const char* material     = doc["material"]     | "";
     const char* colorHex     = doc["color_hex"]    | "";
     float diameter   = doc["diameter_mm"]  | 1.75f;
+    if (diameter <= 0) diameter = 1.75f;
     float density    = doc["density"]      | 0.0f;
     float remainingG = doc["remaining_g"]  | 0.0f;
     int   bedTemp    = doc["bed_temp"]     | 0;
@@ -1895,7 +1896,7 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
             fBody["material"] = material;
             if (vendorId > 0) fBody["vendor_id"] = vendorId;
             if (density > 0) fBody["density"] = density;
-            if (diameter > 0) fBody["diameter"] = diameter;
+            fBody["diameter"] = diameter;
             if (colorHex[0] != '\0') {
                 const char* ch = colorHex;
                 if (ch[0] == '#') ch++;

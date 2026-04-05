@@ -824,7 +824,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
             remaining_g: remainingG,
             bed_temp: bedTemp,
             nozzle_temp: nozzleTemp,
-            diameter_mm: 0,
+            diameter_mm: (parseInt(document.getElementById('diameter_id').value) || 56) === 221 ? 2.85 : 1.75,
             density: density,
             vendor_id: vendorId,
             filament_id: filamentId
