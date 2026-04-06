@@ -50,11 +50,26 @@ jobs:
           cp .pio/build/esp32s3devkitc/partitions.bin release/partitions_esp32s3devkitc.bin
           cp partitions.csv release/partitions.csv
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          # Extract the section for this version from CHANGELOG.md
+          # Matches from "## [version]" to the next "## [" or "---" or end of file
+          BODY=$(awk "/^## \\[${VERSION}\\]/{found=1; next} found && /^(## \\[|---)/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="Release ${TAG}"
+          fi
+          echo "body<<CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "CHANGELOG_EOF" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
-        id: release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.body }}
           files: |
             release/spoolsense_scanner_esp32dev.bin
             release/spoolsense_scanner_esp32s3zero.bin
@@ -67,26 +82,14 @@ jobs:
             release/partitions_esp32s3devkitc.bin
             release/partitions.csv
 
-      - name: Get release notes
-        id: notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          BODY=$(gh release view "$TAG" --json body -q .body)
-          # Discord embed description limit is 4096 chars
-          BODY="${BODY:0:4000}"
-          echo "body<<NOTES_EOF" >> "$GITHUB_OUTPUT"
-          echo "$BODY" >> "$GITHUB_OUTPUT"
-          echo "NOTES_EOF" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          TAG="${{ steps.notes.outputs.tag }}"
-          BODY="${{ steps.notes.outputs.body }}"
+          TAG="${{ steps.changelog.outputs.tag }}"
+          BODY="${{ steps.changelog.outputs.body }}"
+          # Discord embed description limit is 4096 chars
+          BODY="${BODY:0:4000}"
           PAYLOAD=$(jq -n \
             --arg title "SpoolSense Scanner $TAG Released" \
             --arg url "https://github.com/SpoolSense/spoolsense_scanner/releases/tag/$TAG" \
