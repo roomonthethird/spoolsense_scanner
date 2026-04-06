@@ -33,15 +33,21 @@ jobs:
       - name: Build ESP32-S3-Zero firmware
         run: pio run -e esp32s3zero
 
+      - name: Build ESP32-S3-DevKitC firmware
+        run: pio run -e esp32s3devkitc
+
       - name: Prepare release artifacts
         run: |
           mkdir -p release
           cp .pio/build/esp32dev/firmware.bin release/spoolsense_scanner_esp32dev.bin
           cp .pio/build/esp32s3zero/firmware.bin release/spoolsense_scanner_esp32s3zero.bin
+          cp .pio/build/esp32s3devkitc/firmware.bin release/spoolsense_scanner_esp32s3devkitc.bin
           cp .pio/build/esp32dev/bootloader.bin release/bootloader_esp32dev.bin
           cp .pio/build/esp32s3zero/bootloader.bin release/bootloader_esp32s3zero.bin
+          cp .pio/build/esp32s3devkitc/bootloader.bin release/bootloader_esp32s3devkitc.bin
           cp .pio/build/esp32dev/partitions.bin release/partitions_esp32dev.bin
           cp .pio/build/esp32s3zero/partitions.bin release/partitions_esp32s3zero.bin
+          cp .pio/build/esp32s3devkitc/partitions.bin release/partitions_esp32s3devkitc.bin
           cp partitions.csv release/partitions.csv
 
       - name: Create GitHub Release
@@ -51,8 +57,11 @@ jobs:
           files: |
             release/spoolsense_scanner_esp32dev.bin
             release/spoolsense_scanner_esp32s3zero.bin
+            release/spoolsense_scanner_esp32s3devkitc.bin
             release/bootloader_esp32dev.bin
             release/bootloader_esp32s3zero.bin
+            release/bootloader_esp32s3devkitc.bin
             release/partitions_esp32dev.bin
             release/partitions_esp32s3zero.bin
+            release/partitions_esp32s3devkitc.bin
             release/partitions.csv

@@ -42,9 +42,9 @@ jobs:
         run: |
           mkdir -p docs-site/docs/firmware
           TAG="${{ steps.tag.outputs.tag }}"
-          for file in bootloader_esp32dev.bin bootloader_esp32s3zero.bin \
-                      partitions_esp32dev.bin partitions_esp32s3zero.bin \
-                      spoolsense_scanner_esp32dev.bin spoolsense_scanner_esp32s3zero.bin; do
+          for file in bootloader_esp32dev.bin bootloader_esp32s3zero.bin bootloader_esp32s3devkitc.bin \
+                      partitions_esp32dev.bin partitions_esp32s3zero.bin partitions_esp32s3devkitc.bin \
+                      spoolsense_scanner_esp32dev.bin spoolsense_scanner_esp32s3zero.bin spoolsense_scanner_esp32s3devkitc.bin; do
             gh release download "$TAG" --repo SpoolSense/spoolsense_scanner \
               --pattern "$file" --dir docs-site/docs/firmware --clobber
           done
