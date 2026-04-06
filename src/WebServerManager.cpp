@@ -781,10 +781,13 @@ void WebServerManager::handleApiPostConfig() {
     Serial.println("WebServerManager: Config saved, rebooting...");
     _server.send(200, "application/json", "{\"success\":true}");
 
-    // Suspend scan task to prevent new NFC writes, then wait for any
-    // in-progress write to finish before restarting (#27)
+    // Wait for write queue to drain before restarting (#107)
+    // Scan task must keep running to process queued writes
+    for (int i = 0; i < 20 && !NFCManager::getInstance().isWriteQueueEmpty(); i++) {
+        delay(100);
+    }
     NFCManager::getInstance().pauseScanTask();
-    delay(500);
+    delay(200);
     ESP.restart();
 }
 
@@ -845,8 +848,15 @@ void WebServerManager::handleApiUploadFirmwareComplete() {
     } else {
         _server.send(200, "application/json", "{\"success\":true}");
         Serial.println("OTA: Rebooting...");
-        // Scan task already paused during upload; wait for any in-flight NFC I/O (#27)
-        delay(500);
+        // Resume scan task briefly to drain any pending writes (#107)
+        if (!NFCManager::getInstance().isWriteQueueEmpty()) {
+            NFCManager::getInstance().resumeScanTask();
+            for (int i = 0; i < 20 && !NFCManager::getInstance().isWriteQueueEmpty(); i++) {
+                delay(100);
+            }
+            NFCManager::getInstance().pauseScanTask();
+        }
+        delay(200);
         ESP.restart();
     }
 }

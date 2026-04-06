@@ -81,6 +81,7 @@ public:
     bool getNfcReaderInfo(char* buf, size_t len) const;
     void pauseScanTask();
     void resumeScanTask();
+    bool isWriteQueueEmpty() const;
 
     // Dependency injection for testing
     void setConnection(NFCConnectionI* conn) { connection_ = conn; }
