@@ -2255,7 +2255,11 @@ void NFCManager::requestCurrentSpool() {
 }
 
 void NFCManager::addToRecentSpools() {
+    if (tagMutex == nullptr) return;
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+
     if (!currentSpool.tag_data_valid) {
+        xSemaphoreGive(tagMutex);
         return;
     }
 
@@ -2268,7 +2272,7 @@ void NFCManager::addToRecentSpools() {
         }
     }
 
-    // Create new entry from current spool
+    // Snapshot data under mutex
     RecentSpoolEntry newEntry;
     memset(&newEntry, 0, sizeof(newEntry));
     strncpy(newEntry.spool_id, currentSpool.spool_id, sizeof(newEntry.spool_id) - 1);
@@ -2292,6 +2296,8 @@ void NFCManager::addToRecentSpools() {
     int32_t smId = -1;
     opt_get_gp_spoolman_id(&currentSpool.tag_data, &smId);
     newEntry.spoolman_id = smId;
+
+    xSemaphoreGive(tagMutex);
 
     if (existingIndex >= 0) {
         // Spool exists - shift entries to remove it from current position
@@ -2431,4 +2437,9 @@ void NFCManager::updateRecentSpoolSyncStatus(const char* spool_id, bool synced) 
     }
 
     xSemaphoreGive(tagMutex);
+}
+
+bool NFCManager::isWriteQueueEmpty() const {
+    if (!writeQueue) return true;
+    return uxQueueMessagesWaiting(writeQueue) == 0;
 }

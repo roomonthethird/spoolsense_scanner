@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.11] - 2026-04-05
+
+### Added
+
+- **PSRAM sprite allocation** — TFT sprite buffer allocated from PSRAM with 16-bit color depth on ESP32-S3-DevKitC-1-N16R8. Falls back to 8-bit internal RAM if PSRAM unavailable. (#115)
+- **NTP retry** — if NTP fails at boot, retries every 30 seconds non-blocking until time is obtained. (#109)
+- **NFC non-halt** — NFC reader failure no longer halts the device. Web UI remains accessible for debugging.
+
+### Fixed
+
+- **Cross-core thread safety** — `volatile bool` replaced with `std::atomic<bool>` for `stopRequested_` and `connected_` in HomeAssistantManager. (#108)
+- **addToRecentSpools mutex guard** — acquires `tagMutex` before reading shared `currentSpool` data to prevent stale reads. (#106)
+- **Write queue drain before restart** — config save and OTA restart wait for pending NFC writes to complete before rebooting. (#107)
+- **OPI PSRAM config** — `qio_opi` memory type for N16R8 octal PSRAM. Fixes "PSRAM chip not found" error.
+- **TFT backlight guard** — skip PWM setup when backlight pin is not assigned. Fixes `ledc_channel_config` error.
+
+---
+
 ## [1.6.10] - 2026-04-05
 
 ### Added

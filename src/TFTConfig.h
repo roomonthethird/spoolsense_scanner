@@ -80,8 +80,8 @@ public:
             panel->config(cfg);
         }
 
-        // Backlight
-        {
+        // Backlight (skip if pin not assigned)
+        if (PIN_TFT_BL >= 0) {
             auto cfg = _light_instance.config();
             cfg.pin_bl      = PIN_TFT_BL;
             cfg.invert      = false;
@@ -150,8 +150,8 @@ public:
             panel->config(cfg);
         }
 
-        // Backlight
-        {
+        // Backlight (skip if pin not assigned)
+        if (PIN_TFT_BL >= 0) {
             auto cfg = _light_instance.config();
             cfg.pin_bl      = PIN_TFT_BL;
             cfg.invert      = false;
