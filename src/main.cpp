@@ -147,6 +147,19 @@ void initWiFi() {
   }
 }
 
+void retryNTP() {
+  static bool ntpObtained = false;
+  static unsigned long lastAttempt = 0;
+
+  if (ntpObtained || g_apModeActive) return;
+  if (time(nullptr) > 1700000000) { ntpObtained = true; return; }
+  if (millis() - lastAttempt < 30000) return;
+
+  lastAttempt = millis();
+  Serial.println("NTP: Retrying...");
+  configTime(0, 0, "pool.ntp.org");
+}
+
 void checkWiFi() {
   // Skip in AP mode — no WiFi to reconnect
   if (g_apModeActive) return;
@@ -312,15 +325,16 @@ void setup() {
 
   // Initialize NFCManager
   if (!NFCManager::getInstance().begin()) {
-    Serial.println("NFCManager init failed - halting");
-    if (config.isLcdEnabled()) {
+    Serial.println("NFCManager init failed - continuing without NFC");
+    if (config.isTftEnabled() && tftManagerPtr) {
+      tftManagerPtr->showError("NFC FAILED");
+    } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("NFC FAILED", "");
     }
-    while (1) { delay(1000); }
+  } else {
+    // Start NFC scan task
+    NFCManager::getInstance().startScanTask();
   }
-
-  // Start NFC scan task
-  NFCManager::getInstance().startScanTask();
 
   if (!g_apModeActive) {
     // Start SpoolmanManager task
@@ -386,6 +400,9 @@ void loop() {
 
   // WiFi reconnection watchdog (non-AP mode only, throttled to WIFI_CHECK_INTERVAL_MS)
   checkWiFi();
+
+  // NTP retry if boot-time sync failed (30s interval, non-blocking)
+  retryNTP();
 
   // LCD and NFC scanning are handled by their own tasks
   delay(10);

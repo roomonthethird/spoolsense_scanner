@@ -50,15 +50,28 @@ TFTManager::TFTManager(TFTDriver driver)
 // ---------------------------------------------------------------------------
 void TFTManager::begin() {
     _tft.init();
-    delay(100);  // Let display hardware stabilize after cold boot
+    delay(100);
     _tft.setRotation(0);
     _tft.setBrightness(255);
     _tft.fillScreen(COLOR_BG);
 
-    _sprite.setColorDepth(8);  // 8-bit = 57.6KB vs 115KB at 16-bit
+#ifdef BOARD_HAS_PSRAM
+    _sprite.setPsram(true);
+    _sprite.setColorDepth(16);
     if (!_sprite.createSprite(_tft.width(), _tft.height())) {
-        Serial.println("TFTManager: WARNING — sprite allocation failed (low heap)");
+        Serial.println("TFTManager: PSRAM sprite failed, falling back to 8-bit internal RAM");
+        _sprite.setPsram(false);
+        _sprite.setColorDepth(8);
+        if (!_sprite.createSprite(_tft.width(), _tft.height())) {
+            Serial.println("TFTManager: WARNING — sprite allocation failed");
+        }
     }
+#else
+    _sprite.setColorDepth(8);
+    if (!_sprite.createSprite(_tft.width(), _tft.height())) {
+        Serial.println("TFTManager: WARNING — sprite allocation failed");
+    }
+#endif
 
     _messageQueue = xQueueCreate(8, sizeof(TFTMessage));
     if (_messageQueue == nullptr) {
