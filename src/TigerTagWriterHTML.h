@@ -333,13 +333,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
   <script src="/js/shared.js"></script>
   <script>
-    var createView = document.getElementById('createView');
-    var statusView = document.getElementById('statusView');
     var writerForm = document.getElementById('writerForm');
-    var backBtn = document.getElementById('backBtn');
-    var anotherBtn = document.getElementById('anotherBtn');
-
-    var STEP_IDS = ['step-wait', 'step-detect', 'step-write', 'step-verify'];
 
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
@@ -514,18 +508,6 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       } catch(e) { /* keep hardcoded fallback */ }
     })();
 
-    function showStatusView() {
-      createView.classList.add('hidden');
-      statusView.classList.remove('hidden');
-      backBtn.classList.add('hidden');
-      anotherBtn.classList.add('hidden');
-    }
-
-    function showCreateView() {
-      statusView.classList.add('hidden');
-      createView.classList.remove('hidden');
-    }
-
     function intVal(id, fallback) {
       var raw = document.getElementById(id).value.trim();
       if (raw === '') return fallback;
@@ -562,100 +544,53 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       };
     }
 
-    async function waitForTag(timeoutMs) {
-      var deadline = Date.now() + timeoutMs;
-      setStepState('step-wait', 'active');
-      setBanner('statusBanner', 'Waiting for tag\u2026');
-      setResult('resultBox', 'Place and hold an NTAG tag on the scanner.', '');
+    var ENRICHMENT_FIELDS = ['enrich-remaining', 'enrich-density'];
 
-      while (Date.now() < deadline) {
-        var status = await api('/api/status');
-        if (status.present) {
-          setStepState('step-wait', 'done');
-          return status;
-        }
-        await sleep(500);
-      }
-
-      setStepState('step-wait', 'error');
-      throw new Error('No tag detected. Place the tag on the scanner and try again.');
+    function showCreateView() {
+      document.getElementById('statusView').classList.add('hidden');
+      document.getElementById('createView').classList.remove('hidden');
     }
 
-    async function writeFlow() {
-      resetAllSteps(STEP_IDS);
-      showStatusView();
-
-      try {
-        var presentStatus = await waitForTag(8000);
-
-        setStepState('step-detect', 'active');
-        setBanner('statusBanner', 'Tag detected.');
-        setResult('resultBox', 'UID: ' + (presentStatus.uid || 'Unknown'), '');
-        await sleep(250);
-        setStepState('step-detect', 'done');
-
-        var payload = buildPayload(presentStatus.uid);
-
-        setStepState('step-write', 'active');
-        setBanner('statusBanner', 'Writing TigerTag data\u2026');
-        setResult('resultBox', 'Sending TigerTag binary to scanner.', '');
-        await api('/api/write-tigertag', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        setStepState('step-write', 'done');
-
-        setStepState('step-verify', 'active');
-        setBanner('statusBanner', 'Verifying write\u2026');
-        setResult('resultBox', 'Reading tag back to confirm data matches.', '');
-
-        var verifyDeadline = Date.now() + 15000;
-        while (Date.now() < verifyDeadline) {
-          await sleep(500);
-          var status = await api('/api/status');
-          if (status.present && status.tag_kind === 'TigerTag' && status.tigertag) {
-            var tt = status.tigertag;
-            if (tt.material_id === payload.material_id && tt.brand_id === payload.brand_id) {
-              // Wait for the full read cycle to complete before declaring success
-              setBanner('statusBanner', 'Tag verified \u2014 hold for a moment\u2026');
-              await sleep(2000);
-              setStepState('step-verify', 'done');
-              setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
-              setResult('resultBox', 'TigerTag data written and verified successfully.', 'success');
-              await saveEnrichment(presentStatus.uid);
-              backBtn.classList.remove('hidden');
-              anotherBtn.classList.remove('hidden');
-              return;
-            }
-          }
-        }
-
-        setStepState('step-verify', 'error');
-        throw new Error('Verification timed out. Keep the tag on the scanner and try again.');
-      } catch (err) {
-        var msg = err && err.message ? err.message : 'Write failed';
-        setBanner('statusBanner', 'Write failed.');
-        setResult('resultBox', msg, 'error');
-
-        STEP_IDS.forEach(function(id) {
-          var el = document.getElementById(id);
-          if (el && el.classList.contains('active')) {
-            setStepState(id, 'error');
-          }
-        });
-
-        backBtn.classList.remove('hidden');
-      }
-    }
+    document.getElementById('backBtn').addEventListener('click', showCreateView);
+    document.getElementById('anotherBtn').addEventListener('click', showCreateView);
 
     writerForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      writeFlow();
+      sharedWriteFlow({
+        stepIds: ['step-wait', 'step-detect', 'step-write', 'step-verify'],
+        endpoint: '/api/write-tigertag',
+        formatName: 'TigerTag',
+        buildPayload: buildPayload,
+        verify: function(status, payload) {
+          if (status.tag_kind !== 'TigerTag' || !status.tigertag) return false;
+          var tt = status.tigertag;
+          return tt.material_id === payload.material_id &&
+                 tt.brand_id === payload.brand_id &&
+                 tt.weight_g === payload.weight_g;
+        },
+        afterSuccess: function(uid) {
+          return saveEnrichmentToSpoolman(uid, {
+            enrichmentFieldIds: ENRICHMENT_FIELDS,
+            getFields: function() {
+              var nozzleMin = parseInt(document.getElementById('nozzle_min').value) || 0;
+              var nozzleMax = parseInt(document.getElementById('nozzle_max').value) || 0;
+              var bedMin = parseInt(document.getElementById('bed_min').value) || 0;
+              var bedMax = parseInt(document.getElementById('bed_max').value) || 0;
+              return {
+                manufacturer: document.getElementById('brand_name').value.trim(),
+                material: document.getElementById('material_search').value.trim(),
+                colorHex: document.getElementById('colorHex').value || '',
+                remainingG: parseFloat(document.getElementById('enrich-remaining').value) || 0,
+                density: parseFloat(document.getElementById('enrich-density').value) || 0,
+                nozzleTemp: (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax),
+                bedTemp: (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax),
+                diameterMm: (parseInt(document.getElementById('diameter_id').value) || 56) === 221 ? 2.85 : 1.75
+              };
+            }
+          });
+        }
+      });
     });
-
-    backBtn.addEventListener('click', showCreateView);
-    anotherBtn.addEventListener('click', showCreateView);
 
     renderSpoolmanPicker('spoolmanPicker', {
       material: 'material_search',
@@ -671,7 +606,6 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       density: 'enrich-density'
     });
 
-    // Show enrichment section once spool picker loads (confirms Spoolman is configured)
     var _enrichCheck = setInterval(function() {
       if (document.querySelector('#spoolmanPickerSearch')) {
         document.getElementById('spoolmanEnrichment').classList.remove('hidden');
@@ -680,165 +614,42 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     }, 500);
     setTimeout(function() { clearInterval(_enrichCheck); }, 15000);
 
-    var readBtn = document.getElementById('readBtn');
-    var writeBtn = document.getElementById('writeBtn');
-    var readWaiting = false;
-
-    function setReadWaiting(active) {
-      readWaiting = active;
-      writeBtn.disabled = active;
-      if (active) {
-        readBtn.textContent = 'Cancel';
-        readBtn.onclick = cancelRead;
-        document.getElementById('readPrompt').classList.remove('hidden');
-      } else {
-        readBtn.textContent = 'Read';
-        readBtn.onclick = startRead;
-        document.getElementById('readPrompt').classList.add('hidden');
-      }
-    }
-
-    function cancelRead() {
-      readWaiting = false;
-      setReadWaiting(false);
-    }
-
     function showMatchBadge(text) {
       var badge = document.getElementById('spoolmanMatchBadge');
       badge.textContent = text;
       badge.classList.remove('hidden');
     }
 
-    function setVal(id, val) {
-      var el = document.getElementById(id);
-      if (el && val !== undefined && val !== null) el.value = val;
-    }
-
-    function fillEnrichmentFromStatus(status) {
-      var sp = status.spoolman || {};
-      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
-      if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
-    }
-
-    async function startRead() {
-      setReadWaiting(true);
-      var deadline = Date.now() + 30000;
-      while (readWaiting && Date.now() < deadline) {
-        try {
-          var status = await fetch('/api/status').then(r => r.json());
-          if (status.present && status.tag_kind === 'TigerTag') {
-            var tt = status.tigertag || {};
-            setVal('material_search', tt.material_name || '');
-            setVal('brand_name', tt.brand_name || '');
-            if (tt.color_hex) {
-              var c = tt.color_hex.startsWith('#') ? tt.color_hex : '#' + tt.color_hex;
-              setVal('colorHex', c);
-              setVal('colorPicker', c);
-            }
-            if (tt.weight_g) setVal('weight_g', tt.weight_g);
-            if (tt.nozzle_temp_min) setVal('nozzle_min', tt.nozzle_temp_min);
-            if (tt.nozzle_temp_max) setVal('nozzle_max', tt.nozzle_temp_max);
-            if (tt.bed_temp_min) setVal('bed_min', tt.bed_temp_min);
-            if (tt.bed_temp_max) setVal('bed_max', tt.bed_temp_max);
-            if (tt.dry_temp) setVal('dry_temp', tt.dry_temp);
-            if (tt.dry_time_hours) setVal('dry_time', tt.dry_time_hours);
-            if (tt.material_id !== undefined) document.getElementById('material_id').value = tt.material_id;
-            if (tt.brand_id !== undefined) document.getElementById('brand_id').value = tt.brand_id;
-            // Sync material ID from name if not set directly
-            syncMaterialId();
-            fillEnrichmentFromStatus(status);
-            if (status.spoolman && status.spoolman.spool_id > 0) {
-              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
-            } else {
-              showMatchBadge('no Spoolman match');
-            }
-            break;
-          } else if (status.present) {
-            showMatchBadge('wrong format \u2014 expected TigerTag');
-            break;
-          }
-        } catch(e) {}
-        await new Promise(r => setTimeout(r, 500));
-      }
-      setReadWaiting(false);
-    }
-
-    readBtn.onclick = startRead;
-
-    function enrichmentHasData() {
-      var ids = ['enrich-remaining', 'enrich-density'];
-      return ids.some(function(id) {
-        var el = document.getElementById(id);
-        return el && el.value && parseFloat(el.value) > 0;
-      });
-    }
-
-    async function saveEnrichment(uid) {
-      if (!enrichmentHasData()) return;
-
-      var manufacturer = document.getElementById('brand_name').value.trim();
-      var material = document.getElementById('material_search').value.trim();
-      var colorHex = document.getElementById('colorHex').value || '';
-      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
-      var density = parseFloat(document.getElementById('enrich-density').value) || 0;
-      var nozzleMin = parseInt(document.getElementById('nozzle_min').value) || 0;
-      var nozzleMax = parseInt(document.getElementById('nozzle_max').value) || 0;
-      var bedMin = parseInt(document.getElementById('bed_min').value) || 0;
-      var bedMax = parseInt(document.getElementById('bed_max').value) || 0;
-      var bedTemp = (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax);
-      var nozzleTemp = (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax);
-
-      var vendorId = -1;
-      if (manufacturer) {
-        try {
-          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
-          if (vr.found) {
-            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
-            vendorId = confirmed ? vr.id : -2;
-          }
-        } catch(e) {}
-      }
-
-      var filamentId = -1;
-      if (vendorId > 0 && material) {
-        try {
-          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
-                           + '&material=' + encodeURIComponent(material)
-                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
-          if (fr.found) {
-            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
-            filamentId = fconfirmed ? fr.id : -2;
-          }
-        } catch(e) {}
-      }
-
-      try {
-        var resp = await fetch('/api/spoolman/save-enrichment', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            uid: uid,
-            manufacturer: manufacturer,
-            material: material,
-            color_hex: colorHex.replace('#', ''),
-            remaining_g: remainingG,
-            bed_temp: bedTemp,
-            nozzle_temp: nozzleTemp,
-            diameter_mm: (parseInt(document.getElementById('diameter_id').value) || 56) === 221 ? 2.85 : 1.75,
-            density: density,
-            vendor_id: vendorId,
-            filament_id: filamentId
-          })
-        });
-        var result = await resp.json();
-        if (!resp.ok || result.success === false) {
-          throw new Error(result.error || 'save failed');
+    setupReadButton({
+      expectedKind: 'TigerTag',
+      wrongKindMsg: 'wrong format \u2014 expected TigerTag',
+      showMatchBadge: showMatchBadge,
+      fillForm: function(status) {
+        var tt = status.tigertag || {};
+        setVal('material_search', tt.material_name || '');
+        setVal('brand_name', tt.brand_name || '');
+        if (tt.color_hex) {
+          var c = tt.color_hex.startsWith('#') ? tt.color_hex : '#' + tt.color_hex;
+          setVal('colorHex', c);
+          setVal('colorPicker', c);
         }
-        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
-      } catch(e) {
-        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+        if (tt.weight_g) setVal('weight_g', tt.weight_g);
+        if (tt.nozzle_temp_min) setVal('nozzle_min', tt.nozzle_temp_min);
+        if (tt.nozzle_temp_max) setVal('nozzle_max', tt.nozzle_temp_max);
+        if (tt.bed_temp_min) setVal('bed_min', tt.bed_temp_min);
+        if (tt.bed_temp_max) setVal('bed_max', tt.bed_temp_max);
+        if (tt.dry_temp) setVal('dry_temp', tt.dry_temp);
+        if (tt.dry_time_hours) setVal('dry_time', tt.dry_time_hours);
+        if (tt.material_id !== undefined) document.getElementById('material_id').value = tt.material_id;
+        if (tt.brand_id !== undefined) document.getElementById('brand_id').value = tt.brand_id;
+        syncMaterialId();
+      },
+      fillEnrichment: function(status) {
+        var sp = status.spoolman || {};
+        if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
+        if (sp.density && sp.density > 0) setVal('enrich-density', sp.density);
       }
-    }
+    });
 
   </script>
 </body>

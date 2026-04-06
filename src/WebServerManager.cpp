@@ -1943,31 +1943,46 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
         return;
     }
 
-    // Step 3: Find or create spool by UID
-    // nfc_id is stored as a double-quoted JSON string value — match that in the query
+    // Step 3: Find existing spool by UID
+    // Spoolman's extra_field filter is unreliable — fetch all and match nfc_id client-side
     int spoolId = -1;
+    float existingInitialWeight = 0.0f;
     char quotedUid[130];
     snprintf(quotedUid, sizeof(quotedUid), "\"%s\"", uid);
-    String encodedUid = urlEncode(quotedUid);
-    snprintf(url, sizeof(url), "%s/api/v1/spool?extra_field=nfc_id:%s", baseUrl, encodedUid.c_str());
+    snprintf(url, sizeof(url), "%s/api/v1/spool?limit=200", baseUrl);
     http.begin(client, url);
     http.setTimeout(5000);
     code = http.GET();
     if (code == 200) {
         response = http.getString();
-        StaticJsonDocument<2048> sDoc;
+        DynamicJsonDocument sDoc(16384);
         if (!deserializeJson(sDoc, response)) {
             JsonArray arr = sDoc.as<JsonArray>();
-            if (arr.size() > 0) spoolId = arr[0]["id"] | -1;
+            for (size_t i = 0; i < arr.size(); i++) {
+                const char* nfcId = arr[i]["extra"]["nfc_id"] | "";
+                if (strcmp(nfcId, quotedUid) == 0) {
+                    bool archived = arr[i]["archived"] | false;
+                    if (archived) continue;
+                    spoolId = arr[i]["id"] | -1;
+                    existingInitialWeight = arr[i]["initial_weight"] | 0.0f;
+                    break;
+                }
+            }
         }
     }
     http.end();
 
     if (spoolId > 0) {
-        // Update existing spool
+        // Update existing spool — Spoolman uses used_weight, not remaining_weight
         StaticJsonDocument<256> patch;
         patch["filament_id"] = filamentId;
-        if (remainingG > 0) patch["remaining_weight"] = remainingG;
+        if (remainingG > 0) {
+            float initialW = existingInitialWeight > 0 ? existingInitialWeight : 1000.0f;
+            float usedW = initialW - remainingG;
+            if (usedW < 0) usedW = 0;
+            patch["initial_weight"] = initialW;
+            patch["used_weight"] = usedW;
+        }
         String pJson;
         serializeJson(patch, pJson);
         snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, spoolId);
@@ -1982,10 +1997,16 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
             return;
         }
     } else {
-        // Create new spool
+        // Create new spool — Spoolman uses used_weight, not remaining_weight
         StaticJsonDocument<512> sBody;
         sBody["filament_id"] = filamentId;
-        if (remainingG > 0) sBody["remaining_weight"] = remainingG;
+        if (remainingG > 0) {
+            float initialW = 1000.0f;
+            float usedW = initialW - remainingG;
+            if (usedW < 0) usedW = 0;
+            sBody["initial_weight"] = initialW;
+            sBody["used_weight"] = usedW;
+        }
         JsonObject extra = sBody.createNestedObject("extra");
         // Spoolman extra fields require JSON-encoded string values (double-quoted)
         extra["nfc_id"] = quotedUid;
