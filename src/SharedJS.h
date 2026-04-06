@@ -603,6 +603,7 @@ async function sharedWriteFlow(config) {
         setStepState('step-verify', 'done');
         setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
         setResult('resultBox', config.formatName + ' tag written and verified successfully.', 'success');
+        await sleep(500);
         if (config.afterSuccess) await config.afterSuccess(presentStatus.uid);
         backBtn.classList.remove('hidden');
         anotherBtn.classList.remove('hidden');
