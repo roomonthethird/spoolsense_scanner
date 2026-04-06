@@ -521,4 +521,238 @@ function fillFromSpoolman(spool, fieldMap) {
   var results = document.getElementById('spoolmanPickerResults');
   if (results) results.innerHTML = '<div style="padding:12px;color:var(--accent);text-align:center;font-weight:600">Loaded spool #' + spool.id + '</div>';
 }
+
+/* ---- Shared write flow ---- */
+
+async function waitForTag(timeoutMs) {
+  var deadline = Date.now() + timeoutMs;
+  setStepState('step-wait', 'active');
+  setBanner('statusBanner', 'Waiting for tag\u2026');
+  setResult('resultBox', 'Place and hold a tag on the scanner.', '');
+
+  while (Date.now() < deadline) {
+    var status = await api('/api/status');
+    if (status.present) {
+      setStepState('step-wait', 'done');
+      return status;
+    }
+    await sleep(500);
+  }
+
+  setStepState('step-wait', 'error');
+  throw new Error('No tag detected. Place the tag on the scanner and try again.');
+}
+
+async function sharedWriteFlow(config) {
+  var stepIds = config.stepIds;
+  var createView = document.getElementById('createView');
+  var statusView = document.getElementById('statusView');
+  var backBtn = document.getElementById('backBtn');
+  var anotherBtn = document.getElementById('anotherBtn');
+
+  resetAllSteps(stepIds);
+  createView.classList.add('hidden');
+  statusView.classList.remove('hidden');
+  backBtn.classList.add('hidden');
+  anotherBtn.classList.add('hidden');
+
+  try {
+    var presentStatus = await waitForTag(8000);
+
+    setStepState('step-detect', 'active');
+    setBanner('statusBanner', 'Tag detected.');
+    setResult('resultBox', 'UID: ' + (presentStatus.uid || 'Unknown'), '');
+    await sleep(250);
+    setStepState('step-detect', 'done');
+
+    if (config.formatCheck && config.formatCheck(presentStatus)) {
+      setStepState('step-format', 'active');
+      setBanner('statusBanner', 'Formatting tag\u2026');
+      setResult('resultBox', 'Preparing blank tag for data.', '');
+      await api(config.formatEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: presentStatus.uid })
+      });
+      setStepState('step-format', 'done');
+    }
+
+    var payload = config.buildPayload(presentStatus.uid);
+
+    setStepState('step-write', 'active');
+    setBanner('statusBanner', 'Writing ' + config.formatName + ' data\u2026');
+    setResult('resultBox', 'Sending ' + config.formatName + ' payload to scanner.', '');
+    await api(config.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    setStepState('step-write', 'done');
+
+    setStepState('step-verify', 'active');
+    setBanner('statusBanner', 'Verifying write\u2026');
+    setResult('resultBox', 'Reading tag back to confirm data matches.', '');
+
+    var verifyDeadline = Date.now() + 15000;
+    while (Date.now() < verifyDeadline) {
+      await sleep(500);
+      var status = await api('/api/status');
+      if (status.present && config.verify(status, payload)) {
+        setBanner('statusBanner', 'Tag verified \u2014 hold for a moment\u2026');
+        await sleep(2000);
+        setStepState('step-verify', 'done');
+        setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
+        setResult('resultBox', config.formatName + ' tag written and verified successfully.', 'success');
+        await sleep(500);
+        if (config.afterSuccess) await config.afterSuccess(presentStatus.uid);
+        backBtn.classList.remove('hidden');
+        anotherBtn.classList.remove('hidden');
+        return;
+      }
+    }
+
+    setStepState('step-verify', 'error');
+    throw new Error('Verification timed out. Keep the tag on the scanner and try again.');
+  } catch (err) {
+    var msg = err && err.message ? err.message : 'Write failed';
+    setBanner('statusBanner', 'Write failed.');
+    setResult('resultBox', msg, 'error');
+
+    stepIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && el.classList.contains('active')) {
+        setStepState(id, 'error');
+      }
+    });
+
+    backBtn.classList.remove('hidden');
+  }
+}
+
+/* ---- Shared read button ---- */
+
+function setupReadButton(config) {
+  var readBtn = document.getElementById('readBtn');
+  var writeBtn = document.getElementById('writeBtn');
+  var readWaiting = false;
+
+  function setReadWaiting(active) {
+    readWaiting = active;
+    writeBtn.disabled = active;
+    if (active) {
+      readBtn.textContent = 'Cancel';
+      readBtn.onclick = cancelRead;
+      document.getElementById('readPrompt').classList.remove('hidden');
+    } else {
+      readBtn.textContent = 'Read';
+      readBtn.onclick = startRead;
+      document.getElementById('readPrompt').classList.add('hidden');
+    }
+  }
+
+  function cancelRead() {
+    readWaiting = false;
+    setReadWaiting(false);
+  }
+
+  async function startRead() {
+    setReadWaiting(true);
+    var deadline = Date.now() + 30000;
+    while (readWaiting && Date.now() < deadline) {
+      try {
+        var status = await fetch('/api/status').then(function(r) { return r.json(); });
+        if (status.present && status.tag_kind === config.expectedKind) {
+          config.fillForm(status);
+          if (config.fillEnrichment) config.fillEnrichment(status);
+          if (config.showMatchBadge) {
+            if (status.spoolman && status.spoolman.spool_id > 0) {
+              config.showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
+            } else {
+              config.showMatchBadge('no Spoolman match');
+            }
+          }
+          break;
+        } else if (status.present) {
+          if (config.showMatchBadge) config.showMatchBadge(config.wrongKindMsg);
+          break;
+        }
+      } catch(e) {}
+      await new Promise(function(r) { setTimeout(r, 500); });
+    }
+    setReadWaiting(false);
+  }
+
+  readBtn.onclick = startRead;
+}
+
+/* ---- Shared enrichment helpers ---- */
+
+function enrichmentHasData(fieldIds) {
+  return fieldIds.some(function(id) {
+    var el = document.getElementById(id);
+    return el && el.value && parseFloat(el.value) > 0;
+  });
+}
+
+function setVal(id, val) {
+  var el = document.getElementById(id);
+  if (el && val !== undefined && val !== null) el.value = val;
+}
+
+async function saveEnrichmentToSpoolman(uid, config) {
+  if (!enrichmentHasData(config.enrichmentFieldIds)) return;
+
+  var fields = config.getFields();
+
+  var vendorId = -1;
+  if (fields.manufacturer) {
+    try {
+      var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(fields.manufacturer)).then(function(r) { return r.json(); });
+      if (vr.found) {
+        var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
+        vendorId = confirmed ? vr.id : -2;
+      }
+    } catch(e) {}
+  }
+
+  var filamentId = -1;
+  if (vendorId > 0 && fields.material) {
+    try {
+      var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
+                       + '&material=' + encodeURIComponent(fields.material)
+                       + (fields.colorHex ? '&color_hex=' + encodeURIComponent(fields.colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
+      if (fr.found) {
+        var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
+        filamentId = fconfirmed ? fr.id : -2;
+      }
+    } catch(e) {}
+  }
+
+  try {
+    var resp = await fetch('/api/spoolman/save-enrichment', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        uid: uid,
+        manufacturer: fields.manufacturer,
+        material: fields.material,
+        color_hex: (fields.colorHex || '').replace('#', ''),
+        remaining_g: fields.remainingG || 0,
+        bed_temp: fields.bedTemp || 0,
+        nozzle_temp: fields.nozzleTemp || 0,
+        diameter_mm: fields.diameterMm || 1.75,
+        density: fields.density || 0,
+        vendor_id: vendorId,
+        filament_id: filamentId
+      })
+    });
+    var result = await resp.json();
+    if (!resp.ok || result.success === false) {
+      throw new Error(result.error || 'save failed');
+    }
+    setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
+  } catch(e) {
+    setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+  }
+}
 )rawliteral";

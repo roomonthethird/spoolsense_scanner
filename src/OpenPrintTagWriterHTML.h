@@ -275,19 +275,12 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
 
   <script src="/js/shared.js"></script>
   <script>
-    var createView = document.getElementById('createView');
-    var statusView = document.getElementById('statusView');
     var writerForm = document.getElementById('writerForm');
 
     var materialTypeEl = document.getElementById('material_type');
     var materialSearchEl = document.getElementById('material_search');
     var materialListEl = document.getElementById('material-list');
     var materialNameEl = document.getElementById('material_name');
-
-    var backBtn = document.getElementById('backBtn');
-    var anotherBtn = document.getElementById('anotherBtn');
-
-    var STEP_IDS = ['step-wait', 'step-detect', 'step-format', 'step-write', 'step-verify'];
 
     syncColorPicker('colorPicker', 'colorHex');
 
@@ -364,16 +357,9 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       });
     });
 
-    function showStatusView() {
-      createView.classList.add('hidden');
-      statusView.classList.remove('hidden');
-      backBtn.classList.add('hidden');
-      anotherBtn.classList.add('hidden');
-    }
-
     function showCreateView() {
-      statusView.classList.add('hidden');
-      createView.classList.remove('hidden');
+      document.getElementById('statusView').classList.add('hidden');
+      document.getElementById('createView').classList.remove('hidden');
     }
 
     function syncMaterialNameFromSelection() {
@@ -478,95 +464,6 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       return checks.length > 0 && checks.every(Boolean);
     }
 
-    async function writeFlow() {
-      resetAllSteps(STEP_IDS);
-      showStatusView();
-
-      try {
-        setStepState('step-wait', 'active');
-        setBanner('statusBanner', 'Waiting for tag\u2026');
-        setResult('resultBox', 'Place and hold the tag on the scanner.', '');
-
-        var presentStatus = null;
-        var deadline = Date.now() + 8000;
-        while (Date.now() < deadline) {
-          var s = await api('/api/status');
-          if (s.present) { presentStatus = s; break; }
-          await sleep(500);
-        }
-        if (!presentStatus) {
-          setStepState('step-wait', 'error');
-          throw new Error('No tag detected. Place the tag on the scanner and try again.');
-        }
-        setStepState('step-wait', 'done');
-
-        setStepState('step-detect', 'active');
-        setBanner('statusBanner', 'Tag detected.');
-        setResult('resultBox', 'UID: ' + (presentStatus.uid || 'Unknown'), '');
-        await sleep(250);
-        setStepState('step-detect', 'done');
-
-        var payload = buildPayload(presentStatus.uid);
-
-        if (presentStatus.tag_data_valid === false) {
-          setStepState('step-format', 'active');
-          setBanner('statusBanner', 'Formatting blank tag\u2026');
-          setResult('resultBox', 'Blank tag detected. Initializing NDEF structure.', '');
-          await api('/api/format-tag', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid: presentStatus.uid })
-          });
-          await sleep(1000);
-          setStepState('step-format', 'done');
-        } else {
-          setStepState('step-format', 'done');
-        }
-
-        setStepState('step-write', 'active');
-        setBanner('statusBanner', 'Writing data\u2026');
-        setResult('resultBox', 'Sending OpenPrintTag payload to scanner.', '');
-        await api('/api/write-tag', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        setStepState('step-write', 'done');
-
-        setStepState('step-verify', 'active');
-        setBanner('statusBanner', 'Verifying write\u2026');
-        setResult('resultBox', 'Reading tag back to confirm fields match.', '');
-
-        var verifyDeadline = Date.now() + 15000;
-        while (Date.now() < verifyDeadline) {
-          await sleep(500);
-          var status = await api('/api/status');
-          if (status.present && valuesMatch(status, payload)) {
-            setStepState('step-verify', 'done');
-            setBanner('statusBanner', 'Write successful.');
-            setResult('resultBox', 'OpenPrintTag data verified successfully.', 'success');
-            backBtn.classList.remove('hidden');
-            anotherBtn.classList.remove('hidden');
-            return;
-          }
-        }
-
-        setStepState('step-verify', 'error');
-        throw new Error('Write timed out. Keep the tag on the scanner and try again.');
-      } catch (err) {
-        var msg = err && err.message ? err.message : 'Write failed';
-        setBanner('statusBanner', 'Write failed.');
-        setResult('resultBox', msg, 'error');
-
-        STEP_IDS.forEach(function(id) {
-          var el = document.getElementById(id);
-          if (el && el.classList.contains('active')) setStepState(id, 'error');
-        });
-
-        backBtn.classList.remove('hidden');
-      }
-    }
-
     materialSearchEl.addEventListener('input', syncMaterialNameFromSelection);
 
     materialNameEl.addEventListener('input', function() {
@@ -583,13 +480,21 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       }, 0);
     });
 
+    document.getElementById('backBtn').addEventListener('click', showCreateView);
+    document.getElementById('anotherBtn').addEventListener('click', showCreateView);
+
     writerForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      writeFlow();
+      sharedWriteFlow({
+        stepIds: ['step-wait', 'step-detect', 'step-format', 'step-write', 'step-verify'],
+        endpoint: '/api/write-tag',
+        formatName: 'OpenPrintTag',
+        buildPayload: buildPayload,
+        verify: function(status, payload) { return valuesMatch(status, payload); },
+        formatCheck: function(status) { return status.tag_data_valid === false; },
+        formatEndpoint: '/api/format-tag'
+      });
     });
-
-    backBtn.addEventListener('click', showCreateView);
-    anotherBtn.addEventListener('click', showCreateView);
 
     syncMaterialNameFromSelection();
 
@@ -616,48 +521,11 @@ const char OPENPRINTTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
       spoolman_id: 'spoolman_id'
     });
 
-    var readBtn = document.getElementById('readBtn');
-    var writeBtn = document.getElementById('writeBtn');
-    var readWaiting = false;
-
-    function setReadWaiting(active) {
-      readWaiting = active;
-      writeBtn.disabled = active;
-      if (active) {
-        readBtn.textContent = 'Cancel';
-        readBtn.onclick = cancelRead;
-        document.getElementById('readPrompt').classList.remove('hidden');
-      } else {
-        readBtn.textContent = 'Read';
-        readBtn.onclick = startRead;
-        document.getElementById('readPrompt').classList.add('hidden');
-      }
-    }
-
-    function cancelRead() {
-      readWaiting = false;
-      setReadWaiting(false);
-    }
-
-    async function startRead() {
-      setReadWaiting(true);
-      var deadline = Date.now() + 30000;
-      while (readWaiting && Date.now() < deadline) {
-        try {
-          var status = await fetch('/api/status').then(r => r.json());
-          if (status.present && status.tag_kind === 'OpenPrintTag') {
-            prefillFromStatus(status);
-            break;
-          } else if (status.present) {
-            break; // wrong format
-          }
-        } catch(e) {}
-        await new Promise(r => setTimeout(r, 500));
-      }
-      setReadWaiting(false);
-    }
-
-    readBtn.onclick = startRead;
+    setupReadButton({
+      expectedKind: 'OpenPrintTag',
+      wrongKindMsg: 'wrong format \u2014 expected OpenPrintTag',
+      fillForm: function(status) { prefillFromStatus(status); }
+    });
   </script>
 </body>
 </html>
