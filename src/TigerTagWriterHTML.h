@@ -564,7 +564,9 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
         verify: function(status, payload) {
           if (status.tag_kind !== 'TigerTag' || !status.tigertag) return false;
           var tt = status.tigertag;
-          return tt.material_id === payload.material_id && tt.brand_id === payload.brand_id;
+          return tt.material_id === payload.material_id &&
+                 tt.brand_id === payload.brand_id &&
+                 tt.weight_g === payload.weight_g;
         },
         afterSuccess: function(uid) {
           return saveEnrichmentToSpoolman(uid, {

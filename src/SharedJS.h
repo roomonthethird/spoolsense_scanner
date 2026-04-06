@@ -528,7 +528,7 @@ async function waitForTag(timeoutMs) {
   var deadline = Date.now() + timeoutMs;
   setStepState('step-wait', 'active');
   setBanner('statusBanner', 'Waiting for tag\u2026');
-  setResult('resultBox', 'Place and hold an NTAG tag on the scanner.', '');
+  setResult('resultBox', 'Place and hold a tag on the scanner.', '');
 
   while (Date.now() < deadline) {
     var status = await api('/api/status');

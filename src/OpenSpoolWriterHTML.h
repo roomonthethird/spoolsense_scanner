@@ -286,7 +286,12 @@ const char OPENSPOOL_WRITER_HTML[] PROGMEM = R"rawliteral(
         endpoint: '/api/write-openspool',
         formatName: 'OpenSpool',
         buildPayload: buildPayload,
-        verify: function(status) { return status.tag_kind === 'OpenSpoolTag'; },
+        verify: function(status, payload) {
+          if (status.tag_kind !== 'OpenSpoolTag' || !status.openspool) return false;
+          var os = status.openspool;
+          return os.brand === payload.brand && os.material === payload.type &&
+                 (os.color_hex || '').replace('#','').toUpperCase() === (payload.color_hex || '').toUpperCase();
+        },
         afterSuccess: function(uid) {
           return saveEnrichmentToSpoolman(uid, {
             enrichmentFieldIds: ENRICHMENT_FIELDS,

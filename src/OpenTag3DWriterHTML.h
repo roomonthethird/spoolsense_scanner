@@ -513,7 +513,13 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
         endpoint: '/api/write-opentag3d',
         formatName: 'OpenTag3D',
         buildPayload: buildPayload,
-        verify: function(status) { return status.tag_kind === 'OpenTag3D'; },
+        verify: function(status, payload) {
+          if (status.tag_kind !== 'OpenTag3D' || !status.opentag3d) return false;
+          var ot = status.opentag3d;
+          return ot.base_material === payload.base_material &&
+                 ot.manufacturer === payload.manufacturer &&
+                 ot.target_weight_g === payload.target_weight_g;
+        },
         afterSuccess: function(uid) {
           return saveEnrichmentToSpoolman(uid, {
             enrichmentFieldIds: ENRICHMENT_FIELDS,
