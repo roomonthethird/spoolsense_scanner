@@ -324,13 +324,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
 
   <script src="/js/shared.js"></script>
   <script>
-    var createView = document.getElementById('createView');
-    var statusView = document.getElementById('statusView');
     var writerForm = document.getElementById('writerForm');
-    var backBtn = document.getElementById('backBtn');
-    var anotherBtn = document.getElementById('anotherBtn');
-
-    var STEP_IDS = ['step-wait', 'step-detect', 'step-write', 'step-verify'];
 
     syncColorPicker('colorPicker', 'colorHex');
     setupAdvancedToggle('advancedToggle', 'advancedBox');
@@ -427,18 +421,6 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       'dry_time_hours', 'target_volumetric_speed', 'transmission_distance'
     ];
 
-    function showStatusView() {
-      createView.classList.add('hidden');
-      statusView.classList.remove('hidden');
-      backBtn.classList.add('hidden');
-      anotherBtn.classList.add('hidden');
-    }
-
-    function showCreateView() {
-      statusView.classList.add('hidden');
-      createView.classList.remove('hidden');
-    }
-
     function intVal(id, fallback) {
       var raw = document.getElementById(id).value.trim();
       if (raw === '') return fallback;
@@ -514,97 +496,48 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       return body;
     }
 
-    async function waitForTag(timeoutMs) {
-      var deadline = Date.now() + timeoutMs;
-      setStepState('step-wait', 'active');
-      setBanner('statusBanner', 'Waiting for tag\u2026');
-      setResult('resultBox', 'Place and hold an NTAG215 tag on the scanner.', '');
+    var ENRICHMENT_FIELDS = ['enrich-remaining'];
 
-      while (Date.now() < deadline) {
-        var status = await api('/api/status');
-        if (status.present) {
-          setStepState('step-wait', 'done');
-          return status;
-        }
-        await sleep(500);
-      }
-
-      setStepState('step-wait', 'error');
-      throw new Error('No tag detected. Place the tag on the scanner and try again.');
+    function showCreateView() {
+      document.getElementById('statusView').classList.add('hidden');
+      document.getElementById('createView').classList.remove('hidden');
     }
 
-    async function writeFlow() {
-      resetAllSteps(STEP_IDS);
-      showStatusView();
-
-      try {
-        var presentStatus = await waitForTag(8000);
-
-        setStepState('step-detect', 'active');
-        setBanner('statusBanner', 'Tag detected.');
-        setResult('resultBox', 'UID: ' + (presentStatus.uid || 'Unknown'), '');
-        await sleep(250);
-        setStepState('step-detect', 'done');
-
-        var payload = buildPayload(presentStatus.uid);
-
-        setStepState('step-write', 'active');
-        setBanner('statusBanner', 'Writing OpenTag3D data\u2026');
-        setResult('resultBox', 'Sending OpenTag3D NDEF payload to scanner.', '');
-        await api('/api/write-opentag3d', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        setStepState('step-write', 'done');
-
-        setStepState('step-verify', 'active');
-        setBanner('statusBanner', 'Verifying write\u2026');
-        setResult('resultBox', 'Reading tag back to confirm data matches.', '');
-
-        var verifyDeadline = Date.now() + 15000;
-        while (Date.now() < verifyDeadline) {
-          await sleep(500);
-          var status = await api('/api/status');
-          if (status.present && status.tag_kind === 'OpenTag3D') {
-            // Wait for the full read cycle to complete before declaring success
-            setBanner('statusBanner', 'Tag verified \u2014 hold for a moment\u2026');
-            await sleep(2000);
-            setStepState('step-verify', 'done');
-            setBanner('statusBanner', 'Write complete \u2014 safe to remove tag.');
-            setResult('resultBox', 'OpenTag3D data written and verified successfully.', 'success');
-            await saveEnrichment(presentStatus.uid);
-            backBtn.classList.remove('hidden');
-            anotherBtn.classList.remove('hidden');
-            return;
-          }
-        }
-
-        setStepState('step-verify', 'error');
-        throw new Error('Verification timed out. Keep the tag on the scanner and try again.');
-      } catch (err) {
-        var msg = err && err.message ? err.message : 'Write failed';
-        setBanner('statusBanner', 'Write failed.');
-        setResult('resultBox', msg, 'error');
-
-        STEP_IDS.forEach(function(id) {
-          var el = document.getElementById(id);
-          if (el && el.classList.contains('active')) {
-            setStepState(id, 'error');
-          }
-        });
-
-        backBtn.classList.remove('hidden');
-      }
-    }
+    document.getElementById('backBtn').addEventListener('click', showCreateView);
+    document.getElementById('anotherBtn').addEventListener('click', showCreateView);
 
     writerForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      writeFlow();
+      sharedWriteFlow({
+        stepIds: ['step-wait', 'step-detect', 'step-write', 'step-verify'],
+        endpoint: '/api/write-opentag3d',
+        formatName: 'OpenTag3D',
+        buildPayload: buildPayload,
+        verify: function(status) { return status.tag_kind === 'OpenTag3D'; },
+        afterSuccess: function(uid) {
+          return saveEnrichmentToSpoolman(uid, {
+            enrichmentFieldIds: ENRICHMENT_FIELDS,
+            getFields: function() {
+              var nozzleMin = parseInt(document.getElementById('min_print_temp_c').value) || 0;
+              var nozzleMax = parseInt(document.getElementById('max_print_temp_c').value) || 0;
+              var bedMin = parseInt(document.getElementById('min_bed_temp_c').value) || 0;
+              var bedMax = parseInt(document.getElementById('max_bed_temp_c').value) || 0;
+              var diameter = parseInt(document.getElementById('diameter_um').value) || 1750;
+              return {
+                manufacturer: document.getElementById('manufacturer').value.trim(),
+                material: document.getElementById('base_material').value.trim(),
+                colorHex: document.getElementById('colorHex').value || '',
+                remainingG: parseFloat(document.getElementById('enrich-remaining').value) || 0,
+                density: parseFloat(document.getElementById('density').value) || 0,
+                nozzleTemp: (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0),
+                bedTemp: (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0),
+                diameterMm: diameter / 1000.0
+              };
+            }
+          });
+        }
+      });
     });
-
-    backBtn.addEventListener('click', showCreateView);
-    anotherBtn.addEventListener('click', showCreateView);
 
     renderSpoolmanPicker('spoolmanPicker', {
       material: 'base_material',
@@ -623,7 +556,6 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
       bed_max: 'max_bed_temp_c'
     });
 
-    // Show enrichment section once spool picker loads (confirms Spoolman is configured)
     var _enrichCheck = setInterval(function() {
       if (document.querySelector('#spoolmanPickerSearch')) {
         document.getElementById('spoolmanEnrichment').classList.remove('hidden');
@@ -632,173 +564,48 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     }, 500);
     setTimeout(function() { clearInterval(_enrichCheck); }, 15000);
 
-    var readBtn = document.getElementById('readBtn');
-    var writeBtn = document.getElementById('writeBtn');
-    var readWaiting = false;
-
-    function setReadWaiting(active) {
-      readWaiting = active;
-      writeBtn.disabled = active;
-      if (active) {
-        readBtn.textContent = 'Cancel';
-        readBtn.onclick = cancelRead;
-        document.getElementById('readPrompt').classList.remove('hidden');
-      } else {
-        readBtn.textContent = 'Read';
-        readBtn.onclick = startRead;
-        document.getElementById('readPrompt').classList.add('hidden');
-      }
-    }
-
-    function cancelRead() {
-      readWaiting = false;
-      setReadWaiting(false);
-    }
-
     function showMatchBadge(text) {
       var badge = document.getElementById('spoolmanMatchBadge');
       badge.textContent = text;
       badge.classList.remove('hidden');
     }
 
-    function setVal(id, val) {
-      var el = document.getElementById(id);
-      if (el && val !== undefined && val !== null) el.value = val;
-    }
-
-    function fillEnrichmentFromStatus(status) {
-      var sp = status.spoolman || {};
-      if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
-    }
-
-    async function startRead() {
-      setReadWaiting(true);
-      var deadline = Date.now() + 30000;
-      while (readWaiting && Date.now() < deadline) {
-        try {
-          var status = await fetch('/api/status').then(r => r.json());
-          if (status.present && status.tag_kind === 'OpenTag3D') {
-            var ot = status.opentag3d || {};
-            setVal('base_material', ot.base_material || '');
-            setVal('manufacturer', ot.manufacturer || '');
-            if (ot.color_hex) {
-              var c = ot.color_hex.startsWith('#') ? ot.color_hex : '#' + ot.color_hex;
-              setVal('colorHex', c);
-              setVal('colorPicker', c);
-            }
-            if (ot.target_weight_g) setVal('target_weight_g', ot.target_weight_g);
-            if (ot.density) setVal('density', ot.density);
-            if (ot.print_temp) setVal('print_temp_c', ot.print_temp);
-            if (ot.bed_temp) setVal('bed_temp_c', ot.bed_temp);
-            if (ot.min_print_temp) setVal('min_print_temp_c', ot.min_print_temp);
-            if (ot.max_print_temp) setVal('max_print_temp_c', ot.max_print_temp);
-            if (ot.min_bed_temp) setVal('min_bed_temp_c', ot.min_bed_temp);
-            if (ot.max_bed_temp) setVal('max_bed_temp_c', ot.max_bed_temp);
-            if (ot.dry_temp) setVal('max_dry_temp_c', ot.dry_temp);
-            if (ot.dry_time_hours) setVal('dry_time_hours', ot.dry_time_hours);
-            if (ot.diameter_mm) {
-              var dEl = document.getElementById('diameter_um');
-              if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
-            }
-            if (ot.color_name) setVal('color_name', ot.color_name);
-            // Trigger material auto-fill
-            var matEl = document.getElementById('base_material');
-            if (matEl) matEl.dispatchEvent(new Event('input'));
-            fillEnrichmentFromStatus(status);
-            if (status.spoolman && status.spoolman.spool_id > 0) {
-              showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
-            } else {
-              showMatchBadge('no Spoolman match');
-            }
-            break;
-          } else if (status.present) {
-            showMatchBadge('wrong format \u2014 expected OpenTag3D');
-            break;
-          }
-        } catch(e) {}
-        await new Promise(r => setTimeout(r, 500));
-      }
-      setReadWaiting(false);
-    }
-
-    readBtn.onclick = startRead;
-
-    function enrichmentHasData() {
-      var ids = ['enrich-remaining'];
-      return ids.some(function(id) {
-        var el = document.getElementById(id);
-        return el && el.value && parseFloat(el.value) > 0;
-      });
-    }
-
-    async function saveEnrichment(uid) {
-      if (!enrichmentHasData()) return;
-
-      var manufacturer = document.getElementById('manufacturer').value.trim();
-      var material = document.getElementById('base_material').value.trim();
-      var colorHex = document.getElementById('colorHex').value || '';
-      var remainingG = parseFloat(document.getElementById('enrich-remaining').value) || 0;
-      var density = parseFloat(document.getElementById('density').value) || 0;
-      var diameter = parseInt(document.getElementById('diameter_um').value) || 1750;
-      var diameterMm = diameter / 1000.0;
-      var nozzleMin = parseInt(document.getElementById('min_print_temp_c').value) || 0;
-      var nozzleMax = parseInt(document.getElementById('max_print_temp_c').value) || 0;
-      var nozzleTemp = (nozzleMin && nozzleMax) ? Math.round((nozzleMin + nozzleMax) / 2) : (nozzleMin || nozzleMax || parseInt(document.getElementById('print_temp_c').value) || 0);
-      var bedMin = parseInt(document.getElementById('min_bed_temp_c').value) || 0;
-      var bedMax = parseInt(document.getElementById('max_bed_temp_c').value) || 0;
-      var bedTemp = (bedMin && bedMax) ? Math.round((bedMin + bedMax) / 2) : (bedMin || bedMax || parseInt(document.getElementById('bed_temp_c').value) || 0);
-
-      var vendorId = -1;
-      if (manufacturer) {
-        try {
-          var vr = await fetch('/api/spoolman/find-vendor?name=' + encodeURIComponent(manufacturer)).then(function(r) { return r.json(); });
-          if (vr.found) {
-            var confirmed = confirm('Found existing manufacturer "' + vr.name + '" in Spoolman. Use it?');
-            vendorId = confirmed ? vr.id : -2;
-          }
-        } catch(e) {}
-      }
-
-      var filamentId = -1;
-      if (vendorId > 0 && material) {
-        try {
-          var fr = await fetch('/api/spoolman/find-filament?vendor_id=' + vendorId
-                           + '&material=' + encodeURIComponent(material)
-                           + (colorHex ? '&color_hex=' + encodeURIComponent(colorHex.replace('#','')) : '')).then(function(r) { return r.json(); });
-          if (fr.found) {
-            var fconfirmed = confirm('Found existing filament "' + fr.name + '" in Spoolman. Use it?');
-            filamentId = fconfirmed ? fr.id : -2;
-          }
-        } catch(e) {}
-      }
-
-      try {
-        var resp = await fetch('/api/spoolman/save-enrichment', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            uid: uid,
-            manufacturer: manufacturer,
-            material: material,
-            color_hex: colorHex.replace('#', ''),
-            remaining_g: remainingG,
-            bed_temp: bedTemp,
-            nozzle_temp: nozzleTemp,
-            diameter_mm: diameterMm,
-            density: density,
-            vendor_id: vendorId,
-            filament_id: filamentId
-          })
-        });
-        var result = await resp.json();
-        if (!resp.ok || result.success === false) {
-          throw new Error(result.error || 'save failed');
+    setupReadButton({
+      expectedKind: 'OpenTag3D',
+      wrongKindMsg: 'wrong format \u2014 expected OpenTag3D',
+      showMatchBadge: showMatchBadge,
+      fillForm: function(status) {
+        var ot = status.opentag3d || {};
+        setVal('base_material', ot.base_material || '');
+        setVal('manufacturer', ot.manufacturer || '');
+        if (ot.color_hex) {
+          var c = ot.color_hex.startsWith('#') ? ot.color_hex : '#' + ot.color_hex;
+          setVal('colorHex', c);
+          setVal('colorPicker', c);
         }
-        setBanner('statusBanner', 'Tag written \u2713 Spoolman enrichment saved \u2713');
-      } catch(e) {
-        setBanner('statusBanner', 'Tag written \u2713 Spoolman save failed \u2014 check connection');
+        if (ot.target_weight_g) setVal('target_weight_g', ot.target_weight_g);
+        if (ot.density) setVal('density', ot.density);
+        if (ot.print_temp) setVal('print_temp_c', ot.print_temp);
+        if (ot.bed_temp) setVal('bed_temp_c', ot.bed_temp);
+        if (ot.min_print_temp) setVal('min_print_temp_c', ot.min_print_temp);
+        if (ot.max_print_temp) setVal('max_print_temp_c', ot.max_print_temp);
+        if (ot.min_bed_temp) setVal('min_bed_temp_c', ot.min_bed_temp);
+        if (ot.max_bed_temp) setVal('max_bed_temp_c', ot.max_bed_temp);
+        if (ot.dry_temp) setVal('max_dry_temp_c', ot.dry_temp);
+        if (ot.dry_time_hours) setVal('dry_time_hours', ot.dry_time_hours);
+        if (ot.diameter_mm) {
+          var dEl = document.getElementById('diameter_um');
+          if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
+        }
+        if (ot.color_name) setVal('color_name', ot.color_name);
+        var matEl = document.getElementById('base_material');
+        if (matEl) matEl.dispatchEvent(new Event('input'));
+      },
+      fillEnrichment: function(status) {
+        var sp = status.spoolman || {};
+        if (sp.remaining_g !== undefined) setVal('enrich-remaining', sp.remaining_g.toFixed(1));
       }
-    }
+    });
 
   </script>
 </body>
