@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.12] - 2026-04-06
+
+### Changed
+
+- **Shared write flow UX** — extracted duplicated write/read/enrichment logic from all 4 writer pages into SharedJS.h. Net -476 lines, ~19KB flash saved. (#96)
+- **Write verification strengthened** — OpenSpool verifies brand/material/color, OpenTag3D verifies material/manufacturer/weight, TigerTag adds weight check. Previously only checked tag_kind.
+
+### Fixed
+
+- **Spoolman enrichment remaining weight** — Spoolman uses `used_weight` (calculated), not `remaining_weight` (read-only). Enrichment save now sends `initial_weight` + `used_weight` so remaining weight actually persists.
+- **Spoolman spool lookup by nfc_id** — `extra_field` filter was returning all spools. Now fetches and matches `nfc_id` client-side, skipping archived spools.
+- **S3-DevKitC LED color order** — onboard WS2812B uses GRB, not RGB. Red was displaying as green.
+- **waitForTag text** — no longer says "NTAG" since OpenPrintTag uses ISO15693 tags.
+- **Discord release notifications** — release workflow now sends changelog to Discord.
+
+---
+
 ## [1.6.11] - 2026-04-05
 
 ### Added
