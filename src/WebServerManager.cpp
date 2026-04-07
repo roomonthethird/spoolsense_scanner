@@ -1030,13 +1030,177 @@ void WebServerManager::handleApiOtaStatus() {
 // API: Status
 // ---------------------------------------------------------------------------
 
+// ── Status serializers ──────────────────────────────────────
+
+void WebServerManager::serializeTigerTagStatus(JsonDocument& doc) {
+    TigerTagData tt;
+    if (!NFCManager::getInstance().getLastTigerTagData(tt) || !tt.valid) return;
+
+    JsonObject obj = doc.createNestedObject("tigertag");
+    obj["material_id"] = tt.material_id;
+    obj["material_name"] = tt.material_name;
+    obj["brand_id"] = tt.brand_id;
+    obj["brand_name"] = tt.brand_name;
+    obj["weight_g"] = tt.weight_g;
+    obj["diameter_mm"] = tt.diameter_mm;
+    obj["aspect1_name"] = tt.aspect1_name;
+    obj["aspect2_name"] = tt.aspect2_name;
+
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
+    obj["color_hex"] = colorHex;
+
+    if (tt.nozzle_temp_min > 0) obj["nozzle_temp_min"] = tt.nozzle_temp_min;
+    if (tt.nozzle_temp_max > 0) obj["nozzle_temp_max"] = tt.nozzle_temp_max;
+    if (tt.bed_temp_min > 0) obj["bed_temp_min"] = tt.bed_temp_min;
+    if (tt.bed_temp_max > 0) obj["bed_temp_max"] = tt.bed_temp_max;
+    if (tt.dry_temp > 0) obj["dry_temp"] = tt.dry_temp;
+    if (tt.dry_time_hours > 0) obj["dry_time_hours"] = tt.dry_time_hours;
+}
+
+void WebServerManager::serializeOpenTag3DStatus(JsonDocument& doc) {
+    opentag3d_t ot3d;
+    if (!NFCManager::getInstance().getLastOpenTag3DData(ot3d)) return;
+
+    JsonObject obj = doc.createNestedObject("opentag3d");
+    obj["base_material"] = ot3d.base_material;
+    if (ot3d.material_modifiers[0]) obj["modifiers"] = ot3d.material_modifiers;
+    obj["manufacturer"] = ot3d.manufacturer;
+    if (ot3d.color_name[0]) obj["color_name"] = ot3d.color_name;
+
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+             ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
+    obj["color_hex"] = colorHex;
+
+    obj["target_weight_g"] = ot3d.target_weight_g;
+    obj["diameter_mm"] = opentag3d_diameter_mm(&ot3d);
+    if (ot3d.density_ugcm3 > 0) obj["density"] = opentag3d_density_gcc(&ot3d);
+
+    uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
+    uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
+    if (printTemp > 0) obj["print_temp"] = printTemp;
+    if (bedTemp > 0) obj["bed_temp"] = bedTemp;
+
+    if (ot3d.has_extended) {
+        if (ot3d.measured_filament_weight_g > 0) obj["measured_weight_g"] = ot3d.measured_filament_weight_g;
+        if (ot3d.empty_spool_weight_g > 0) obj["empty_spool_g"] = ot3d.empty_spool_weight_g;
+        if (ot3d.serial_number[0]) obj["serial_number"] = ot3d.serial_number;
+        uint16_t minPrint = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
+        uint16_t maxPrint = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
+        uint16_t minBed = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
+        uint16_t maxBed = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
+        if (minPrint > 0) obj["min_print_temp"] = minPrint;
+        if (maxPrint > 0) obj["max_print_temp"] = maxPrint;
+        if (minBed > 0) obj["min_bed_temp"] = minBed;
+        if (maxBed > 0) obj["max_bed_temp"] = maxBed;
+        uint16_t dryTemp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
+        if (dryTemp > 0) obj["dry_temp"] = dryTemp;
+        if (ot3d.dry_time_hours > 0) obj["dry_time_hours"] = ot3d.dry_time_hours;
+    }
+}
+
+void WebServerManager::serializeOpenSpoolStatus(JsonDocument& doc) {
+    OpenSpoolData os;
+    if (!NFCManager::getInstance().getLastOpenSpoolData(os) || !os.valid) return;
+
+    JsonObject obj = doc.createNestedObject("openspool");
+    obj["brand"] = os.brand;
+    obj["material"] = os.material;
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%s", os.color_hex);
+    obj["color_hex"] = colorHex;
+    obj["version"] = os.version;
+    if (os.min_temp > 0) obj["min_temp"] = os.min_temp;
+    if (os.max_temp > 0) obj["max_temp"] = os.max_temp;
+}
+
+void WebServerManager::serializeGenericUidStatus(JsonDocument& doc) {
+    GenericTagSpoolInfo spoolInfo;
+    NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
+    if (!spoolInfo.valid) return;
+
+    doc["material_name"] = spoolInfo.material_type;
+    doc["manufacturer"] = spoolInfo.manufacturer;
+    doc["color"] = spoolInfo.color_hex;
+    doc["remaining_g"] = spoolInfo.remaining_weight_g;
+    doc["spoolman_id"] = spoolInfo.spoolman_id;
+    if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
+    if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
+}
+
+void WebServerManager::serializeOpenPrintTagStatus(JsonDocument& doc, const CurrentSpoolState& state) {
+    if (!state.tag_data_valid) return;
+
+    uint8_t mat_type = 0;
+    opt_get_material_type(&state.tag_data, &mat_type);
+    doc["material_type"] = mat_type;
+    doc["material_name"] = materialTypeToString(mat_type);
+
+    uint8_t color[4] = {0};
+    if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
+        char colorHex[8];
+        snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", color[0], color[1], color[2]);
+        doc["color"] = colorHex;
+    } else {
+        doc["color"] = (const char*)nullptr;
+    }
+
+    char manufacturer[33] = {0};
+    opt_get_brand_name(&state.tag_data, manufacturer, sizeof(manufacturer));
+    doc["manufacturer"] = manufacturer;
+
+    float full_weight = 0.0f, consumed = 0.0f;
+    opt_get_actual_full_weight(&state.tag_data, &full_weight);
+    opt_get_consumed_weight(&state.tag_data, &consumed);
+    doc["remaining_g"] = full_weight - consumed;
+    doc["initial_weight_g"] = full_weight;
+
+    int32_t spoolman_id = -1;
+    opt_get_gp_spoolman_id(&state.tag_data, &spoolman_id);
+    doc["spoolman_id"] = spoolman_id;
+
+    float density = 0.0f;
+    if (opt_get_density(&state.tag_data, &density) == OPT_OK && density > 0.0f)
+        doc["density"] = density;
+    float diameter = 0.0f;
+    if (opt_get_filament_diameter(&state.tag_data, &diameter) == OPT_OK && diameter > 0.0f)
+        doc["diameter_mm"] = diameter;
+
+    char mat_name_custom[33] = {0};
+    if (opt_get_material_name(&state.tag_data, mat_name_custom, sizeof(mat_name_custom)) == OPT_OK
+            && mat_name_custom[0] != '\0')
+        doc["material_name"] = mat_name_custom;
+
+    int16_t t = 0;
+    if (opt_get_min_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["min_print_temp"] = t;
+    if (opt_get_max_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["max_print_temp"] = t;
+    if (opt_get_preheat_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["preheat_temp"] = t;
+    if (opt_get_min_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["min_bed_temp"] = t;
+    if (opt_get_max_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["max_bed_temp"] = t;
+}
+
+void WebServerManager::serializeEnrichment(JsonDocument& doc) {
+    SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
+    if (!enrichment.valid || doc.containsKey("spoolman")) return;
+
+    JsonObject sp = doc.createNestedObject("spoolman");
+    sp["spool_id"] = enrichment.spoolman_id;
+    sp["remaining_g"] = enrichment.remaining_g;
+    if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
+    if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
+    if (enrichment.density > 0) sp["density"] = enrichment.density;
+    if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
+}
+
+// ── /api/status ─────────────────────────────────────────────
+
 void WebServerManager::handleApiStatus() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     CurrentSpoolState state;
     StaticJsonDocument<1536> doc;
 
-    // Always include device ID and firmware version
     char deviceId[8];
     HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
     doc["device_id"] = deviceId;
@@ -1048,186 +1212,22 @@ void WebServerManager::handleApiStatus() {
         doc["tag_data_valid"] = state.tag_data_valid;
         doc["tag_kind"] = tagKindToString(state.kind);
 
-        if (state.kind == TagKind::TigerTag) {
-            // TigerTag — include parsed TigerTag data
-            TigerTagData tt;
-            if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
-                JsonObject ttObj = doc.createNestedObject("tigertag");
-                ttObj["material_id"] = tt.material_id;
-                ttObj["material_name"] = tt.material_name;
-                ttObj["brand_id"] = tt.brand_id;
-                ttObj["brand_name"] = tt.brand_name;
-                ttObj["weight_g"] = tt.weight_g;
-                ttObj["diameter_mm"] = tt.diameter_mm;
-                ttObj["aspect1_name"] = tt.aspect1_name;
-                ttObj["aspect2_name"] = tt.aspect2_name;
-
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         tt.color_r, tt.color_g, tt.color_b);
-                ttObj["color_hex"] = colorHex;
-
-                if (tt.nozzle_temp_min > 0) ttObj["nozzle_temp_min"] = tt.nozzle_temp_min;
-                if (tt.nozzle_temp_max > 0) ttObj["nozzle_temp_max"] = tt.nozzle_temp_max;
-                if (tt.bed_temp_min > 0) ttObj["bed_temp_min"] = tt.bed_temp_min;
-                if (tt.bed_temp_max > 0) ttObj["bed_temp_max"] = tt.bed_temp_max;
-                if (tt.dry_temp > 0) ttObj["dry_temp"] = tt.dry_temp;
-                if (tt.dry_time_hours > 0) ttObj["dry_time_hours"] = tt.dry_time_hours;
-            }
-        } else if (state.kind == TagKind::OpenTag3D) {
-            // OpenTag3D — include parsed data
-            opentag3d_t ot3d;
-            if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
-                JsonObject otObj = doc.createNestedObject("opentag3d");
-                otObj["base_material"] = ot3d.base_material;
-                if (ot3d.material_modifiers[0]) otObj["modifiers"] = ot3d.material_modifiers;
-                otObj["manufacturer"] = ot3d.manufacturer;
-                if (ot3d.color_name[0]) otObj["color_name"] = ot3d.color_name;
-
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
-                otObj["color_hex"] = colorHex;
-
-                otObj["target_weight_g"] = ot3d.target_weight_g;
-                otObj["diameter_mm"] = opentag3d_diameter_mm(&ot3d);
-                if (ot3d.density_ugcm3 > 0) otObj["density"] = opentag3d_density_gcc(&ot3d);
-
-                uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
-                uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
-                if (printTemp > 0) otObj["print_temp"] = printTemp;
-                if (bedTemp > 0) otObj["bed_temp"] = bedTemp;
-
-                if (ot3d.has_extended) {
-                    if (ot3d.measured_filament_weight_g > 0) otObj["measured_weight_g"] = ot3d.measured_filament_weight_g;
-                    if (ot3d.empty_spool_weight_g > 0) otObj["empty_spool_g"] = ot3d.empty_spool_weight_g;
-                    if (ot3d.serial_number[0]) otObj["serial_number"] = ot3d.serial_number;
-                    uint16_t minPrint = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
-                    uint16_t maxPrint = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
-                    uint16_t minBed = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
-                    uint16_t maxBed = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
-                    if (minPrint > 0) otObj["min_print_temp"] = minPrint;
-                    if (maxPrint > 0) otObj["max_print_temp"] = maxPrint;
-                    if (minBed > 0) otObj["min_bed_temp"] = minBed;
-                    if (maxBed > 0) otObj["max_bed_temp"] = maxBed;
-                    uint16_t dryTemp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
-                    if (dryTemp > 0) otObj["dry_temp"] = dryTemp;
-                    if (ot3d.dry_time_hours > 0) otObj["dry_time_hours"] = ot3d.dry_time_hours;
-                }
-            }
-        } else if (state.kind == TagKind::OpenSpoolTag) {
-            OpenSpoolData os;
-            if (NFCManager::getInstance().getLastOpenSpoolData(os) && os.valid) {
-                JsonObject osObj = doc.createNestedObject("openspool");
-                osObj["brand"] = os.brand;
-                osObj["material"] = os.material;
-                char osColorHex[8];
-                snprintf(osColorHex, sizeof(osColorHex), "#%s", os.color_hex);
-                osObj["color_hex"] = osColorHex;
-                osObj["version"] = os.version;
-                if (os.min_temp > 0) osObj["min_temp"] = os.min_temp;
-                if (os.max_temp > 0) osObj["max_temp"] = os.max_temp;
-            }
-        } else if (state.kind == TagKind::GenericUidTag) {
-            // Generic UID tag — include resolved Spoolman data if available
-            GenericTagSpoolInfo spoolInfo;
-            NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
-            if (spoolInfo.valid) {
-                doc["material_name"] = spoolInfo.material_type;
-                doc["manufacturer"] = spoolInfo.manufacturer;
-                doc["color"] = spoolInfo.color_hex;
-                doc["remaining_g"] = spoolInfo.remaining_weight_g;
-                doc["spoolman_id"] = spoolInfo.spoolman_id;
-                if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
-                if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
-            }
-        } else if (state.tag_data_valid) {
-            // OpenPrintTag — include OPT fields
-            uint8_t mat_type = 0;
-            opt_get_material_type(&state.tag_data, &mat_type);
-            doc["material_type"] = mat_type;
-            doc["material_name"] = materialTypeToString(mat_type);
-
-            uint8_t color[4] = {0};
-            if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         color[0], color[1], color[2]);
-                doc["color"] = colorHex;
-            } else {
-                doc["color"] = (const char*)nullptr;
-            }
-
-            char manufacturer[33] = {0};
-            opt_get_brand_name(&state.tag_data, manufacturer, sizeof(manufacturer));
-            doc["manufacturer"] = manufacturer;
-
-            float full_weight = 0.0f, consumed = 0.0f;
-            opt_get_actual_full_weight(&state.tag_data, &full_weight);
-            opt_get_consumed_weight(&state.tag_data, &consumed);
-            doc["remaining_g"] = full_weight - consumed;
-            doc["initial_weight_g"] = full_weight;
-
-            int32_t spoolman_id = -1;
-            opt_get_gp_spoolman_id(&state.tag_data, &spoolman_id);
-            doc["spoolman_id"] = spoolman_id;
-
-            float density = 0.0f;
-            if (opt_get_density(&state.tag_data, &density) == OPT_OK && density > 0.0f)
-                doc["density"] = density;
-
-            float diameter = 0.0f;
-            if (opt_get_filament_diameter(&state.tag_data, &diameter) == OPT_OK && diameter > 0.0f)
-                doc["diameter_mm"] = diameter;
-
-            char mat_name_custom[33] = {0};
-            if (opt_get_material_name(&state.tag_data, mat_name_custom, sizeof(mat_name_custom)) == OPT_OK
-                    && mat_name_custom[0] != '\0')
-                doc["material_name"] = mat_name_custom;
-
-            int16_t t = 0;
-            if (opt_get_min_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["min_print_temp"] = t;
-            if (opt_get_max_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["max_print_temp"] = t;
-            if (opt_get_preheat_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["preheat_temp"] = t;
-            if (opt_get_min_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["min_bed_temp"] = t;
-            if (opt_get_max_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["max_bed_temp"] = t;
+        switch (state.kind) {
+            case TagKind::TigerTag:     serializeTigerTagStatus(doc); break;
+            case TagKind::OpenTag3D:    serializeOpenTag3DStatus(doc); break;
+            case TagKind::OpenSpoolTag: serializeOpenSpoolStatus(doc); break;
+            case TagKind::GenericUidTag: serializeGenericUidStatus(doc); break;
+            case TagKind::BambuTag:     break;
+            default:                    serializeOpenPrintTagStatus(doc, state); break;
         }
 
-        // Smart tag enrichment — include Spoolman data if available
-        {
-            SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
-            if (enrichment.valid &&
-                (state.kind == TagKind::TigerTag ||
-                 state.kind == TagKind::OpenTag3D ||
-                 state.kind == TagKind::OpenSpoolTag ||
-                 state.kind == TagKind::OpenPrintTag)) {
-                JsonObject sp = doc.createNestedObject("spoolman");
-                sp["spool_id"] = enrichment.spoolman_id;
-                sp["remaining_g"] = enrichment.remaining_g;
-                if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
-                if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
-                if (enrichment.density > 0) sp["density"] = enrichment.density;
-                if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
-            }
-        }
+        serializeEnrichment(doc);
     } else {
         doc["present"] = false;
         doc["tag_data_valid"] = false;
     }
 
-    // Include enrichment even when tag is not present (persists until next scan)
-    {
-        SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
-        if (enrichment.valid && !doc.containsKey("spoolman")) {
-            JsonObject sp = doc.createNestedObject("spoolman");
-            sp["spool_id"] = enrichment.spoolman_id;
-            sp["remaining_g"] = enrichment.remaining_g;
-            if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
-            if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
-            if (enrichment.density > 0) sp["density"] = enrichment.density;
-            if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
-        }
-    }
+    serializeEnrichment(doc);
 
     String body;
     serializeJson(doc, body);

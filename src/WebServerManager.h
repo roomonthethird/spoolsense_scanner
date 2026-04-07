@@ -3,7 +3,10 @@
 
 #ifndef NATIVE_TEST
 #include <WebServer.h>
+#include <ArduinoJson.h>
 #endif
+
+#include "NFCTypes.h"
 
 class DisplayI;
 
@@ -78,6 +81,14 @@ private:
     volatile uint8_t _otaProgress = 0;
 
     DisplayI* _display = nullptr;
+
+    // Status serializers — per-tag-type JSON builders for /api/status
+    void serializeTigerTagStatus(JsonDocument& doc);
+    void serializeOpenTag3DStatus(JsonDocument& doc);
+    void serializeOpenSpoolStatus(JsonDocument& doc);
+    void serializeGenericUidStatus(JsonDocument& doc);
+    void serializeOpenPrintTagStatus(JsonDocument& doc, const CurrentSpoolState& state);
+    void serializeEnrichment(JsonDocument& doc);
 
     void sendError(int code, const char* msg);
 #endif
