@@ -266,97 +266,86 @@ void PrinterManager::handleJobDisappeared() {
 // Fix #3: Retries during tracking, separate flags for mismatch vs temp
 // ---------------------------------------------------------------------------
 
+// Map OPT material enum to PrusaLink-compatible filament type string
+static const char* optMaterialToString(uint8_t mat) {
+    switch (mat) {
+        case OPT_MATERIAL_TYPE_PLA:  return "PLA";
+        case OPT_MATERIAL_TYPE_PETG: return "PETG";
+        case OPT_MATERIAL_TYPE_TPU:  return "TPU";
+        case OPT_MATERIAL_TYPE_ABS:  return "ABS";
+        case OPT_MATERIAL_TYPE_ASA:  return "ASA";
+        case OPT_MATERIAL_TYPE_PC:   return "PC";
+        case OPT_MATERIAL_TYPE_PCTG: return "PCTG";
+        case OPT_MATERIAL_TYPE_PP:   return "PP";
+        case OPT_MATERIAL_TYPE_PA6:
+        case OPT_MATERIAL_TYPE_PA11:
+        case OPT_MATERIAL_TYPE_PA12:
+        case OPT_MATERIAL_TYPE_PA66: return "PA";
+        case OPT_MATERIAL_TYPE_HIPS: return "HIPS";
+        case OPT_MATERIAL_TYPE_PVA:  return "PVA";
+        case OPT_MATERIAL_TYPE_PET:  return "PET";
+        default:                     return nullptr;
+    }
+}
+
+static void sendPrinterWarning(const char* type, const char* expected, const char* actual,
+                                float gcodeTemp = 0, int16_t tagMaxTemp = 0) {
+    AppMessage warn;
+    warn.type = AppMessageType::PRINTER_WARNING;
+    memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
+    strncpy(warn.payload.printerWarning.warning_type, type,
+            sizeof(warn.payload.printerWarning.warning_type) - 1);
+    if (expected) strncpy(warn.payload.printerWarning.expected, expected,
+                          sizeof(warn.payload.printerWarning.expected) - 1);
+    if (actual) strncpy(warn.payload.printerWarning.actual, actual,
+                        sizeof(warn.payload.printerWarning.actual) - 1);
+    warn.payload.printerWarning.gcode_temp = gcodeTemp;
+    warn.payload.printerWarning.tag_max_temp = tagMaxTemp;
+    ApplicationManager::getInstance().sendMessage(warn);
+}
+
 void PrinterManager::checkFilamentMismatch() {
     if (!strategy_) return;
 
-    // Get current spool from NFCManager
     CurrentSpoolState spool;
     if (!NFCManager::getInstance().getCurrentSpoolState(spool)) return;
-    if (!spool.present || !spool.tag_data_valid) {
-        // Spool not ready yet — leave validationPending_ true so we retry next poll
-        return;
-    }
+    if (!spool.present || !spool.tag_data_valid) return;
 
-    // Spool data is available — we won't need to retry
     validationPending_ = false;
 
-    // --- Filament type mismatch check ---
+    // Filament type check
     if (!mismatchWarned_) {
         const char* expected = strategy_->getExpectedFilamentType();
         if (expected[0] != '\0') {
             uint8_t tagMaterial = 0;
             opt_get_material_type(&spool.tag_data, &tagMaterial);
+            const char* tagStr = optMaterialToString(tagMaterial);
 
-            // Map openprinttag enum to PrusaLink filament_type strings
-            const char* tagMaterialStr = nullptr;
-            switch (tagMaterial) {
-                case OPT_MATERIAL_TYPE_PLA:  tagMaterialStr = "PLA"; break;
-                case OPT_MATERIAL_TYPE_PETG: tagMaterialStr = "PETG"; break;
-                case OPT_MATERIAL_TYPE_TPU:  tagMaterialStr = "TPU"; break;
-                case OPT_MATERIAL_TYPE_ABS:  tagMaterialStr = "ABS"; break;
-                case OPT_MATERIAL_TYPE_ASA:  tagMaterialStr = "ASA"; break;
-                case OPT_MATERIAL_TYPE_PC:   tagMaterialStr = "PC"; break;
-                case OPT_MATERIAL_TYPE_PCTG: tagMaterialStr = "PCTG"; break;
-                case OPT_MATERIAL_TYPE_PP:   tagMaterialStr = "PP"; break;
-                case OPT_MATERIAL_TYPE_PA6:  tagMaterialStr = "PA"; break;
-                case OPT_MATERIAL_TYPE_PA11: tagMaterialStr = "PA"; break;
-                case OPT_MATERIAL_TYPE_PA12: tagMaterialStr = "PA"; break;
-                case OPT_MATERIAL_TYPE_PA66: tagMaterialStr = "PA"; break;
-                case OPT_MATERIAL_TYPE_HIPS: tagMaterialStr = "HIPS"; break;
-                case OPT_MATERIAL_TYPE_PVA:  tagMaterialStr = "PVA"; break;
-                case OPT_MATERIAL_TYPE_PET:  tagMaterialStr = "PET"; break;
-                default: tagMaterialStr = nullptr; break;
-            }
-
-            if (tagMaterialStr != nullptr) {
-                if (strncasecmp(expected, tagMaterialStr, strlen(tagMaterialStr)) != 0) {
-                    mismatchWarned_ = true;
-                    Serial.printf("PrinterManager: FILAMENT MISMATCH — gcode expects '%s', tag has '%s'\n",
-                                  expected, tagMaterialStr);
-
-                    AppMessage warn;
-                    warn.type = AppMessageType::PRINTER_WARNING;
-                    memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
-                    strncpy(warn.payload.printerWarning.warning_type, "filament_mismatch",
-                            sizeof(warn.payload.printerWarning.warning_type) - 1);
-                    strncpy(warn.payload.printerWarning.expected, expected,
-                            sizeof(warn.payload.printerWarning.expected) - 1);
-                    strncpy(warn.payload.printerWarning.actual, tagMaterialStr,
-                            sizeof(warn.payload.printerWarning.actual) - 1);
-                    ApplicationManager::getInstance().sendMessage(warn);
+            if (tagStr) {
+                mismatchWarned_ = true;
+                if (strncasecmp(expected, tagStr, strlen(tagStr)) != 0) {
+                    Serial.printf("PrinterManager: FILAMENT MISMATCH — gcode expects '%s', tag has '%s'\n", expected, tagStr);
+                    sendPrinterWarning("filament_mismatch", expected, tagStr);
                 } else {
-                    mismatchWarned_ = true;  // matched — don't check again
-                    Serial.printf("PrinterManager: Filament OK — gcode '%s' matches tag '%s'\n",
-                                  expected, tagMaterialStr);
+                    Serial.printf("PrinterManager: Filament OK — gcode '%s' matches tag '%s'\n", expected, tagStr);
                 }
             }
         }
     }
 
-    // --- Temperature range check (independent from filament type) ---
+    // Temperature range check
     if (!tempWarned_) {
         float gcodeNozzle = strategy_->getExpectedNozzleTemp();
-        if (gcodeNozzle > 0.0f) {
-            int16_t tagMaxTemp = 0;
-            opt_get_max_print_temp(&spool.tag_data, &tagMaxTemp);
-            if (tagMaxTemp > 0) {
-                if (gcodeNozzle > static_cast<float>(tagMaxTemp) + 10.0f) {
-                    tempWarned_ = true;
-                    Serial.printf("PrinterManager: TEMP WARNING — gcode %.0fC exceeds tag max %dC\n",
-                                  gcodeNozzle, tagMaxTemp);
+        if (gcodeNozzle <= 0.0f) return;
 
-                    AppMessage warn;
-                    warn.type = AppMessageType::PRINTER_WARNING;
-                    memset(&warn.payload.printerWarning, 0, sizeof(warn.payload.printerWarning));
-                    strncpy(warn.payload.printerWarning.warning_type, "temp_exceeds_max",
-                            sizeof(warn.payload.printerWarning.warning_type) - 1);
-                    warn.payload.printerWarning.gcode_temp = gcodeNozzle;
-                    warn.payload.printerWarning.tag_max_temp = tagMaxTemp;
-                    ApplicationManager::getInstance().sendMessage(warn);
-                } else {
-                    tempWarned_ = true;  // within range — don't check again
-                }
-            }
+        int16_t tagMaxTemp = 0;
+        opt_get_max_print_temp(&spool.tag_data, &tagMaxTemp);
+        if (tagMaxTemp <= 0) return;
+
+        tempWarned_ = true;
+        if (gcodeNozzle > static_cast<float>(tagMaxTemp) + 10.0f) {
+            Serial.printf("PrinterManager: TEMP WARNING — gcode %.0fC exceeds tag max %dC\n", gcodeNozzle, tagMaxTemp);
+            sendPrinterWarning("temp_exceeds_max", nullptr, nullptr, gcodeNozzle, tagMaxTemp);
         }
     }
 }

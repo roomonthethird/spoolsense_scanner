@@ -187,381 +187,324 @@ void NFCManager::scanTaskFunc(void* param) {
     self->scanLoop();
 }
 
-void NFCManager::scanLoop() {
-    uint32_t scanCount = 0;
-    uint32_t detectCount = 0;
-    uint32_t failCount = 0;
+// ── NDEF helpers ────────────────────────────────────────────
 
-    Serial.println("NFCManager: scanLoop() started, polling every 50ms");
+struct NdefRecord {
+    const char* mimeType;    // pointer into pageData (not owned)
+    uint8_t mimeLen;
+    uint32_t payloadLen;
+    uint16_t payloadOffset;  // offset from start of pageData
+    bool found;
+};
 
-#ifndef NATIVE_TEST
-    // Register this task with the ESP32 hardware watchdog.
-    // If scanLoop() hangs for >NFC_WDT_TIMEOUT_S (e.g., stuck in driver I/O),
-    // the watchdog triggers a system reset automatically.
-    esp_task_wdt_init(NFC_WDT_TIMEOUT_S, true);
-    esp_task_wdt_add(NULL);
-#endif
+// Scan TLV records in pageData for an NDEF media-type record.
+// Returns the first NDEF record found with TNF=media-type (0x02).
+static NdefRecord findNdefMediaRecord(const uint8_t* pageData, uint16_t bytesRead) {
+    NdefRecord rec = {};
+    uint16_t pos = 0;
+    while (pos < bytesRead) {
+        uint8_t tlvType = pageData[pos++];
+        if (tlvType == 0x00) continue;
+        if (tlvType == 0xFE) break;
+        if (pos >= bytesRead) break;
 
-    // Initial reset + RF setup
-    connection_->reset();
-    connection_->setupRF();
-
-    // One-time startup diagnostic
-    connection_->logDiagnostics();
-
-    while (true) {
-#ifndef NATIVE_TEST
-        esp_task_wdt_reset();
-#endif
-        uint8_t uid[8];
-        uint8_t uidLength = 0;
-        scanCount++;
-
-        // Log heartbeat every 200 scans (~10 seconds)
-        //if (scanCount % 200 == 0) {
-        //    Serial.printf("NFCManager: heartbeat scan=%lu detected=%lu failed=%lu\n",
-        //                  scanCount, detectCount, failCount);
-        //}
-
-        // Watchdog: check if we've exceeded failure thresholds
-        if (consecutiveFailures_ >= RESTART_THRESHOLD) {
-            Serial.println("NFCManager: CRITICAL - too many consecutive failures, restarting ESP");
-#ifndef NATIVE_TEST
-            delay(100);  // let serial flush
-            ESP.restart();
-#endif
-        }
-        if (consecutiveFailures_ > 0 && (consecutiveFailures_ % RECOVERY_THRESHOLD) == 0) {
-            attemptRecovery();
+        uint16_t tlvLen = pageData[pos++];
+        if (tlvLen == 0xFF) {
+            if (pos + 2 > bytesRead) break;
+            tlvLen = (uint16_t)(pageData[pos] << 8) | pageData[pos + 1];
+            pos += 2;
         }
 
-        // Re-arm RF field for each scan.
-        // Only do a full hardware reset when no tag is present — reset briefly cuts the RF
-        // field, de-powering any passive tag in the field and causing false TAG_REMOVED events.
-        // When a tag is already detected, only re-arm the transceiver state via setupRF().
-        if (!lastSeenValid) {
+        if (tlvType != 0x03) { pos += tlvLen; continue; }
+
+        uint16_t ndefStart = pos;
+        if (ndefStart >= bytesRead) break;
+
+        uint8_t ndefFlags = pageData[ndefStart];
+        uint8_t tnf = ndefFlags & 0x07;
+        if (tnf != 0x02 || ndefStart + 1 >= bytesRead) break;
+
+        uint8_t typeLen = pageData[ndefStart + 1];
+        bool sr = (ndefFlags & 0x10) != 0;
+        uint16_t headerSize = 2 + (sr ? 1 : 4);
+        if (ndefStart + headerSize + typeLen > bytesRead) break;
+
+        uint32_t payloadLen = 0;
+        if (sr) {
+            payloadLen = pageData[ndefStart + 2];
+        } else {
+            payloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
+                         ((uint32_t)pageData[ndefStart + 3] << 16) |
+                         ((uint32_t)pageData[ndefStart + 4] << 8) |
+                         pageData[ndefStart + 5];
+        }
+
+        rec.mimeType = (const char*)(pageData + ndefStart + headerSize);
+        rec.mimeLen = typeLen;
+        rec.payloadLen = payloadLen;
+        rec.payloadOffset = ndefStart + headerSize + typeLen;
+        rec.found = true;
+        break;
+    }
+    return rec;
+}
+
+// Read NDEF payload bytes, doing an extended page read if the initial 40-byte read
+// didn't contain the full payload. Returns bytes copied into outBuf.
+uint16_t NFCManager::readNdefPayload(const NdefRecord& rec, const uint8_t* pageData, uint16_t bytesRead,
+                                      uint8_t* outBuf, uint16_t outBufSize) {
+    if (!rec.found || rec.payloadLen == 0) return 0;
+
+    uint16_t available = (rec.payloadOffset < bytesRead) ? bytesRead - rec.payloadOffset : 0;
+    uint16_t needed = (rec.payloadLen > outBufSize) ? outBufSize : (uint16_t)rec.payloadLen;
+
+    if (available >= rec.payloadLen) {
+        memcpy(outBuf, pageData + rec.payloadOffset, needed);
+        return needed;
+    }
+
+    // Extended read — payload spans beyond the initial 40-byte read
+    uint8_t startPage = 4 + (rec.payloadOffset / 4);
+    uint16_t pagesNeeded = (uint16_t)((rec.payloadLen + 3) / 4) + 1;
+    if (pagesNeeded > 50) pagesNeeded = 50;
+
+    uint8_t extBuf[256] = {0};
+    uint16_t extRead = connection_->readISO14443Pages(startPage, (uint8_t)pagesNeeded, extBuf, sizeof(extBuf));
+    uint16_t offsetInPage = rec.payloadOffset % 4;
+    if (extRead <= offsetInPage) return 0;
+
+    uint16_t payloadBytes = extRead - offsetInPage;
+    if (payloadBytes > rec.payloadLen) payloadBytes = (uint16_t)rec.payloadLen;
+    if (payloadBytes > outBufSize) payloadBytes = outBufSize;
+    memcpy(outBuf, extBuf + offsetInPage, payloadBytes);
+    return payloadBytes;
+}
+
+// ── ISO14443A tag read + classification ─────────────────────
+// Reads pages 4-13, tries TigerTag → OpenTag3D → OpenSpool → GenericUID.
+// Updates currentSpool state and sends the appropriate message.
+
+void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength, const TagScanResult& scan) {
+    bool isTigerTag = false;
+    bool isOpenTag3D = false;
+    bool isOpenSpool = false;
+    TigerTagData tigerData;
+    OpenSpoolData openSpoolData;
+    opentag3d_t ot3dData;
+    memset(&tigerData, 0, sizeof(tigerData));
+    memset(&ot3dData, 0, sizeof(ot3dData));
+
+    uint8_t pageData[40] = {0};
+    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData));
+
+    // Try TigerTag first (binary magic at offset 0)
+    if (bytesRead >= 14 && tigerTagCheckMagic(pageData, bytesRead)) {
+        if (bytesRead >= 38) {
+            tigerData = tigerTagParse(pageData, bytesRead);
+            isTigerTag = tigerData.valid;
+        } else {
+            Serial.printf("NFCManager: TigerTag magic matched but only got %d bytes (need 38)\n", bytesRead);
+        }
+    }
+
+    // Scan NDEF TLV for OpenTag3D or OpenSpool
+    if (!isTigerTag && bytesRead >= 4) {
+        NdefRecord rec = findNdefMediaRecord(pageData, bytesRead);
+        if (rec.found) {
+            const char* ot3dMime = OT3D_MIME_TYPE;
+            if (rec.mimeLen == strlen(ot3dMime) && memcmp(rec.mimeType, ot3dMime, rec.mimeLen) == 0) {
+                uint8_t payload[OT3D_EXTENDED_MIN];
+                uint16_t payloadBytes = readNdefPayload(rec, pageData, bytesRead, payload, sizeof(payload));
+                if (payloadBytes >= OT3D_CORE_SIZE) {
+                    opentag3d_result_t res = opentag3d_decode(payload, payloadBytes, &ot3dData);
+                    if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
+                        isOpenTag3D = true;
+                        if (res == OT3D_VERSION_WARNING) {
+                            Serial.printf("NFCManager: OpenTag3D tag version %u ahead of supported %u — parsing anyway\n",
+                                          ot3dData.tag_version, OT3D_SUPPORTED_VERSION);
+                        }
+                    } else if (res == OT3D_VERSION_ERROR) {
+                        Serial.printf("NFCManager: OpenTag3D major version too new (%u) — cannot parse\n",
+                                      ot3dData.tag_version);
+                    }
+                }
+            }
+
+            if (!isOpenTag3D) {
+                const char* jsonMime = "application/json";
+                if (rec.mimeLen == strlen(jsonMime) && memcmp(rec.mimeType, jsonMime, rec.mimeLen) == 0) {
+                    uint8_t payload[256];
+                    uint16_t payloadBytes = readNdefPayload(rec, pageData, bytesRead, payload, sizeof(payload));
+                    if (payloadBytes > 0 && parseOpenSpool(payload, payloadBytes, openSpoolData)) {
+                        isOpenSpool = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Update shared state under mutex
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
+        memcpy(currentSpool.uid, uid, uidLength);
+        currentSpool.uid_length = uidLength;
+        currentSpool.present = true;
+        currentSpool.blank_tag_present = false;
+        memcpy(lastSeenUid, uid, uidLength);
+        lastSeenUidLength = uidLength;
+        lastSeenValid = true;
+        lastSeenMs = millis();
+
+        if (isTigerTag) {
+            currentSpool.kind = TagKind::TigerTag;
+            currentSpool.tag_data_valid = false;
+            lastTigerTag_ = tigerData;
+            lastTigerTagValid_ = true;
+            lastOpenTag3DValid_ = false;
+            Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
+                          tigerData.brand_name, tigerData.material_name, tigerData.aspect1_name);
+        } else if (isOpenTag3D) {
+            currentSpool.kind = TagKind::OpenTag3D;
+            currentSpool.tag_data_valid = false;
+            lastOpenTag3D_ = ot3dData;
+            lastOpenTag3DValid_ = true;
+            lastTigerTagValid_ = false;
+            lastOpenSpoolValid_ = false;
+            Serial.printf("NFCManager: OpenTag3D detected — %s %s %.2fmm %ug\n",
+                          ot3dData.manufacturer, ot3dData.base_material,
+                          opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
+        } else if (isOpenSpool) {
+            currentSpool.kind = TagKind::OpenSpoolTag;
+            currentSpool.tag_data_valid = false;
+            lastOpenSpool_ = openSpoolData;
+            lastOpenSpoolValid_ = true;
+            lastTigerTagValid_ = false;
+            lastOpenTag3DValid_ = false;
+            Serial.printf("NFCManager: OpenSpool detected — %s %s #%s\n",
+                          openSpoolData.brand, openSpoolData.material, openSpoolData.color_hex);
+        } else {
+            currentSpool.kind = TagKind::GenericUidTag;
+            currentSpool.tag_data_valid = false;
+            lastTigerTagValid_ = false;
+            lastOpenTag3DValid_ = false;
+            lastOpenSpoolValid_ = false;
+        }
+        xSemaphoreGive(tagMutex);
+    } else {
+        Serial.println("NFCManager: Could not acquire tagMutex");
+    }
+
+    // Send format-specific message
+    if (isTigerTag) {
+        sendTigerTagMessage(tigerData);
+    } else if (isOpenTag3D) {
+        sendOpenTag3DMessage(ot3dData);
+    } else if (isOpenSpool) {
+        sendOpenSpoolMessage(currentSpool.spool_id, openSpoolData);
+    } else {
+        sendGenericTagMessage();
+    }
+}
+
+// ── Scan loop helpers ───────────────────────────────────────
+
+bool NFCManager::prepareRF() {
+    if (consecutiveFailures_ >= RESTART_THRESHOLD) {
+        Serial.println("NFCManager: CRITICAL - too many consecutive failures, restarting ESP");
+#ifndef NATIVE_TEST
+        delay(100);
+        ESP.restart();
+#endif
+    }
+    if (consecutiveFailures_ > 0 && (consecutiveFailures_ % RECOVERY_THRESHOLD) == 0) {
+        attemptRecovery();
+    }
+
+    // Full hardware reset only when no tag present — reset cuts RF, de-powering passive tags
+    if (!lastSeenValid) {
+        connection_->reset();
+    }
+    if (!connection_->setupRF()) {
+        consecutiveFailures_++;
+        Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
+                      consecutiveFailures_, lastSeenValid ? 1 : 0);
+        if (lastSeenValid) {
+            Serial.println("NFCManager: clearing lastSeenValid to force hardware reset");
+            lastSeenValid = false;
+        }
+        return false;
+    }
+
+    // Give tag time to power up after RF field reset
+    if (!lastSeenValid) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    consecutiveFailures_ = 0;
+    return true;
+}
+
+bool NFCManager::isSkippableDuplicate(const uint8_t* uid, uint8_t uidLength) {
+    if (isDuplicateSpool(uid, uidLength)) return true;
+
+    if (!suppressReDetection_) return false;
+
+    char uidHex[17];
+    for (uint8_t i = 0; i < uidLength && i < 8; i++) {
+        sprintf(uidHex + (i * 2), "%02X", uid[i]);
+    }
+    uidHex[uidLength * 2] = '\0';
+    return strcmp(uidHex, suppressReDetectionUid_) == 0;
+}
+
+void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
+    Serial.println("NFCManager: New spool detected, reading tag...");
+    TagScanResult scan = classifyTag(uid, uidLength);
+
+    if (scan.kind == TagKind::BambuTag) {
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
+            memcpy(currentSpool.uid, uid, uidLength);
+            currentSpool.uid_length = uidLength;
+            currentSpool.present = true;
+            currentSpool.blank_tag_present = false;
+            currentSpool.kind = TagKind::BambuTag;
+            currentSpool.tag_data_valid = false;
+            lastTigerTagValid_ = false;
+            memcpy(lastSeenUid, uid, uidLength);
+            lastSeenUidLength = uidLength;
+            lastSeenValid = true;
+            lastSeenMs = millis();
+            xSemaphoreGive(tagMutex);
+        }
+        Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
+        sendGenericTagMessage();
+        return;
+    }
+
+    if (scan.kind == TagKind::GenericUidTag) {
+        readAndProcessISO14443Tag(uid, uidLength, scan);
+        return;
+    }
+
+    // ISO15693 — attempt OpenPrintTag parse with retries
+    bool readOk = false;
+    for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
+        if (attempt > 0) {
+            Serial.printf("NFCManager: Read attempt %d — resetting RF...\n", attempt + 1);
             connection_->reset();
+            bool rfOk = connection_->setupRF();
+            Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
-        if (!connection_->setupRF()) {
-            consecutiveFailures_++;
-            Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
-                          consecutiveFailures_, lastSeenValid ? 1 : 0);
-            // If RF is stuck with a tag still marked present, clear the flag so the
-            // next iteration performs a full reset() before retrying setupRF().
-            if (lastSeenValid) {
-                Serial.println("NFCManager: clearing lastSeenValid to force hardware reset");
-                lastSeenValid = false;
-            }
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
+        Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
+        readOk = readAndParseTag(uid, uidLength);
+        Serial.printf("NFCManager: readAndParseTag attempt %d: %s\n", attempt + 1, readOk ? "OK" : "FAILED");
+    }
 
-        // Give tag time to power up from RF field before sending inventory.
-        // Only needed after a reset (which cuts RF); skip when tag is already present.
-        if (!lastSeenValid) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+    if (readOk) return;
 
-        // setupRF succeeded, chip is responsive
-        consecutiveFailures_ = 0;
-
-        // Detect tag
-        if (connection_->detectTag(uid, &uidLength)) {
-            detectCount++;
-            // Log UID on first detection
-            if (!lastSeenValid || memcmp(uid, lastSeenUid, uidLength) != 0) {
-                Serial.printf("NFCManager: Tag detected! UID=");
-                for (uint8_t i = 0; i < uidLength; i++) {
-                    Serial.printf("%02X", uid[i]);
-                }
-                Serial.println("");
-            }
-
-            // Store UID for addressed read/write commands
-            connection_->setCurrentUid(uid, uidLength);
-
-            // Check if this is the same spool we already processed
-            // Also suppress re-detection if writes are in progress for this tag
-            bool shouldSkipReRead = isDuplicateSpool(uid, uidLength);
-
-            if (suppressReDetection_) {
-                char uidHex[17];
-                for (uint8_t i = 0; i < uidLength && i < 8; i++) {
-                    sprintf(uidHex + (i * 2), "%02X", uid[i]);
-                }
-                uidHex[uidLength * 2] = '\0';
-
-                if (strcmp(uidHex, suppressReDetectionUid_) == 0) {
-                    shouldSkipReRead = true;  // Skip re-read for tag being written to
-                }
-            }
-
-            if (!shouldSkipReRead) {
-                Serial.println("NFCManager: New spool detected, reading tag...");
-                TagScanResult scan = classifyTag(uid, uidLength);
-
-                if (scan.kind == TagKind::BambuTag) {
-                    // Bambu Lab MIFARE Classic — UID-only (data is encrypted)
-                    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
-                        memcpy(currentSpool.uid, uid, uidLength);
-                        currentSpool.uid_length = uidLength;
-                        currentSpool.present = true;
-                        currentSpool.blank_tag_present = false;
-                        currentSpool.kind = TagKind::BambuTag;
-                        currentSpool.tag_data_valid = false;
-                        lastTigerTagValid_ = false;
-                        memcpy(lastSeenUid, uid, uidLength);
-                        lastSeenUidLength = uidLength;
-                        lastSeenValid = true;
-                        lastSeenMs = millis();
-                        xSemaphoreGive(tagMutex);
-                    }
-                    Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
-                    sendGenericTagMessage();
-                } else if (scan.kind == TagKind::GenericUidTag) {
-                    // ISO14443A tag — try TigerTag, then OpenTag3D, then OpenSpool, fall back to UID-only
-                    bool isTigerTag = false;
-                    bool isOpenTag3D = false;
-                    bool isOpenSpool = false;
-                    TigerTagData tigerData;
-                    OpenSpoolData openSpoolData;
-                    opentag3d_t ot3dData;
-                    memset(&tigerData, 0, sizeof(tigerData));
-                    memset(&ot3dData, 0, sizeof(ot3dData));
-
-                    // Read pages 4-13 (40 bytes) — enough for TigerTag magic check + NDEF header scan
-                    uint8_t pageData[40] = {0};
-                    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData));
-
-                    // Try TigerTag first (binary magic at offset 0)
-                    if (bytesRead >= 14 && tigerTagCheckMagic(pageData, bytesRead)) {
-                        if (bytesRead >= 38) {
-                            tigerData = tigerTagParse(pageData, bytesRead);
-                            isTigerTag = tigerData.valid;
-                        } else {
-                            Serial.printf("NFCManager: TigerTag magic matched but only got %d bytes (need 38)\n", bytesRead);
-                        }
-                    }
-
-                    // If not TigerTag, check for OpenTag3D NDEF record
-                    if (!isTigerTag && bytesRead >= 4) {
-                        uint16_t pos = 0;
-                        while (pos < bytesRead) {
-                            uint8_t tlvType = pageData[pos++];
-                            if (tlvType == 0x00) continue;
-                            if (tlvType == 0xFE) break;
-                            if (pos >= bytesRead) break;
-
-                            uint16_t tlvLen = pageData[pos++];
-                            if (tlvLen == 0xFF) {
-                                if (pos + 2 > bytesRead) break;
-                                tlvLen = (uint16_t)(pageData[pos] << 8) | pageData[pos + 1];
-                                pos += 2;
-                            }
-
-                            if (tlvType == 0x03) {
-                                uint16_t ndefStart = pos;
-                                if (ndefStart >= bytesRead) break;
-
-                                uint8_t ndefFlags = pageData[ndefStart];
-                                uint8_t tnf = ndefFlags & 0x07;
-                                if (tnf == 0x02 && ndefStart + 1 < bytesRead) {
-                                    uint8_t typeLen = pageData[ndefStart + 1];
-                                    bool sr = (ndefFlags & 0x10) != 0;
-                                    uint16_t headerSize = 2 + (sr ? 1 : 4);
-                                    if (ndefStart + headerSize + typeLen <= bytesRead) {
-                                        const char* mime = OT3D_MIME_TYPE;
-                                        size_t mimeLen = strlen(mime);
-                                        if (typeLen == mimeLen &&
-                                            memcmp(pageData + ndefStart + headerSize, mime, mimeLen) == 0) {
-                                            uint32_t payloadLen = 0;
-                                            if (sr) {
-                                                payloadLen = pageData[ndefStart + 2];
-                                            } else {
-                                                payloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
-                                                             ((uint32_t)pageData[ndefStart + 3] << 16) |
-                                                             ((uint32_t)pageData[ndefStart + 4] << 8) |
-                                                             pageData[ndefStart + 5];
-                                            }
-
-                                            uint16_t payloadOffset = ndefStart + headerSize + typeLen;
-                                            uint16_t availableInFirstRead = (payloadOffset < bytesRead) ? bytesRead - payloadOffset : 0;
-
-                                            uint8_t fullPayload[OT3D_EXTENDED_MIN];
-                                            uint16_t payloadBytes = 0;
-
-                                            if (availableInFirstRead >= payloadLen) {
-                                                memcpy(fullPayload, pageData + payloadOffset, payloadLen);
-                                                payloadBytes = (uint16_t)payloadLen;
-                                            } else {
-                                                uint8_t payloadStartPage = 4 + (payloadOffset / 4);
-                                                uint16_t totalPagesNeeded = (uint16_t)((payloadLen + 3) / 4) + 1;
-                                                if (totalPagesNeeded > 50) totalPagesNeeded = 50;
-
-                                                uint8_t extendedData[200] = {0};
-                                                uint16_t extendedRead = connection_->readISO14443Pages(
-                                                    payloadStartPage, (uint8_t)totalPagesNeeded, extendedData, sizeof(extendedData));
-
-                                                uint16_t offsetInPage = payloadOffset % 4;
-                                                if (extendedRead > offsetInPage) {
-                                                    payloadBytes = extendedRead - offsetInPage;
-                                                    if (payloadBytes > payloadLen) payloadBytes = (uint16_t)payloadLen;
-                                                    if (payloadBytes > sizeof(fullPayload)) payloadBytes = sizeof(fullPayload);
-                                                    memcpy(fullPayload, extendedData + offsetInPage, payloadBytes);
-                                                }
-                                            }
-
-                                            if (payloadBytes >= OT3D_CORE_SIZE) {
-                                                opentag3d_result_t res = opentag3d_decode(fullPayload, payloadBytes, &ot3dData);
-                                                if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
-                                                    isOpenTag3D = true;
-                                                    if (res == OT3D_VERSION_WARNING) {
-                                                        Serial.printf("NFCManager: OpenTag3D tag version %u ahead of supported %u — parsing anyway\n",
-                                                                      ot3dData.tag_version, OT3D_SUPPORTED_VERSION);
-                                                    }
-                                                } else if (res == OT3D_VERSION_ERROR) {
-                                                    Serial.printf("NFCManager: OpenTag3D major version too new (%u) — cannot parse\n",
-                                                                  ot3dData.tag_version);
-                                                }
-                                            }
-                                        }
-
-                                        // Check for OpenSpool (application/json + "protocol":"openspool")
-                                        if (!isOpenTag3D) {
-                                            const char* jsonMime = "application/json";
-                                            size_t jsonMimeLen = strlen(jsonMime);
-                                            if (typeLen == jsonMimeLen &&
-                                                memcmp(pageData + ndefStart + headerSize, jsonMime, jsonMimeLen) == 0) {
-                                                uint32_t osPayloadLen = 0;
-                                                if (sr) {
-                                                    osPayloadLen = pageData[ndefStart + 2];
-                                                } else {
-                                                    osPayloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
-                                                                   ((uint32_t)pageData[ndefStart + 3] << 16) |
-                                                                   ((uint32_t)pageData[ndefStart + 4] << 8) |
-                                                                   pageData[ndefStart + 5];
-                                                }
-                                                uint16_t osOffset = ndefStart + headerSize + typeLen;
-                                                uint8_t osPayload[256] = {0};
-                                                uint16_t osBytes = 0;
-
-                                                if (osOffset + osPayloadLen <= bytesRead) {
-                                                    osBytes = (uint16_t)osPayloadLen;
-                                                    if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
-                                                    memcpy(osPayload, pageData + osOffset, osBytes);
-                                                } else {
-                                                    uint8_t osStartPage = 4 + (osOffset / 4);
-                                                    uint16_t osPagesNeeded = (uint16_t)((osPayloadLen + 3) / 4) + 1;
-                                                    if (osPagesNeeded > 50) osPagesNeeded = 50;
-                                                    uint8_t osExtData[256] = {0};
-                                                    uint16_t osExtRead = connection_->readISO14443Pages(
-                                                        osStartPage, (uint8_t)osPagesNeeded, osExtData, sizeof(osExtData));
-                                                    uint16_t osOffInPage = osOffset % 4;
-                                                    if (osExtRead > osOffInPage) {
-                                                        osBytes = osExtRead - osOffInPage;
-                                                        if (osBytes > osPayloadLen) osBytes = (uint16_t)osPayloadLen;
-                                                        if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
-                                                        memcpy(osPayload, osExtData + osOffInPage, osBytes);
-                                                    }
-                                                }
-
-                                                if (osBytes > 0 && parseOpenSpool(osPayload, osBytes, openSpoolData)) {
-                                                    isOpenSpool = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            } else {
-                                pos += tlvLen;
-                            }
-                        }
-                    }
-
-                    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
-                        memcpy(currentSpool.uid, uid, uidLength);
-                        currentSpool.uid_length = uidLength;
-                        currentSpool.present = true;
-                        currentSpool.blank_tag_present = false;
-                        memcpy(lastSeenUid, uid, uidLength);
-                        lastSeenUidLength = uidLength;
-                        lastSeenValid = true;
-                        lastSeenMs = millis();
-
-                        if (isTigerTag) {
-                            currentSpool.kind = TagKind::TigerTag;
-                            currentSpool.tag_data_valid = false;
-                            lastTigerTag_ = tigerData;
-                            lastTigerTagValid_ = true;
-                            lastOpenTag3DValid_ = false;
-                            Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
-                                          tigerData.brand_name, tigerData.material_name,
-                                          tigerData.aspect1_name);
-                        } else if (isOpenTag3D) {
-                            currentSpool.kind = TagKind::OpenTag3D;
-                            currentSpool.tag_data_valid = false;
-                            lastOpenTag3D_ = ot3dData;
-                            lastOpenTag3DValid_ = true;
-                            lastTigerTagValid_ = false;
-                            lastOpenSpoolValid_ = false;
-                            Serial.printf("NFCManager: OpenTag3D detected — %s %s %.2fmm %ug\n",
-                                          ot3dData.manufacturer, ot3dData.base_material,
-                                          opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
-                        } else if (isOpenSpool) {
-                            currentSpool.kind = TagKind::OpenSpoolTag;
-                            currentSpool.tag_data_valid = false;
-                            lastOpenSpool_ = openSpoolData;
-                            lastOpenSpoolValid_ = true;
-                            lastTigerTagValid_ = false;
-                            lastOpenTag3DValid_ = false;
-                            Serial.printf("NFCManager: OpenSpool detected — %s %s #%s\n",
-                                          openSpoolData.brand, openSpoolData.material,
-                                          openSpoolData.color_hex);
-                        } else {
-                            currentSpool.kind = TagKind::GenericUidTag;
-                            currentSpool.tag_data_valid = false;
-                            lastTigerTagValid_ = false;
-                            lastOpenTag3DValid_ = false;
-                            lastOpenSpoolValid_ = false;
-                        }
-                        xSemaphoreGive(tagMutex);
-                    } else {
-                        Serial.println("NFCManager: Could not acquire tagMutex");
-                    }
-
-                    if (isTigerTag) {
-                        sendTigerTagMessage(tigerData);
-                    } else if (isOpenTag3D) {
-                        sendOpenTag3DMessage(ot3dData);
-                    } else if (isOpenSpool) {
-                        sendOpenSpoolMessage(currentSpool.spool_id, openSpoolData);
-                    } else {
-                        sendGenericTagMessage();
-                    }
-                } else {
-
-                // ISO15693 — attempt OpenPrintTag parse
-                // readAndParseTag manages its own mutex internally
-                bool readOk = false;
-                for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
-                    if (attempt > 0) {
-                        Serial.printf("NFCManager: Read attempt %d — resetting RF...\n", attempt + 1);
-                        connection_->reset();
-                        bool rfOk = connection_->setupRF();
-                        Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
-                        vTaskDelay(pdMS_TO_TICKS(100));
-                    }
-                    Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
-                    readOk = readAndParseTag(uid, uidLength);
-                    Serial.printf("NFCManager: readAndParseTag attempt %d: %s\n", attempt + 1, readOk ? "OK" : "FAILED");
-                }
-if (!readOk) {
+    // All retries failed — treat as blank tag
     Serial.println("NFCManager: readAndParseTag() failed after retries - treating as blank tag");
-
-    bool blankStateCaptured = false;
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (uint8_t i = 0; i < uidLength && i < 8; i++) {
             sprintf(currentSpool.spool_id + (i * 2), "%02X", uid[i]);
@@ -573,54 +516,74 @@ if (!readOk) {
         currentSpool.tag_data_valid = false;
         currentSpool.blank_tag_present = true;
         currentSpool.kind = TagKind::BlankTag;
-
         memcpy(lastSeenUid, uid, uidLength);
         lastSeenUidLength = uidLength;
         lastSeenValid = true;
         lastSeenMs = millis();
-        blankStateCaptured = true;
         xSemaphoreGive(tagMutex);
-    } else {
-        Serial.println("NFCManager: Could not acquire tagMutex");
-    }
-
-    if (blankStateCaptured) {
         sendBlankTagMessage();
     }
 }
-                } // end ISO15693 else branch
-            } else {
-                // Tag is a duplicate - skip re-reading
-                // This log would be too verbose (every 50ms), so commenting out
-                // Serial.println("NFCManager: Same tag detected, skipping read");
-            }
 
-            // Process any pending write requests while tag is present
-            processWriteQueue();
-        } else {
-            // No tag detected - clear state
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                if (lastSeenValid) {
-                    Serial.println("NFCManager: Tag removed");
+void NFCManager::handleTagAbsent() {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
-                    // Send TAG_REMOVED message before clearing state
-                    sendTagRemovedMessage();
-                }
-                currentSpool.present = false;
-                currentSpool.blank_tag_present = false;
-                lastSeenValid = false;
-                lastTigerTagValid_ = false;
-                lastOpenTag3DValid_ = false;
+    if (lastSeenValid) {
+        Serial.println("NFCManager: Tag removed");
+        sendTagRemovedMessage();
+    }
+    currentSpool.present = false;
+    currentSpool.blank_tag_present = false;
+    lastSeenValid = false;
+    lastTigerTagValid_ = false;
+    lastOpenTag3DValid_ = false;
+    suppressReDetection_ = false;
+    suppressReDetectionUid_[0] = '\0';
+    xSemaphoreGive(tagMutex);
+}
 
-                // Clear suppression if tag removed
-                suppressReDetection_ = false;
-                suppressReDetectionUid_[0] = '\0';
+// ── Main scan loop ──────────────────────────────────────────
 
-                xSemaphoreGive(tagMutex);
-            }
+void NFCManager::scanLoop() {
+    Serial.println("NFCManager: scanLoop() started, polling every 50ms");
+
+#ifndef NATIVE_TEST
+    esp_task_wdt_init(NFC_WDT_TIMEOUT_S, true);
+    esp_task_wdt_add(NULL);
+#endif
+
+    connection_->reset();
+    connection_->setupRF();
+    connection_->logDiagnostics();
+
+    while (true) {
+#ifndef NATIVE_TEST
+        esp_task_wdt_reset();
+#endif
+        uint8_t uid[8];
+        uint8_t uidLength = 0;
+
+        if (!prepareRF()) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
         }
 
-        // Small delay to prevent tight loop
+        if (connection_->detectTag(uid, &uidLength)) {
+            if (!lastSeenValid || memcmp(uid, lastSeenUid, uidLength) != 0) {
+                Serial.printf("NFCManager: Tag detected! UID=");
+                for (uint8_t i = 0; i < uidLength; i++) Serial.printf("%02X", uid[i]);
+                Serial.println("");
+            }
+            connection_->setCurrentUid(uid, uidLength);
+
+            if (!isSkippableDuplicate(uid, uidLength)) {
+                handleNewTag(uid, uidLength);
+            }
+            processWriteQueue();
+        } else {
+            handleTagAbsent();
+        }
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
@@ -1589,413 +1552,311 @@ static opt_error_t applyWriteUpdate(opt_tag_t& tag, const NFCWriteRequest& reque
     }
 }
 
-bool NFCManager::executeWrite(const NFCWriteRequest& request) {
-    // Handle FORMAT_NEW — formatNewSpool() manages its own mutex
-    if (request.type == NFCWriteType::FORMAT_NEW) {
-        // Validate under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: FORMAT_NEW - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: FORMAT_NEW rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
+// ── Write helpers ────────────────────────────────────────────
 
-        // formatNewSpool() does NFC I/O without mutex, takes mutex at end for state copy
+static uint16_t buildNdefTlv(const char* mimeType, const uint8_t* payload, uint16_t payloadLen,
+                              uint8_t* outBuf, uint16_t outBufSize) {
+    uint8_t mimeLen = (uint8_t)strlen(mimeType);
+    bool sr = (payloadLen <= 255);
+    uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
+    uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
+
+    bool longTlv = (ndefRecordLen > 254);
+    uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
+    uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
+    uint16_t paddedSize = totalSize + ((4 - (totalSize % 4)) % 4);
+
+    if (paddedSize > outBufSize) return 0;
+
+    uint16_t idx = 0;
+    outBuf[idx++] = 0x03;
+    if (longTlv) {
+        outBuf[idx++] = 0xFF;
+        outBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
+        outBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
+    } else {
+        outBuf[idx++] = (uint8_t)ndefRecordLen;
+    }
+
+    uint8_t ndefFlags = 0xC0 | 0x02;
+    if (sr) ndefFlags |= 0x10;
+    outBuf[idx++] = ndefFlags;
+    outBuf[idx++] = mimeLen;
+    if (sr) {
+        outBuf[idx++] = (uint8_t)payloadLen;
+    } else {
+        outBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
+        outBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
+        outBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
+        outBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
+    }
+
+    memcpy(outBuf + idx, mimeType, mimeLen);
+    idx += mimeLen;
+    memcpy(outBuf + idx, payload, payloadLen);
+    idx += payloadLen;
+    outBuf[idx++] = 0xFE;
+    while (idx < paddedSize) outBuf[idx++] = 0x00;
+    return paddedSize;
+}
+
+bool NFCManager::validateWriteUid(const char* expectedUid, const char* writeType) {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.printf("NFCManager: %s - could not acquire tagMutex\n", writeType);
+        return false;
+    }
+    if (expectedUid[0] != '\0' && strcmp(currentSpool.spool_id, expectedUid) != 0) {
+        xSemaphoreGive(tagMutex);
+        Serial.printf("NFCManager: %s rejected - UID mismatch\n", writeType);
+        return false;
+    }
+    xSemaphoreGive(tagMutex);
+    return true;
+}
+
+void NFCManager::forceRescan() {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        currentSpool.present = false;
+        xSemaphoreGive(tagMutex);
+    }
+}
+
+// ── Per-format write functions ──────────────────────────────
+
+bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_TIGERTAG")) return false;
+
+    bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
+    if (ok) {
+        Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_TIGERTAG failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeOpenTag3DWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_OPENTAG3D")) return false;
+
+    if (!rawWritePending_ || rawWriteBufferSize_ < sizeof(opentag3d_t)) {
+        Serial.println("NFCManager: WRITE_OPENTAG3D - no raw data available");
+        return false;
+    }
+
+    opentag3d_t ot3d;
+    memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
+    rawWritePending_ = false;
+
+    size_t encodeSize = ot3d.has_extended ? OT3D_EXTENDED_MIN : OT3D_CORE_SIZE;
+    uint8_t payloadBuf[OT3D_EXTENDED_MIN];
+    int payloadLen = opentag3d_encode(&ot3d, payloadBuf, encodeSize);
+    if (payloadLen <= 0) {
+        Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
+        return false;
+    }
+
+    uint8_t ndefBuf[256];
+    uint16_t ndefLen = buildNdefTlv(OT3D_MIME_TYPE, payloadBuf, (uint16_t)payloadLen, ndefBuf, sizeof(ndefBuf));
+    if (ndefLen == 0) {
+        Serial.printf("NFCManager: WRITE_OPENTAG3D - NDEF too large\n");
+        return false;
+    }
+
+    uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
+    Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
+    if (ok) {
+        Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_OPENTAG3D failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeOpenSpoolWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_OPENSPOOL")) return false;
+
+    if (!rawWritePending_ || rawWriteBufferSize_ == 0) {
+        Serial.println("NFCManager: WRITE_OPENSPOOL - no raw data available");
+        return false;
+    }
+
+    const uint8_t* jsonPayload = rawWriteBuffer_;
+    uint16_t payloadLen = (uint16_t)rawWriteBufferSize_;
+    rawWritePending_ = false;
+
+    uint8_t ndefBuf[256];
+    uint16_t ndefLen = buildNdefTlv("application/json", jsonPayload, payloadLen, ndefBuf, sizeof(ndefBuf));
+    if (ndefLen == 0) {
+        Serial.printf("NFCManager: WRITE_OPENSPOOL - NDEF too large\n");
+        return false;
+    }
+
+    uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
+    Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
+    if (ok) {
+        Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_OPENSPOOL failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeAtomicWrite(const NFCWriteRequest& request) {
+    if (!atomicWriteFields_.pending) {
+        Serial.println("NFCManager: WRITE_ATOMIC - no atomic fields pending");
+        return false;
+    }
+
+    AtomicWriteFields f = atomicWriteFields_;
+    atomicWriteFields_.pending = false;
+
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
+        return false;
+    }
+    if (!currentSpool.tag_data_valid) {
+        xSemaphoreGive(tagMutex);
+        return false;
+    }
+    if (request.expected_spool_id[0] != '\0' &&
+        strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+        Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
+            request.expected_spool_id, currentSpool.spool_id);
+        xSemaphoreGive(tagMutex);
+        return false;
+    }
+
+    uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
+    uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
+    float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
+    float    cur_consumed = 0.0f;   opt_get_consumed_weight(&currentSpool.tag_data, &cur_consumed);
+    char     cur_brand[33] = {0};   opt_get_brand_name(&currentSpool.tag_data, cur_brand, sizeof(cur_brand));
+    float    cur_density = 0.0f;    opt_get_density(&currentSpool.tag_data, &cur_density);
+    float    cur_diameter = 0.0f;   opt_get_filament_diameter(&currentSpool.tag_data, &cur_diameter);
+    char     cur_mat_name[33] = {0}; opt_get_material_name(&currentSpool.tag_data, cur_mat_name, sizeof(cur_mat_name));
+    int32_t  cur_sm_id = -1;        opt_get_gp_spoolman_id(&currentSpool.tag_data, &cur_sm_id);
+    int16_t  cur_min_pt = 0, cur_max_pt = 0, cur_pre_t = 0, cur_min_bt = 0, cur_max_bt = 0;
+    opt_get_min_print_temp(&currentSpool.tag_data, &cur_min_pt);
+    opt_get_max_print_temp(&currentSpool.tag_data, &cur_max_pt);
+    opt_get_preheat_temp(&currentSpool.tag_data, &cur_pre_t);
+    opt_get_min_bed_temp(&currentSpool.tag_data, &cur_min_bt);
+    opt_get_max_bed_temp(&currentSpool.tag_data, &cur_max_bt);
+    xSemaphoreGive(tagMutex);
+
+    opt_init(&writeScratchTag_);
+    opt_error_t err = opt_format_empty_tag(&writeScratchTag_, 312, 32);
+    if (err != OPT_OK) {
+        Serial.printf("NFCManager: WRITE_ATOMIC format failed: %s\n", opt_error_str(err));
+        return false;
+    }
+
+    opt_set_material_class(&writeScratchTag_, OPT_MATERIAL_CLASS_FFF);
+
+    #define ATOMIC_SET(name, call) do { \
+        err = (call); \
+        if (err != OPT_OK) { \
+            Serial.printf("NFCManager: WRITE_ATOMIC " name " failed: %s\n", opt_error_str(err)); \
+        } \
+    } while(0)
+
+    ATOMIC_SET("material_type",  opt_set_material_type(&writeScratchTag_, f.has_material_type ? f.material_type : cur_mat_type));
+    ATOMIC_SET("color",          opt_set_primary_color(&writeScratchTag_, f.has_color ? f.color : cur_color));
+    ATOMIC_SET("initial_weight", opt_set_actual_full_weight(&writeScratchTag_, f.has_initial_weight ? f.initial_weight_g : cur_full_wt));
+    ATOMIC_SET("consumed_weight",opt_set_consumed_weight(&writeScratchTag_, f.has_consumed_weight ? f.consumed_weight : cur_consumed));
+    if (f.has_brand_name || cur_brand[0] != '\0')
+        ATOMIC_SET("brand_name", opt_set_brand_name(&writeScratchTag_, f.has_brand_name ? f.brand_name : cur_brand));
+    if (f.has_density || cur_density > 0.0f)
+        ATOMIC_SET("density",    opt_set_density(&writeScratchTag_, f.has_density ? f.density : cur_density));
+    if (f.has_diameter || cur_diameter > 0.0f)
+        ATOMIC_SET("diameter",   opt_set_filament_diameter(&writeScratchTag_, f.has_diameter ? f.diameter_mm : cur_diameter));
+    if (f.has_material_name || cur_mat_name[0] != '\0')
+        ATOMIC_SET("material_name", opt_set_material_name(&writeScratchTag_, f.has_material_name ? f.material_name : cur_mat_name));
+    if (f.has_min_print_temp || cur_min_pt != 0)
+        ATOMIC_SET("min_print_temp", opt_set_min_print_temp(&writeScratchTag_, f.has_min_print_temp ? f.min_print_temp : cur_min_pt));
+    if (f.has_max_print_temp || cur_max_pt != 0)
+        ATOMIC_SET("max_print_temp", opt_set_max_print_temp(&writeScratchTag_, f.has_max_print_temp ? f.max_print_temp : cur_max_pt));
+    if (f.has_preheat_temp || cur_pre_t != 0)
+        ATOMIC_SET("preheat_temp",   opt_set_preheat_temp(&writeScratchTag_, f.has_preheat_temp ? f.preheat_temp : cur_pre_t));
+    if (f.has_min_bed_temp || cur_min_bt != 0)
+        ATOMIC_SET("min_bed_temp",   opt_set_min_bed_temp(&writeScratchTag_, f.has_min_bed_temp ? f.min_bed_temp : cur_min_bt));
+    if (f.has_max_bed_temp || cur_max_bt != 0)
+        ATOMIC_SET("max_bed_temp",   opt_set_max_bed_temp(&writeScratchTag_, f.has_max_bed_temp ? f.max_bed_temp : cur_max_bt));
+    int32_t sm_id = f.has_spoolman_id ? f.spoolman_id : cur_sm_id;
+    if (sm_id > 0)
+        ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
+    #undef ATOMIC_SET
+
+    Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
+    opt_nfc_hal_t* hal = connection_->getHal();
+    err = opt_write_to_nfc(&writeScratchTag_, hal);
+    if (err != OPT_OK) {
+        Serial.printf("NFCManager: WRITE_ATOMIC NFC write failed: %s\n", opt_error_str(err));
+        return false;
+    }
+
+    bool verified = false;
+    for (int retry = 0; retry < 3; retry++) {
+        vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
+        err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
+        if (err == OPT_OK) {
+            err = opt_parse_ndef(&writeScratchTag_);
+            if (err == OPT_OK) { verified = true; break; }
+        }
+        Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
+    }
+    if (!verified) {
+        Serial.println("NFCManager: WRITE_ATOMIC verification failed");
+        return false;
+    }
+
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
+        return false;
+    }
+    currentSpool.tag_data = writeScratchTag_;
+    currentSpool.tag_data_valid = true;
+    currentSpool.blank_tag_present = false;
+    currentSpool.kind = TagKind::OpenPrintTag;
+    addToRecentSpools();
+    sendSpoolDetectedMessage();
+    xSemaphoreGive(tagMutex);
+
+    Serial.println("NFCManager: WRITE_ATOMIC complete");
+    return true;
+}
+
+// ── executeWrite dispatcher ─────────────────────────────────
+
+bool NFCManager::executeWrite(const NFCWriteRequest& request) {
+    if (request.type == NFCWriteType::FORMAT_NEW) {
+        if (!validateWriteUid(request.expected_spool_id, "FORMAT_NEW")) return false;
         return formatNewSpool();
     }
 
-    // Handle WRITE_RAW_TAG — writeRawTag() manages its own mutex
     if (request.type == NFCWriteType::WRITE_RAW_TAG) {
         if (!rawWritePending_) {
             Serial.println("NFCManager: WRITE_RAW_TAG - no raw data pending");
             return false;
         }
-        // Validate under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_RAW_TAG - could not acquire tagMutex");
+        if (!validateWriteUid(request.expected_spool_id, "WRITE_RAW_TAG")) {
             rawWritePending_ = false;
             return false;
         }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_RAW_TAG rejected - UID mismatch");
-            rawWritePending_ = false;
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
         return writeRawTag();
     }
 
-    // Handle WRITE_TIGERTAG — write 40-byte binary to NTAG pages 4-13
-    if (request.type == NFCWriteType::WRITE_TIGERTAG) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_TIGERTAG - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_TIGERTAG rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
+    if (request.type == NFCWriteType::WRITE_TIGERTAG)  return executeTigerTagWrite(request);
+    if (request.type == NFCWriteType::WRITE_OPENTAG3D) return executeOpenTag3DWrite(request);
+    if (request.type == NFCWriteType::WRITE_OPENSPOOL)  return executeOpenSpoolWrite(request);
+    if (request.type == NFCWriteType::WRITE_ATOMIC)     return executeAtomicWrite(request);
 
-        // Write 40 bytes = 10 pages starting at page 4
-        bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
-        if (ok) {
-            Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
-            // Force re-scan to pick up the new TigerTag data
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_TIGERTAG failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_OPENTAG3D — write NDEF-wrapped OpenTag3D payload to NTAG pages
-    if (request.type == NFCWriteType::WRITE_OPENTAG3D) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_OPENTAG3D rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
-        // Decode opentag3d_t from rawWriteBuffer_
-        if (!rawWritePending_ || rawWriteBufferSize_ < sizeof(opentag3d_t)) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - no raw data available");
-            return false;
-        }
-
-        opentag3d_t ot3d;
-        memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
-        rawWritePending_ = false;
-
-        // Encode to binary payload — use core-only size when no extended fields are set
-        // to reduce page count (32 pages vs 54) for better write reliability at range
-        size_t encodeSize = ot3d.has_extended ? OT3D_EXTENDED_MIN : OT3D_CORE_SIZE;
-        uint8_t payloadBuf[OT3D_EXTENDED_MIN];
-        int payloadLen = opentag3d_encode(&ot3d, payloadBuf, encodeSize);
-        if (payloadLen <= 0) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
-            return false;
-        }
-
-        // Build NDEF TLV wrapper
-        const char* mime = OT3D_MIME_TYPE;
-        uint8_t mimeLen = (uint8_t)strlen(mime);
-        // NDEF record: flags(1) + typeLen(1) + payloadLen(1, SR) + type(mimeLen) + payload
-        bool sr = (payloadLen <= 255);
-        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
-        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + (uint16_t)payloadLen;
-
-        // TLV: type(1) + length(1 or 3) + NDEF record + terminator(1)
-        bool longTlv = (ndefRecordLen > 254);
-        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
-        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;  // +1 for terminator
-
-        uint8_t ndefBuf[256];
-        if (totalSize > sizeof(ndefBuf)) {
-            Serial.printf("NFCManager: WRITE_OPENTAG3D - NDEF too large (%u bytes)\n", totalSize);
-            return false;
-        }
-
-        uint16_t idx = 0;
-
-        // TLV header
-        ndefBuf[idx++] = 0x03;  // NDEF Message TLV
-        if (longTlv) {
-            ndefBuf[idx++] = 0xFF;
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
-        } else {
-            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
-        }
-
-        // NDEF record header
-        uint8_t ndefFlags = 0xC0 | 0x02;  // MB + ME + TNF=media-type
-        if (sr) ndefFlags |= 0x10;         // SR flag
-        ndefBuf[idx++] = ndefFlags;
-        ndefBuf[idx++] = mimeLen;
-        if (sr) {
-            ndefBuf[idx++] = (uint8_t)payloadLen;
-        } else {
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
-        }
-
-        // MIME type
-        memcpy(ndefBuf + idx, mime, mimeLen);
-        idx += mimeLen;
-
-        // Payload
-        memcpy(ndefBuf + idx, payloadBuf, payloadLen);
-        idx += (uint16_t)payloadLen;
-
-        // Terminator TLV
-        ndefBuf[idx++] = 0xFE;
-
-        // Pad to page boundary (4 bytes per page)
-        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
-
-        // Write to NTAG pages starting at page 4
-        uint8_t pagesNeeded = (uint8_t)(idx / 4);
-        Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages), payload=%d\n", idx, pagesNeeded, payloadLen);
-        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
-        if (ok) {
-            Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
-            // Force re-scan to pick up the new OpenTag3D data
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_OPENTAG3D failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_OPENSPOOL — write NDEF-wrapped JSON payload to NTAG pages
-    if (request.type == NFCWriteType::WRITE_OPENSPOOL) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_OPENSPOOL - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_OPENSPOOL rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
-        if (!rawWritePending_ || rawWriteBufferSize_ == 0) {
-            Serial.println("NFCManager: WRITE_OPENSPOOL - no raw data available");
-            return false;
-        }
-
-        const uint8_t* jsonPayload = rawWriteBuffer_;
-        uint16_t payloadLen = (uint16_t)rawWriteBufferSize_;
-        rawWritePending_ = false;
-
-        const char* mime = "application/json";
-        uint8_t mimeLen = (uint8_t)strlen(mime);
-        bool sr = (payloadLen <= 255);
-        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
-        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
-
-        bool longTlv = (ndefRecordLen > 254);
-        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
-        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
-
-        uint8_t ndefBuf[256];
-        if (totalSize > sizeof(ndefBuf)) {
-            Serial.printf("NFCManager: WRITE_OPENSPOOL - NDEF too large (%u bytes)\n", totalSize);
-            return false;
-        }
-
-        uint16_t idx = 0;
-        ndefBuf[idx++] = 0x03;
-        if (longTlv) {
-            ndefBuf[idx++] = 0xFF;
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
-        } else {
-            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
-        }
-
-        uint8_t ndefFlags = 0xC0 | 0x02;
-        if (sr) ndefFlags |= 0x10;
-        ndefBuf[idx++] = ndefFlags;
-        ndefBuf[idx++] = mimeLen;
-        if (sr) {
-            ndefBuf[idx++] = (uint8_t)payloadLen;
-        } else {
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
-        }
-
-        memcpy(ndefBuf + idx, mime, mimeLen);
-        idx += mimeLen;
-        memcpy(ndefBuf + idx, jsonPayload, payloadLen);
-        idx += payloadLen;
-        ndefBuf[idx++] = 0xFE;
-
-        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
-
-        uint8_t pagesNeeded = (uint8_t)(idx / 4);
-        Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", idx, pagesNeeded);
-        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
-        if (ok) {
-            Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_OPENSPOOL failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_ATOMIC — build complete CBOR map from sidecar fields, write once
-    if (request.type == NFCWriteType::WRITE_ATOMIC) {
-        if (!atomicWriteFields_.pending) {
-            Serial.println("NFCManager: WRITE_ATOMIC - no atomic fields pending");
-            return false;
-        }
-
-        // Copy sidecar by value and clear pending immediately — prevents a
-        // concurrent HTTP call from overwriting fields mid-write
-        AtomicWriteFields f = atomicWriteFields_;
-        atomicWriteFields_.pending = false;
-
-        // Validate and snapshot under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
-            return false;
-        }
-        if (!currentSpool.tag_data_valid) {
-            xSemaphoreGive(tagMutex);
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
-                request.expected_spool_id, currentSpool.spool_id);
-            xSemaphoreGive(tagMutex);
-            return false;
-        }
-        // Read defaults from the existing tag for any fields not provided
-        uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
-        uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
-        float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
-        float    cur_consumed = 0.0f;   opt_get_consumed_weight(&currentSpool.tag_data, &cur_consumed);
-        char     cur_brand[33] = {0};   opt_get_brand_name(&currentSpool.tag_data, cur_brand, sizeof(cur_brand));
-        float    cur_density = 0.0f;    opt_get_density(&currentSpool.tag_data, &cur_density);
-        float    cur_diameter = 0.0f;   opt_get_filament_diameter(&currentSpool.tag_data, &cur_diameter);
-        char     cur_mat_name[33] = {0}; opt_get_material_name(&currentSpool.tag_data, cur_mat_name, sizeof(cur_mat_name));
-        int32_t  cur_sm_id = -1;        opt_get_gp_spoolman_id(&currentSpool.tag_data, &cur_sm_id);
-        int16_t  cur_min_pt = 0, cur_max_pt = 0, cur_pre_t = 0, cur_min_bt = 0, cur_max_bt = 0;
-        opt_get_min_print_temp(&currentSpool.tag_data, &cur_min_pt);
-        opt_get_max_print_temp(&currentSpool.tag_data, &cur_max_pt);
-        opt_get_preheat_temp(&currentSpool.tag_data, &cur_pre_t);
-        opt_get_min_bed_temp(&currentSpool.tag_data, &cur_min_bt);
-        opt_get_max_bed_temp(&currentSpool.tag_data, &cur_max_bt);
-        xSemaphoreGive(tagMutex);
-
-        // Build a FRESH tag from scratch — avoids CBOR re-encoding overflow
-        // that happens when updating fields in an existing map
-        opt_init(&writeScratchTag_);
-        opt_error_t err = opt_format_empty_tag(&writeScratchTag_, 312, 32);
-        if (err != OPT_OK) {
-            Serial.printf("NFCManager: WRITE_ATOMIC format failed: %s\n", opt_error_str(err));
-            atomicWriteFields_.pending = false;
-            return false;
-        }
-
-        // Set material class (required by spec)
-        opt_set_material_class(&writeScratchTag_, OPT_MATERIAL_CLASS_FFF);
-
-        // Apply each field: use provided value if has_*, else use existing tag default
-        #define ATOMIC_SET(name, call) do { \
-            err = (call); \
-            if (err != OPT_OK) { \
-                Serial.printf("NFCManager: WRITE_ATOMIC " name " failed: %s\n", opt_error_str(err)); \
-            } \
-        } while(0)
-
-        ATOMIC_SET("material_type",  opt_set_material_type(&writeScratchTag_, f.has_material_type ? f.material_type : cur_mat_type));
-        ATOMIC_SET("color",          opt_set_primary_color(&writeScratchTag_, f.has_color ? f.color : cur_color));
-        ATOMIC_SET("initial_weight", opt_set_actual_full_weight(&writeScratchTag_, f.has_initial_weight ? f.initial_weight_g : cur_full_wt));
-        ATOMIC_SET("consumed_weight",opt_set_consumed_weight(&writeScratchTag_, f.has_consumed_weight ? f.consumed_weight : cur_consumed));
-        if (f.has_brand_name || cur_brand[0] != '\0')
-            ATOMIC_SET("brand_name", opt_set_brand_name(&writeScratchTag_, f.has_brand_name ? f.brand_name : cur_brand));
-        if (f.has_density || cur_density > 0.0f)
-            ATOMIC_SET("density",    opt_set_density(&writeScratchTag_, f.has_density ? f.density : cur_density));
-        if (f.has_diameter || cur_diameter > 0.0f)
-            ATOMIC_SET("diameter",   opt_set_filament_diameter(&writeScratchTag_, f.has_diameter ? f.diameter_mm : cur_diameter));
-        if (f.has_material_name || cur_mat_name[0] != '\0')
-            ATOMIC_SET("material_name", opt_set_material_name(&writeScratchTag_, f.has_material_name ? f.material_name : cur_mat_name));
-        if (f.has_min_print_temp || cur_min_pt != 0)
-            ATOMIC_SET("min_print_temp", opt_set_min_print_temp(&writeScratchTag_, f.has_min_print_temp ? f.min_print_temp : cur_min_pt));
-        if (f.has_max_print_temp || cur_max_pt != 0)
-            ATOMIC_SET("max_print_temp", opt_set_max_print_temp(&writeScratchTag_, f.has_max_print_temp ? f.max_print_temp : cur_max_pt));
-        if (f.has_preheat_temp || cur_pre_t != 0)
-            ATOMIC_SET("preheat_temp",   opt_set_preheat_temp(&writeScratchTag_, f.has_preheat_temp ? f.preheat_temp : cur_pre_t));
-        if (f.has_min_bed_temp || cur_min_bt != 0)
-            ATOMIC_SET("min_bed_temp",   opt_set_min_bed_temp(&writeScratchTag_, f.has_min_bed_temp ? f.min_bed_temp : cur_min_bt));
-        if (f.has_max_bed_temp || cur_max_bt != 0)
-            ATOMIC_SET("max_bed_temp",   opt_set_max_bed_temp(&writeScratchTag_, f.has_max_bed_temp ? f.max_bed_temp : cur_max_bt));
-        // Spoolman ID goes in aux region
-        int32_t sm_id = f.has_spoolman_id ? f.spoolman_id : cur_sm_id;
-        if (sm_id > 0)
-            ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
-        #undef ATOMIC_SET
-
-        // Single-pass NFC write — no sequential drops, no scan loop race
-        Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
-        opt_nfc_hal_t* hal = connection_->getHal();
-        err = opt_write_to_nfc(&writeScratchTag_, hal);
-        if (err != OPT_OK) {
-            Serial.printf("NFCManager: WRITE_ATOMIC NFC write failed: %s\n", opt_error_str(err));
-            return false;
-        }
-
-        // Verify with retries — re-read tag to confirm write succeeded
-        bool verified = false;
-        const int maxRetries = 3;
-        for (int retry = 0; retry < maxRetries; retry++) {
-            vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
-            err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
-            if (err == OPT_OK) {
-                err = opt_parse_ndef(&writeScratchTag_);
-                if (err == OPT_OK) { verified = true; break; }
-            }
-            Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
-        }
-        if (!verified) {
-            Serial.println("NFCManager: WRITE_ATOMIC verification failed — not committing");
-            return false;
-        }
-
-        // Commit verified data to shared state under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
-            return false;
-        }
-        currentSpool.tag_data = writeScratchTag_;
-        currentSpool.tag_data_valid = true;
-        currentSpool.blank_tag_present = false;
-        currentSpool.kind = TagKind::OpenPrintTag;
-        addToRecentSpools();
-        sendSpoolDetectedMessage();
-        xSemaphoreGive(tagMutex);
-
-        Serial.println("NFCManager: WRITE_ATOMIC complete");
-        return true;
-    }
-
-    // For non-FORMAT writes: take mutex to validate + modify in-memory data, then release for NFC I/O
+    // OpenPrintTag field-update writes (REMOVE_WEIGHT, CHANGE_COLOR, etc.)
+    // These modify existing CBOR tag data in-place
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         Serial.println("NFCManager: executeWrite - could not acquire tagMutex");
         return false;

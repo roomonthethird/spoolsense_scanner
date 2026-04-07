@@ -231,9 +231,9 @@ static int httpPatch(const char* path, const char* body, String& response) {
     return code;
 }
 
-// Stream-parse Spoolman spool list to find a spool with matching nfc_id.
-// Reads the HTTP response in chunks (~512 bytes) instead of buffering the
-// entire response in memory. Uses ~600 bytes of heap regardless of spool count.
+// Find a spool by nfc_id using ArduinoJson streaming filter.
+// Only id, archived, and extra.nfc_id are parsed — everything else is skipped,
+// keeping memory usage low (~4KB) regardless of how many spools exist.
 static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
     char url[256];
@@ -241,7 +241,7 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
 
     WiFiClient streamClient;
     HTTPClient streamHttp;
-    streamHttp.useHTTP10(true);  // Avoid chunked encoding for streaming parse
+    streamHttp.useHTTP10(true);
     streamHttp.begin(streamClient, url);
     streamHttp.setTimeout(10000);
     int code = streamHttp.GET();
@@ -249,181 +249,45 @@ static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
     if (code != 200) {
         Serial.printf("SpoolmanManager: streamFind HTTP %d for %s\n", code, path);
         streamHttp.end();
-        return -2;  // error (distinct from -1 = not found)
+        return -2;
     }
 
-    WiFiClient* stream = streamHttp.getStreamPtr();
+    // Filter: only extract id, archived, and extra.nfc_id from each spool
+    JsonDocument filter;
+    filter[0]["id"] = true;
+    filter[0]["archived"] = true;
+    filter[0]["extra"]["nfc_id"] = true;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, *streamHttp.getStreamPtr(),
+                                                DeserializationOption::Filter(filter));
+    streamHttp.end();
+
+    if (err) {
+        Serial.printf("SpoolmanManager: streamFind parse error: %s\n", err.c_str());
+        return -2;
+    }
+
+    // Build quoted UID for comparison ("04A651AD8F6180")
+    char quotedUuid[130];
+    snprintf(quotedUuid, sizeof(quotedUuid), "\"%s\"", uuid);
 
     int bestMatchId = -1;
-    int currentId = -1;
-    bool nfcIdMatched = false;  // true if nfc_id matched in current spool object
-    int depth = 0;
-    bool inExtra = false;
-    int extraDepth = 0;
-
-    char buf[512];
-    char keyBuf[16] = {};
-    int keyPos = 0;
-    char valBuf[80] = {};
-    int valPos = 0;
-    bool inString = false;
-    bool escaped = false;
-    bool inKey = false;
-    bool inValue = false;
-    bool inNumValue = false;
-
-    unsigned long lastData = millis();
-    bool timedOut = false;
-
-    while (stream->available() || stream->connected()) {
-        if (millis() - lastData > 10000) {
-            Serial.println("SpoolmanManager: streamFind timeout");
-            timedOut = true;
-            break;
-        }
-
-        int avail = stream->available();
-        if (avail <= 0) { delay(1); continue; }
-        lastData = millis();
-
-        int toRead = avail > (int)sizeof(buf) ? (int)sizeof(buf) : avail;
-        int bytesRead = stream->readBytes(buf, toRead);
-
-        for (int i = 0; i < bytesRead; i++) {
-            char c = buf[i];
-
-            if (escaped) {
-                escaped = false;
-                if (inString && inKey && keyPos < (int)sizeof(keyBuf) - 1)
-                    keyBuf[keyPos++] = c;
-                if (inString && inValue && valPos < (int)sizeof(valBuf) - 1)
-                    valBuf[valPos++] = c;
-                continue;
-            }
-
-            if (c == '\\' && inString) {
-                escaped = true;
-                if (inValue && valPos < (int)sizeof(valBuf) - 1)
-                    valBuf[valPos++] = c;
-                continue;
-            }
-
-            if (c == '"') {
-                if (!inString) {
-                    inString = true;
-                    if (!inValue) {
-                        inKey = true;
-                        keyPos = 0;
-                        memset(keyBuf, 0, sizeof(keyBuf));
-                    } else {
-                        valPos = 0;
-                        memset(valBuf, 0, sizeof(valBuf));
-                    }
-                } else {
-                    inString = false;
-                    if (inKey) {
-                        inKey = false;
-                        keyBuf[keyPos] = '\0';
-                    }
-                    if (inValue) {
-                        valBuf[valPos] = '\0';
-                        if (inExtra && strcmp(keyBuf, "nfc_id") == 0) {
-                            // Strip escaped inner quotes: \"UUID\" → UUID
-                            char* nfcVal = valBuf;
-                            int nfcLen = strlen(nfcVal);
-                            if (nfcLen >= 2 && nfcVal[0] == '\\' && nfcVal[1] == '"') {
-                                nfcVal += 2; nfcLen -= 2;
-                            }
-                            if (nfcLen >= 2 && nfcVal[nfcLen - 2] == '\\' && nfcVal[nfcLen - 1] == '"') {
-                                nfcVal[nfcLen - 2] = '\0';
-                            }
-                            nfcLen = strlen(nfcVal);
-                            if (nfcLen >= 2 && nfcVal[0] == '"' && nfcVal[nfcLen - 1] == '"') {
-                                nfcVal[nfcLen - 1] = '\0';
-                                nfcVal++;
-                            }
-                            if (strcasecmp(nfcVal, uuid) == 0) {
-                                nfcIdMatched = true;
-                            }
-                        }
-                        inValue = false;
-                    }
-                }
-                continue;
-            }
-
-            if (inString) {
-                if (inKey && keyPos < (int)sizeof(keyBuf) - 1)
-                    keyBuf[keyPos++] = c;
-                if (inValue && valPos < (int)sizeof(valBuf) - 1)
-                    valBuf[valPos++] = c;
-                continue;
-            }
-
-            // Structural characters outside strings
-            if (c == '{') {
-                depth++;
-                inValue = false;  // opening brace ends the value context
-                inNumValue = false;
-                if (depth == 1) {
-                    currentId = -1;
-                    nfcIdMatched = false;
-                    inExtra = false;
-                } else if (depth >= 2 && strcmp(keyBuf, "extra") == 0) {
-                    inExtra = true;
-                    extraDepth = depth;
-                }
-            } else if (c == '}') {
-                if (inExtra && depth == extraDepth) {
-                    inExtra = false;
-                }
-                // Clear numeric state on every closing brace to prevent
-                // nested id values (filament.id, vendor.id) from leaking
-                inValue = false;
-                inNumValue = false;
-                depth--;
-                if (depth == 0) {
-                    // Deferred match — both id and nfc_id are now known
-                    if (nfcIdMatched && currentId > bestMatchId) {
-                        bestMatchId = currentId;
-                    }
-                }
-            } else if (c == ':') {
-                inValue = true;
-                valPos = 0;
-                memset(valBuf, 0, sizeof(valBuf));
-                inNumValue = false;
-            } else if (c == '[') {
-                inValue = false;
-                inNumValue = false;
-            } else if (c == ',' || c == ']') {
-                if (inNumValue && depth == 1 && strcmp(keyBuf, "id") == 0) {
-                    valBuf[valPos] = '\0';
-                    currentId = atoi(valBuf);
-                }
-                inValue = false;
-                inNumValue = false;
-            } else if (inValue && c >= '0' && c <= '9') {
-                inNumValue = true;
-                if (valPos < (int)sizeof(valBuf) - 1)
-                    valBuf[valPos++] = c;
-            } else if (inValue && (c == '-' || c == '.')) {
-                if (valPos < (int)sizeof(valBuf) - 1)
-                    valBuf[valPos++] = c;
-            }
+    for (JsonObject spool : doc.as<JsonArray>()) {
+        if (spool["archived"] | false) continue;
+        const char* nfcId = spool["extra"]["nfc_id"] | "";
+        // nfc_id is stored double-quoted in Spoolman: "\"UUID\""
+        // Compare both with and without outer quotes
+        if (strcasecmp(nfcId, uuid) == 0 || strcasecmp(nfcId, quotedUuid) == 0) {
+            int id = spool["id"] | -1;
+            if (id > bestMatchId) bestMatchId = id;
         }
     }
-
-    streamHttp.end();
 
     if (bestMatchId >= 0) {
         Serial.printf("SpoolmanManager: streamFind matched uuid=%s to spool id=%d\n", uuid, bestMatchId);
-        return bestMatchId;
     }
-
-    // Distinguish "not found" from "error" so callers don't create duplicates on transient failures
-    if (timedOut) return -2;
-    return -1;  // complete scan, no match
+    return bestMatchId >= 0 ? bestMatchId : -1;
 }
 
 // --- File-local Spoolman API helpers ---
@@ -1031,160 +895,51 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
         return false;
     }
 
-    // Debug: print first 200 chars of response
     Serial.printf("SpoolmanManager: getSpoolDetails(%d) response: %.200s%s\n",
                   spoolmanId, response.c_str(), response.length() > 200 ? "..." : "");
 
-    // Parse JSON response using streaming parser
-    const_buffer_stream stm((const uint8_t*)response.c_str(), response.length());
-    json_reader reader(stm);
+    // Single spool response is ~700 bytes — parse directly with ArduinoJson
+    JsonDocument doc;
+    if (deserializeJson(doc, response)) {
+        Serial.printf("SpoolmanManager: getSpoolDetails(%d) JSON parse failed\n", spoolmanId);
+        return false;
+    }
 
-    bool inFilament = false;
-    bool inVendor = false;
-    unsigned filamentDepth = 0;
-    unsigned vendorDepth = 0;
-    bool hasId = false;
-    bool hasMaterial = false;
-    char currentField[64] = {0};  // Buffer to hold field name (reader.value() is not stable after read())
+    outDetails.spoolman_id = doc["id"] | -1;
+    outDetails.remaining_weight_g = doc["remaining_weight"] | 0.0f;
+    outDetails.initial_weight_g = doc["initial_weight"] | 0.0f;
 
-    while (reader.read()) {
-        json_node_type nodeType = reader.node_type();
+    JsonObject fil = doc["filament"];
+    if (!fil.isNull()) {
+        const char* material = fil["material"] | "";
+        if (material[0] == '\0') material = fil["name"] | "";
+        strncpy(outDetails.material_type, material, sizeof(outDetails.material_type) - 1);
 
-        // Track entry into nested objects
-        if (nodeType == json_node_type::field) {
-            strncpy(currentField, reader.value(), sizeof(currentField) - 1);  // Copy field name to stable buffer
-            //Serial.printf("  [PARSE] field='%s' inFilament=%d inVendor=%d\n", currentField, inFilament, inVendor);
+        const char* colorHex = fil["color_hex"] | "";
+        if (colorHex[0] == '#') {
+            strncpy(outDetails.color_hex, colorHex, sizeof(outDetails.color_hex) - 1);
+        } else if (colorHex[0] != '\0') {
+            snprintf(outDetails.color_hex, sizeof(outDetails.color_hex), "#%s", colorHex);
+        }
 
-            if (strcmp(currentField, "filament") == 0) {
-                if (reader.read() && reader.node_type() == json_node_type::object) {
-                    inFilament = true;
-                    filamentDepth = reader.depth();
-                }
-                continue;
-            } else if (inFilament && strcmp(currentField, "vendor") == 0) {
-                if (reader.read() && reader.node_type() == json_node_type::object) {
-                    inVendor = true;
-                    vendorDepth = reader.depth();
-                }
-                continue;
-            }
+        outDetails.extruder_temp = fil["settings_extruder_temp"] | 0;
+        outDetails.bed_temp = fil["settings_bed_temp"] | 0;
+        outDetails.density = fil["density"] | 0.0f;
+        outDetails.diameter_mm = fil["diameter"] | 0.0f;
 
-            // Read next value
-            if (!reader.read()) {
-                break;
-            }
-            // Skip nested objects/arrays we don't care about (e.g. "extra": {})
-            if (reader.node_type() == json_node_type::object ||
-                reader.node_type() == json_node_type::array) {
-                int skipDepth = reader.depth();
-                while (reader.read()) {
-                    if ((reader.node_type() == json_node_type::end_object ||
-                         reader.node_type() == json_node_type::end_array) &&
-                        reader.depth() <= skipDepth) {
-                        break;
-                    }
-                }
-                continue;
-            }
-            //Serial.printf("  [PARSE] got value for field '%s', node_type=%d, inFilament=%d, inVendor=%d\n", currentField, reader.node_type(), inFilament, inVendor);
+        if (outDetails.initial_weight_g == 0.0f) {
+            outDetails.initial_weight_g = fil["weight"] | 0.0f;
+        }
 
-            // Extract fields based on context
-            if (inVendor) {
-                if (strcmp(currentField, "name") == 0) {
-                    readStringValue(reader, outDetails.manufacturer, sizeof(outDetails.manufacturer));
-                }
-            } else if (inFilament) {
-                if (strcmp(currentField, "material") == 0) {
-                    //Serial.printf("  [PARSE] reading 'material' field\n");
-                    if (readStringValue(reader, outDetails.material_type, sizeof(outDetails.material_type))) {
-                        hasMaterial = true;
-                        //Serial.printf("  [PARSE] SUCCESS: material=%s\n", outDetails.material_type);
-                    } else {
-                        //Serial.printf("  [PARSE] FAILED: readStringValue returned false\n");
-                    }
-                } else if (strcmp(currentField, "name") == 0) {
-                    // Fallback to 'name' field if 'material' hasn't been set yet
-                    // (real Spoolman API uses 'name' for material type in some responses)
-                    if (outDetails.material_type[0] == '\0') {
-                        if (readStringValue(reader, outDetails.material_type, sizeof(outDetails.material_type))) {
-                            hasMaterial = true;
-                        }
-                    }
-                } else if (strcmp(currentField, "color_hex") == 0) {
-                    char colorBuf[8] = {0};
-                    if (readStringValue(reader, colorBuf, sizeof(colorBuf))) {
-                        // Ensure color has '#' prefix
-                        if (colorBuf[0] == '#') {
-                            strncpy(outDetails.color_hex, colorBuf, sizeof(outDetails.color_hex) - 1);
-                        } else {
-                            snprintf(outDetails.color_hex, sizeof(outDetails.color_hex), "#%s", colorBuf);
-                        }
-                    }
-                } else if (strcmp(currentField, "settings_extruder_temp") == 0) {
-                    int temp = 0;
-                    if (readIntValue(reader, temp)) {
-                        outDetails.extruder_temp = static_cast<int16_t>(temp);
-                    }
-                } else if (strcmp(currentField, "settings_bed_temp") == 0) {
-                    int temp = 0;
-                    if (readIntValue(reader, temp)) {
-                        outDetails.bed_temp = static_cast<int16_t>(temp);
-                    }
-                } else if (strcmp(currentField, "density") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.density = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.density = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "diameter") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.diameter_mm = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.diameter_mm = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "weight") == 0) {
-                    // Fallback capacity if initial_weight is not set
-                    if (outDetails.initial_weight_g == 0.0f && reader.value_type() == json_value_type::real) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_real());
-                    }
-                }
-            } else {
-                // Top-level spool fields
-                if (strcmp(currentField, "id") == 0) {
-                    int id = -1;
-                    //Serial.printf("  [PARSE] reading 'id' field, node_type=%d\n", reader.node_type());
-                    if (readIntValue(reader, id)) {
-                        outDetails.spoolman_id = id;
-                        hasId = true;
-                        //Serial.printf("  [PARSE] SUCCESS: id=%d\n", id);
-                    } else {
-                        //Serial.printf("  [PARSE] FAILED: readIntValue returned false\n");
-                    }
-                } else if (strcmp(currentField, "remaining_weight") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.remaining_weight_g = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.remaining_weight_g = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "initial_weight") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_int());
-                    }
-                }
-            }
-        } else if (nodeType == json_node_type::end_object) {
-            // Track exit from nested objects
-            if (inVendor && reader.depth() <= vendorDepth) {
-                inVendor = false;
-            } else if (inFilament && reader.depth() <= filamentDepth) {
-                inFilament = false;
-            }
+        JsonObject vendor = fil["vendor"];
+        if (!vendor.isNull()) {
+            const char* vendorName = vendor["name"] | "";
+            strncpy(outDetails.manufacturer, vendorName, sizeof(outDetails.manufacturer) - 1);
         }
     }
 
-    // Mark as valid if we got the essential fields
+    bool hasId = outDetails.spoolman_id > 0;
+    bool hasMaterial = outDetails.material_type[0] != '\0';
     outDetails.valid = hasId && hasMaterial;
 
     if (outDetails.valid) {

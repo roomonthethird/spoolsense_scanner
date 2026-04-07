@@ -116,9 +116,16 @@ private:
     // Scan task
     static void scanTaskFunc(void* param);
     void scanLoop();
+    bool prepareRF();
+    bool isSkippableDuplicate(const uint8_t* uid, uint8_t uidLength);
+    void handleNewTag(uint8_t* uid, uint8_t uidLength);
+    void handleTagAbsent();
 
     // Internal operations
     bool readAndParseTag(uint8_t* uid, uint8_t uid_length);
+    void readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength, const TagScanResult& scan);
+    uint16_t readNdefPayload(const struct NdefRecord& rec, const uint8_t* pageData, uint16_t bytesRead,
+                              uint8_t* outBuf, uint16_t outBufSize);
     bool formatNewSpool();
     TagScanResult classifyTag(const uint8_t* uid, uint8_t uid_length);
     void sendSpoolDetectedMessage(bool suppress_spoolman_sync = false);
@@ -130,6 +137,12 @@ private:
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);
+    bool validateWriteUid(const char* expectedUid, const char* writeType);
+    bool executeTigerTagWrite(const NFCWriteRequest& request);
+    bool executeOpenTag3DWrite(const NFCWriteRequest& request);
+    bool executeOpenSpoolWrite(const NFCWriteRequest& request);
+    bool executeAtomicWrite(const NFCWriteRequest& request);
+    void forceRescan();
     void sendSpoolUpdatedMessage(uint32_t request_id, NFCWriteType type, bool success);
 
     // Deduplication
