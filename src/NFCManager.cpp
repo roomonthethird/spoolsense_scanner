@@ -1589,413 +1589,311 @@ static opt_error_t applyWriteUpdate(opt_tag_t& tag, const NFCWriteRequest& reque
     }
 }
 
-bool NFCManager::executeWrite(const NFCWriteRequest& request) {
-    // Handle FORMAT_NEW — formatNewSpool() manages its own mutex
-    if (request.type == NFCWriteType::FORMAT_NEW) {
-        // Validate under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: FORMAT_NEW - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: FORMAT_NEW rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
+// ── Write helpers ────────────────────────────────────────────
 
-        // formatNewSpool() does NFC I/O without mutex, takes mutex at end for state copy
+static uint16_t buildNdefTlv(const char* mimeType, const uint8_t* payload, uint16_t payloadLen,
+                              uint8_t* outBuf, uint16_t outBufSize) {
+    uint8_t mimeLen = (uint8_t)strlen(mimeType);
+    bool sr = (payloadLen <= 255);
+    uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
+    uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
+
+    bool longTlv = (ndefRecordLen > 254);
+    uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
+    uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
+    uint16_t paddedSize = totalSize + ((4 - (totalSize % 4)) % 4);
+
+    if (paddedSize > outBufSize) return 0;
+
+    uint16_t idx = 0;
+    outBuf[idx++] = 0x03;
+    if (longTlv) {
+        outBuf[idx++] = 0xFF;
+        outBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
+        outBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
+    } else {
+        outBuf[idx++] = (uint8_t)ndefRecordLen;
+    }
+
+    uint8_t ndefFlags = 0xC0 | 0x02;
+    if (sr) ndefFlags |= 0x10;
+    outBuf[idx++] = ndefFlags;
+    outBuf[idx++] = mimeLen;
+    if (sr) {
+        outBuf[idx++] = (uint8_t)payloadLen;
+    } else {
+        outBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
+        outBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
+        outBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
+        outBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
+    }
+
+    memcpy(outBuf + idx, mimeType, mimeLen);
+    idx += mimeLen;
+    memcpy(outBuf + idx, payload, payloadLen);
+    idx += payloadLen;
+    outBuf[idx++] = 0xFE;
+    while (idx < paddedSize) outBuf[idx++] = 0x00;
+    return paddedSize;
+}
+
+bool NFCManager::validateWriteUid(const char* expectedUid, const char* writeType) {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.printf("NFCManager: %s - could not acquire tagMutex\n", writeType);
+        return false;
+    }
+    if (expectedUid[0] != '\0' && strcmp(currentSpool.spool_id, expectedUid) != 0) {
+        xSemaphoreGive(tagMutex);
+        Serial.printf("NFCManager: %s rejected - UID mismatch\n", writeType);
+        return false;
+    }
+    xSemaphoreGive(tagMutex);
+    return true;
+}
+
+void NFCManager::forceRescan() {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        currentSpool.present = false;
+        xSemaphoreGive(tagMutex);
+    }
+}
+
+// ── Per-format write functions ──────────────────────────────
+
+bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_TIGERTAG")) return false;
+
+    bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
+    if (ok) {
+        Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_TIGERTAG failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeOpenTag3DWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_OPENTAG3D")) return false;
+
+    if (!rawWritePending_ || rawWriteBufferSize_ < sizeof(opentag3d_t)) {
+        Serial.println("NFCManager: WRITE_OPENTAG3D - no raw data available");
+        return false;
+    }
+
+    opentag3d_t ot3d;
+    memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
+    rawWritePending_ = false;
+
+    size_t encodeSize = ot3d.has_extended ? OT3D_EXTENDED_MIN : OT3D_CORE_SIZE;
+    uint8_t payloadBuf[OT3D_EXTENDED_MIN];
+    int payloadLen = opentag3d_encode(&ot3d, payloadBuf, encodeSize);
+    if (payloadLen <= 0) {
+        Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
+        return false;
+    }
+
+    uint8_t ndefBuf[256];
+    uint16_t ndefLen = buildNdefTlv(OT3D_MIME_TYPE, payloadBuf, (uint16_t)payloadLen, ndefBuf, sizeof(ndefBuf));
+    if (ndefLen == 0) {
+        Serial.printf("NFCManager: WRITE_OPENTAG3D - NDEF too large\n");
+        return false;
+    }
+
+    uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
+    Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
+    if (ok) {
+        Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_OPENTAG3D failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeOpenSpoolWrite(const NFCWriteRequest& request) {
+    if (!validateWriteUid(request.expected_spool_id, "WRITE_OPENSPOOL")) return false;
+
+    if (!rawWritePending_ || rawWriteBufferSize_ == 0) {
+        Serial.println("NFCManager: WRITE_OPENSPOOL - no raw data available");
+        return false;
+    }
+
+    const uint8_t* jsonPayload = rawWriteBuffer_;
+    uint16_t payloadLen = (uint16_t)rawWriteBufferSize_;
+    rawWritePending_ = false;
+
+    uint8_t ndefBuf[256];
+    uint16_t ndefLen = buildNdefTlv("application/json", jsonPayload, payloadLen, ndefBuf, sizeof(ndefBuf));
+    if (ndefLen == 0) {
+        Serial.printf("NFCManager: WRITE_OPENSPOOL - NDEF too large\n");
+        return false;
+    }
+
+    uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
+    Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
+    if (ok) {
+        Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        forceRescan();
+    } else {
+        Serial.println("NFCManager: WRITE_OPENSPOOL failed");
+    }
+    return ok;
+}
+
+bool NFCManager::executeAtomicWrite(const NFCWriteRequest& request) {
+    if (!atomicWriteFields_.pending) {
+        Serial.println("NFCManager: WRITE_ATOMIC - no atomic fields pending");
+        return false;
+    }
+
+    AtomicWriteFields f = atomicWriteFields_;
+    atomicWriteFields_.pending = false;
+
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
+        return false;
+    }
+    if (!currentSpool.tag_data_valid) {
+        xSemaphoreGive(tagMutex);
+        return false;
+    }
+    if (request.expected_spool_id[0] != '\0' &&
+        strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
+        Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
+            request.expected_spool_id, currentSpool.spool_id);
+        xSemaphoreGive(tagMutex);
+        return false;
+    }
+
+    uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
+    uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
+    float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
+    float    cur_consumed = 0.0f;   opt_get_consumed_weight(&currentSpool.tag_data, &cur_consumed);
+    char     cur_brand[33] = {0};   opt_get_brand_name(&currentSpool.tag_data, cur_brand, sizeof(cur_brand));
+    float    cur_density = 0.0f;    opt_get_density(&currentSpool.tag_data, &cur_density);
+    float    cur_diameter = 0.0f;   opt_get_filament_diameter(&currentSpool.tag_data, &cur_diameter);
+    char     cur_mat_name[33] = {0}; opt_get_material_name(&currentSpool.tag_data, cur_mat_name, sizeof(cur_mat_name));
+    int32_t  cur_sm_id = -1;        opt_get_gp_spoolman_id(&currentSpool.tag_data, &cur_sm_id);
+    int16_t  cur_min_pt = 0, cur_max_pt = 0, cur_pre_t = 0, cur_min_bt = 0, cur_max_bt = 0;
+    opt_get_min_print_temp(&currentSpool.tag_data, &cur_min_pt);
+    opt_get_max_print_temp(&currentSpool.tag_data, &cur_max_pt);
+    opt_get_preheat_temp(&currentSpool.tag_data, &cur_pre_t);
+    opt_get_min_bed_temp(&currentSpool.tag_data, &cur_min_bt);
+    opt_get_max_bed_temp(&currentSpool.tag_data, &cur_max_bt);
+    xSemaphoreGive(tagMutex);
+
+    opt_init(&writeScratchTag_);
+    opt_error_t err = opt_format_empty_tag(&writeScratchTag_, 312, 32);
+    if (err != OPT_OK) {
+        Serial.printf("NFCManager: WRITE_ATOMIC format failed: %s\n", opt_error_str(err));
+        return false;
+    }
+
+    opt_set_material_class(&writeScratchTag_, OPT_MATERIAL_CLASS_FFF);
+
+    #define ATOMIC_SET(name, call) do { \
+        err = (call); \
+        if (err != OPT_OK) { \
+            Serial.printf("NFCManager: WRITE_ATOMIC " name " failed: %s\n", opt_error_str(err)); \
+        } \
+    } while(0)
+
+    ATOMIC_SET("material_type",  opt_set_material_type(&writeScratchTag_, f.has_material_type ? f.material_type : cur_mat_type));
+    ATOMIC_SET("color",          opt_set_primary_color(&writeScratchTag_, f.has_color ? f.color : cur_color));
+    ATOMIC_SET("initial_weight", opt_set_actual_full_weight(&writeScratchTag_, f.has_initial_weight ? f.initial_weight_g : cur_full_wt));
+    ATOMIC_SET("consumed_weight",opt_set_consumed_weight(&writeScratchTag_, f.has_consumed_weight ? f.consumed_weight : cur_consumed));
+    if (f.has_brand_name || cur_brand[0] != '\0')
+        ATOMIC_SET("brand_name", opt_set_brand_name(&writeScratchTag_, f.has_brand_name ? f.brand_name : cur_brand));
+    if (f.has_density || cur_density > 0.0f)
+        ATOMIC_SET("density",    opt_set_density(&writeScratchTag_, f.has_density ? f.density : cur_density));
+    if (f.has_diameter || cur_diameter > 0.0f)
+        ATOMIC_SET("diameter",   opt_set_filament_diameter(&writeScratchTag_, f.has_diameter ? f.diameter_mm : cur_diameter));
+    if (f.has_material_name || cur_mat_name[0] != '\0')
+        ATOMIC_SET("material_name", opt_set_material_name(&writeScratchTag_, f.has_material_name ? f.material_name : cur_mat_name));
+    if (f.has_min_print_temp || cur_min_pt != 0)
+        ATOMIC_SET("min_print_temp", opt_set_min_print_temp(&writeScratchTag_, f.has_min_print_temp ? f.min_print_temp : cur_min_pt));
+    if (f.has_max_print_temp || cur_max_pt != 0)
+        ATOMIC_SET("max_print_temp", opt_set_max_print_temp(&writeScratchTag_, f.has_max_print_temp ? f.max_print_temp : cur_max_pt));
+    if (f.has_preheat_temp || cur_pre_t != 0)
+        ATOMIC_SET("preheat_temp",   opt_set_preheat_temp(&writeScratchTag_, f.has_preheat_temp ? f.preheat_temp : cur_pre_t));
+    if (f.has_min_bed_temp || cur_min_bt != 0)
+        ATOMIC_SET("min_bed_temp",   opt_set_min_bed_temp(&writeScratchTag_, f.has_min_bed_temp ? f.min_bed_temp : cur_min_bt));
+    if (f.has_max_bed_temp || cur_max_bt != 0)
+        ATOMIC_SET("max_bed_temp",   opt_set_max_bed_temp(&writeScratchTag_, f.has_max_bed_temp ? f.max_bed_temp : cur_max_bt));
+    int32_t sm_id = f.has_spoolman_id ? f.spoolman_id : cur_sm_id;
+    if (sm_id > 0)
+        ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
+    #undef ATOMIC_SET
+
+    Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
+    opt_nfc_hal_t* hal = connection_->getHal();
+    err = opt_write_to_nfc(&writeScratchTag_, hal);
+    if (err != OPT_OK) {
+        Serial.printf("NFCManager: WRITE_ATOMIC NFC write failed: %s\n", opt_error_str(err));
+        return false;
+    }
+
+    bool verified = false;
+    for (int retry = 0; retry < 3; retry++) {
+        vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
+        err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
+        if (err == OPT_OK) {
+            err = opt_parse_ndef(&writeScratchTag_);
+            if (err == OPT_OK) { verified = true; break; }
+        }
+        Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
+    }
+    if (!verified) {
+        Serial.println("NFCManager: WRITE_ATOMIC verification failed");
+        return false;
+    }
+
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
+        return false;
+    }
+    currentSpool.tag_data = writeScratchTag_;
+    currentSpool.tag_data_valid = true;
+    currentSpool.blank_tag_present = false;
+    currentSpool.kind = TagKind::OpenPrintTag;
+    addToRecentSpools();
+    sendSpoolDetectedMessage();
+    xSemaphoreGive(tagMutex);
+
+    Serial.println("NFCManager: WRITE_ATOMIC complete");
+    return true;
+}
+
+// ── executeWrite dispatcher ─────────────────────────────────
+
+bool NFCManager::executeWrite(const NFCWriteRequest& request) {
+    if (request.type == NFCWriteType::FORMAT_NEW) {
+        if (!validateWriteUid(request.expected_spool_id, "FORMAT_NEW")) return false;
         return formatNewSpool();
     }
 
-    // Handle WRITE_RAW_TAG — writeRawTag() manages its own mutex
     if (request.type == NFCWriteType::WRITE_RAW_TAG) {
         if (!rawWritePending_) {
             Serial.println("NFCManager: WRITE_RAW_TAG - no raw data pending");
             return false;
         }
-        // Validate under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_RAW_TAG - could not acquire tagMutex");
+        if (!validateWriteUid(request.expected_spool_id, "WRITE_RAW_TAG")) {
             rawWritePending_ = false;
             return false;
         }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_RAW_TAG rejected - UID mismatch");
-            rawWritePending_ = false;
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
         return writeRawTag();
     }
 
-    // Handle WRITE_TIGERTAG — write 40-byte binary to NTAG pages 4-13
-    if (request.type == NFCWriteType::WRITE_TIGERTAG) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_TIGERTAG - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_TIGERTAG rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
+    if (request.type == NFCWriteType::WRITE_TIGERTAG)  return executeTigerTagWrite(request);
+    if (request.type == NFCWriteType::WRITE_OPENTAG3D) return executeOpenTag3DWrite(request);
+    if (request.type == NFCWriteType::WRITE_OPENSPOOL)  return executeOpenSpoolWrite(request);
+    if (request.type == NFCWriteType::WRITE_ATOMIC)     return executeAtomicWrite(request);
 
-        // Write 40 bytes = 10 pages starting at page 4
-        bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
-        if (ok) {
-            Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
-            // Force re-scan to pick up the new TigerTag data
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_TIGERTAG failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_OPENTAG3D — write NDEF-wrapped OpenTag3D payload to NTAG pages
-    if (request.type == NFCWriteType::WRITE_OPENTAG3D) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_OPENTAG3D rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
-        // Decode opentag3d_t from rawWriteBuffer_
-        if (!rawWritePending_ || rawWriteBufferSize_ < sizeof(opentag3d_t)) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - no raw data available");
-            return false;
-        }
-
-        opentag3d_t ot3d;
-        memcpy(&ot3d, rawWriteBuffer_, sizeof(opentag3d_t));
-        rawWritePending_ = false;
-
-        // Encode to binary payload — use core-only size when no extended fields are set
-        // to reduce page count (32 pages vs 54) for better write reliability at range
-        size_t encodeSize = ot3d.has_extended ? OT3D_EXTENDED_MIN : OT3D_CORE_SIZE;
-        uint8_t payloadBuf[OT3D_EXTENDED_MIN];
-        int payloadLen = opentag3d_encode(&ot3d, payloadBuf, encodeSize);
-        if (payloadLen <= 0) {
-            Serial.println("NFCManager: WRITE_OPENTAG3D - encode failed");
-            return false;
-        }
-
-        // Build NDEF TLV wrapper
-        const char* mime = OT3D_MIME_TYPE;
-        uint8_t mimeLen = (uint8_t)strlen(mime);
-        // NDEF record: flags(1) + typeLen(1) + payloadLen(1, SR) + type(mimeLen) + payload
-        bool sr = (payloadLen <= 255);
-        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
-        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + (uint16_t)payloadLen;
-
-        // TLV: type(1) + length(1 or 3) + NDEF record + terminator(1)
-        bool longTlv = (ndefRecordLen > 254);
-        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
-        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;  // +1 for terminator
-
-        uint8_t ndefBuf[256];
-        if (totalSize > sizeof(ndefBuf)) {
-            Serial.printf("NFCManager: WRITE_OPENTAG3D - NDEF too large (%u bytes)\n", totalSize);
-            return false;
-        }
-
-        uint16_t idx = 0;
-
-        // TLV header
-        ndefBuf[idx++] = 0x03;  // NDEF Message TLV
-        if (longTlv) {
-            ndefBuf[idx++] = 0xFF;
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
-        } else {
-            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
-        }
-
-        // NDEF record header
-        uint8_t ndefFlags = 0xC0 | 0x02;  // MB + ME + TNF=media-type
-        if (sr) ndefFlags |= 0x10;         // SR flag
-        ndefBuf[idx++] = ndefFlags;
-        ndefBuf[idx++] = mimeLen;
-        if (sr) {
-            ndefBuf[idx++] = (uint8_t)payloadLen;
-        } else {
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
-        }
-
-        // MIME type
-        memcpy(ndefBuf + idx, mime, mimeLen);
-        idx += mimeLen;
-
-        // Payload
-        memcpy(ndefBuf + idx, payloadBuf, payloadLen);
-        idx += (uint16_t)payloadLen;
-
-        // Terminator TLV
-        ndefBuf[idx++] = 0xFE;
-
-        // Pad to page boundary (4 bytes per page)
-        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
-
-        // Write to NTAG pages starting at page 4
-        uint8_t pagesNeeded = (uint8_t)(idx / 4);
-        Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages), payload=%d\n", idx, pagesNeeded, payloadLen);
-        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
-        if (ok) {
-            Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
-            // Force re-scan to pick up the new OpenTag3D data
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_OPENTAG3D failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_OPENSPOOL — write NDEF-wrapped JSON payload to NTAG pages
-    if (request.type == NFCWriteType::WRITE_OPENSPOOL) {
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_OPENSPOOL - could not acquire tagMutex");
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            xSemaphoreGive(tagMutex);
-            Serial.println("NFCManager: WRITE_OPENSPOOL rejected - UID mismatch");
-            return false;
-        }
-        xSemaphoreGive(tagMutex);
-
-        if (!rawWritePending_ || rawWriteBufferSize_ == 0) {
-            Serial.println("NFCManager: WRITE_OPENSPOOL - no raw data available");
-            return false;
-        }
-
-        const uint8_t* jsonPayload = rawWriteBuffer_;
-        uint16_t payloadLen = (uint16_t)rawWriteBufferSize_;
-        rawWritePending_ = false;
-
-        const char* mime = "application/json";
-        uint8_t mimeLen = (uint8_t)strlen(mime);
-        bool sr = (payloadLen <= 255);
-        uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
-        uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
-
-        bool longTlv = (ndefRecordLen > 254);
-        uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
-        uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
-
-        uint8_t ndefBuf[256];
-        if (totalSize > sizeof(ndefBuf)) {
-            Serial.printf("NFCManager: WRITE_OPENSPOOL - NDEF too large (%u bytes)\n", totalSize);
-            return false;
-        }
-
-        uint16_t idx = 0;
-        ndefBuf[idx++] = 0x03;
-        if (longTlv) {
-            ndefBuf[idx++] = 0xFF;
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen >> 8);
-            ndefBuf[idx++] = (uint8_t)(ndefRecordLen & 0xFF);
-        } else {
-            ndefBuf[idx++] = (uint8_t)ndefRecordLen;
-        }
-
-        uint8_t ndefFlags = 0xC0 | 0x02;
-        if (sr) ndefFlags |= 0x10;
-        ndefBuf[idx++] = ndefFlags;
-        ndefBuf[idx++] = mimeLen;
-        if (sr) {
-            ndefBuf[idx++] = (uint8_t)payloadLen;
-        } else {
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 24) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 16) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)((payloadLen >> 8) & 0xFF);
-            ndefBuf[idx++] = (uint8_t)(payloadLen & 0xFF);
-        }
-
-        memcpy(ndefBuf + idx, mime, mimeLen);
-        idx += mimeLen;
-        memcpy(ndefBuf + idx, jsonPayload, payloadLen);
-        idx += payloadLen;
-        ndefBuf[idx++] = 0xFE;
-
-        while (idx % 4 != 0) ndefBuf[idx++] = 0x00;
-
-        uint8_t pagesNeeded = (uint8_t)(idx / 4);
-        Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", idx, pagesNeeded);
-        bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, idx);
-        if (ok) {
-            Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", idx, pagesNeeded);
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                currentSpool.present = false;
-                xSemaphoreGive(tagMutex);
-            }
-        } else {
-            Serial.println("NFCManager: WRITE_OPENSPOOL failed");
-        }
-        return ok;
-    }
-
-    // Handle WRITE_ATOMIC — build complete CBOR map from sidecar fields, write once
-    if (request.type == NFCWriteType::WRITE_ATOMIC) {
-        if (!atomicWriteFields_.pending) {
-            Serial.println("NFCManager: WRITE_ATOMIC - no atomic fields pending");
-            return false;
-        }
-
-        // Copy sidecar by value and clear pending immediately — prevents a
-        // concurrent HTTP call from overwriting fields mid-write
-        AtomicWriteFields f = atomicWriteFields_;
-        atomicWriteFields_.pending = false;
-
-        // Validate and snapshot under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_ATOMIC - could not acquire tagMutex");
-            return false;
-        }
-        if (!currentSpool.tag_data_valid) {
-            xSemaphoreGive(tagMutex);
-            return false;
-        }
-        if (request.expected_spool_id[0] != '\0' &&
-            strcmp(currentSpool.spool_id, request.expected_spool_id) != 0) {
-            Serial.printf("NFCManager: WRITE_ATOMIC rejected: expected %s but found %s\n",
-                request.expected_spool_id, currentSpool.spool_id);
-            xSemaphoreGive(tagMutex);
-            return false;
-        }
-        // Read defaults from the existing tag for any fields not provided
-        uint8_t  cur_mat_type = 0;     opt_get_material_type(&currentSpool.tag_data, &cur_mat_type);
-        uint8_t  cur_color[4] = {255,255,255,255}; opt_get_primary_color(&currentSpool.tag_data, cur_color);
-        float    cur_full_wt = 1000.0f; opt_get_actual_full_weight(&currentSpool.tag_data, &cur_full_wt);
-        float    cur_consumed = 0.0f;   opt_get_consumed_weight(&currentSpool.tag_data, &cur_consumed);
-        char     cur_brand[33] = {0};   opt_get_brand_name(&currentSpool.tag_data, cur_brand, sizeof(cur_brand));
-        float    cur_density = 0.0f;    opt_get_density(&currentSpool.tag_data, &cur_density);
-        float    cur_diameter = 0.0f;   opt_get_filament_diameter(&currentSpool.tag_data, &cur_diameter);
-        char     cur_mat_name[33] = {0}; opt_get_material_name(&currentSpool.tag_data, cur_mat_name, sizeof(cur_mat_name));
-        int32_t  cur_sm_id = -1;        opt_get_gp_spoolman_id(&currentSpool.tag_data, &cur_sm_id);
-        int16_t  cur_min_pt = 0, cur_max_pt = 0, cur_pre_t = 0, cur_min_bt = 0, cur_max_bt = 0;
-        opt_get_min_print_temp(&currentSpool.tag_data, &cur_min_pt);
-        opt_get_max_print_temp(&currentSpool.tag_data, &cur_max_pt);
-        opt_get_preheat_temp(&currentSpool.tag_data, &cur_pre_t);
-        opt_get_min_bed_temp(&currentSpool.tag_data, &cur_min_bt);
-        opt_get_max_bed_temp(&currentSpool.tag_data, &cur_max_bt);
-        xSemaphoreGive(tagMutex);
-
-        // Build a FRESH tag from scratch — avoids CBOR re-encoding overflow
-        // that happens when updating fields in an existing map
-        opt_init(&writeScratchTag_);
-        opt_error_t err = opt_format_empty_tag(&writeScratchTag_, 312, 32);
-        if (err != OPT_OK) {
-            Serial.printf("NFCManager: WRITE_ATOMIC format failed: %s\n", opt_error_str(err));
-            atomicWriteFields_.pending = false;
-            return false;
-        }
-
-        // Set material class (required by spec)
-        opt_set_material_class(&writeScratchTag_, OPT_MATERIAL_CLASS_FFF);
-
-        // Apply each field: use provided value if has_*, else use existing tag default
-        #define ATOMIC_SET(name, call) do { \
-            err = (call); \
-            if (err != OPT_OK) { \
-                Serial.printf("NFCManager: WRITE_ATOMIC " name " failed: %s\n", opt_error_str(err)); \
-            } \
-        } while(0)
-
-        ATOMIC_SET("material_type",  opt_set_material_type(&writeScratchTag_, f.has_material_type ? f.material_type : cur_mat_type));
-        ATOMIC_SET("color",          opt_set_primary_color(&writeScratchTag_, f.has_color ? f.color : cur_color));
-        ATOMIC_SET("initial_weight", opt_set_actual_full_weight(&writeScratchTag_, f.has_initial_weight ? f.initial_weight_g : cur_full_wt));
-        ATOMIC_SET("consumed_weight",opt_set_consumed_weight(&writeScratchTag_, f.has_consumed_weight ? f.consumed_weight : cur_consumed));
-        if (f.has_brand_name || cur_brand[0] != '\0')
-            ATOMIC_SET("brand_name", opt_set_brand_name(&writeScratchTag_, f.has_brand_name ? f.brand_name : cur_brand));
-        if (f.has_density || cur_density > 0.0f)
-            ATOMIC_SET("density",    opt_set_density(&writeScratchTag_, f.has_density ? f.density : cur_density));
-        if (f.has_diameter || cur_diameter > 0.0f)
-            ATOMIC_SET("diameter",   opt_set_filament_diameter(&writeScratchTag_, f.has_diameter ? f.diameter_mm : cur_diameter));
-        if (f.has_material_name || cur_mat_name[0] != '\0')
-            ATOMIC_SET("material_name", opt_set_material_name(&writeScratchTag_, f.has_material_name ? f.material_name : cur_mat_name));
-        if (f.has_min_print_temp || cur_min_pt != 0)
-            ATOMIC_SET("min_print_temp", opt_set_min_print_temp(&writeScratchTag_, f.has_min_print_temp ? f.min_print_temp : cur_min_pt));
-        if (f.has_max_print_temp || cur_max_pt != 0)
-            ATOMIC_SET("max_print_temp", opt_set_max_print_temp(&writeScratchTag_, f.has_max_print_temp ? f.max_print_temp : cur_max_pt));
-        if (f.has_preheat_temp || cur_pre_t != 0)
-            ATOMIC_SET("preheat_temp",   opt_set_preheat_temp(&writeScratchTag_, f.has_preheat_temp ? f.preheat_temp : cur_pre_t));
-        if (f.has_min_bed_temp || cur_min_bt != 0)
-            ATOMIC_SET("min_bed_temp",   opt_set_min_bed_temp(&writeScratchTag_, f.has_min_bed_temp ? f.min_bed_temp : cur_min_bt));
-        if (f.has_max_bed_temp || cur_max_bt != 0)
-            ATOMIC_SET("max_bed_temp",   opt_set_max_bed_temp(&writeScratchTag_, f.has_max_bed_temp ? f.max_bed_temp : cur_max_bt));
-        // Spoolman ID goes in aux region
-        int32_t sm_id = f.has_spoolman_id ? f.spoolman_id : cur_sm_id;
-        if (sm_id > 0)
-            ATOMIC_SET("spoolman_id",    opt_set_gp_spoolman_id(&writeScratchTag_, sm_id));
-        #undef ATOMIC_SET
-
-        // Single-pass NFC write — no sequential drops, no scan loop race
-        Serial.println("NFCManager: WRITE_ATOMIC writing to NFC...");
-        opt_nfc_hal_t* hal = connection_->getHal();
-        err = opt_write_to_nfc(&writeScratchTag_, hal);
-        if (err != OPT_OK) {
-            Serial.printf("NFCManager: WRITE_ATOMIC NFC write failed: %s\n", opt_error_str(err));
-            return false;
-        }
-
-        // Verify with retries — re-read tag to confirm write succeeded
-        bool verified = false;
-        const int maxRetries = 3;
-        for (int retry = 0; retry < maxRetries; retry++) {
-            vTaskDelay(pdMS_TO_TICKS(50 * (retry + 1)));
-            err = opt_read_from_nfc(&writeScratchTag_, hal, 0, 78);
-            if (err == OPT_OK) {
-                err = opt_parse_ndef(&writeScratchTag_);
-                if (err == OPT_OK) { verified = true; break; }
-            }
-            Serial.printf("NFCManager: WRITE_ATOMIC verify retry %d: %s\n", retry + 1, opt_error_str(err));
-        }
-        if (!verified) {
-            Serial.println("NFCManager: WRITE_ATOMIC verification failed — not committing");
-            return false;
-        }
-
-        // Commit verified data to shared state under mutex
-        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-            Serial.println("NFCManager: WRITE_ATOMIC succeeded but commit lock failed");
-            return false;
-        }
-        currentSpool.tag_data = writeScratchTag_;
-        currentSpool.tag_data_valid = true;
-        currentSpool.blank_tag_present = false;
-        currentSpool.kind = TagKind::OpenPrintTag;
-        addToRecentSpools();
-        sendSpoolDetectedMessage();
-        xSemaphoreGive(tagMutex);
-
-        Serial.println("NFCManager: WRITE_ATOMIC complete");
-        return true;
-    }
-
-    // For non-FORMAT writes: take mutex to validate + modify in-memory data, then release for NFC I/O
+    // OpenPrintTag field-update writes (REMOVE_WEIGHT, CHANGE_COLOR, etc.)
+    // These modify existing CBOR tag data in-place
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         Serial.println("NFCManager: executeWrite - could not acquire tagMutex");
         return false;

@@ -130,6 +130,12 @@ private:
     void sendTagRemovedMessage();
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);
+    bool validateWriteUid(const char* expectedUid, const char* writeType);
+    bool executeTigerTagWrite(const NFCWriteRequest& request);
+    bool executeOpenTag3DWrite(const NFCWriteRequest& request);
+    bool executeOpenSpoolWrite(const NFCWriteRequest& request);
+    bool executeAtomicWrite(const NFCWriteRequest& request);
+    void forceRescan();
     void sendSpoolUpdatedMessage(uint32_t request_id, NFCWriteType type, bool success);
 
     // Deduplication
