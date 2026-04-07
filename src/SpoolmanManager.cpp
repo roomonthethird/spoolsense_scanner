@@ -895,160 +895,51 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
         return false;
     }
 
-    // Debug: print first 200 chars of response
     Serial.printf("SpoolmanManager: getSpoolDetails(%d) response: %.200s%s\n",
                   spoolmanId, response.c_str(), response.length() > 200 ? "..." : "");
 
-    // Parse JSON response using streaming parser
-    const_buffer_stream stm((const uint8_t*)response.c_str(), response.length());
-    json_reader reader(stm);
+    // Single spool response is ~700 bytes — parse directly with ArduinoJson
+    JsonDocument doc;
+    if (deserializeJson(doc, response)) {
+        Serial.printf("SpoolmanManager: getSpoolDetails(%d) JSON parse failed\n", spoolmanId);
+        return false;
+    }
 
-    bool inFilament = false;
-    bool inVendor = false;
-    unsigned filamentDepth = 0;
-    unsigned vendorDepth = 0;
-    bool hasId = false;
-    bool hasMaterial = false;
-    char currentField[64] = {0};  // Buffer to hold field name (reader.value() is not stable after read())
+    outDetails.spoolman_id = doc["id"] | -1;
+    outDetails.remaining_weight_g = doc["remaining_weight"] | 0.0f;
+    outDetails.initial_weight_g = doc["initial_weight"] | 0.0f;
 
-    while (reader.read()) {
-        json_node_type nodeType = reader.node_type();
+    JsonObject fil = doc["filament"];
+    if (!fil.isNull()) {
+        const char* material = fil["material"] | "";
+        if (material[0] == '\0') material = fil["name"] | "";
+        strncpy(outDetails.material_type, material, sizeof(outDetails.material_type) - 1);
 
-        // Track entry into nested objects
-        if (nodeType == json_node_type::field) {
-            strncpy(currentField, reader.value(), sizeof(currentField) - 1);  // Copy field name to stable buffer
-            //Serial.printf("  [PARSE] field='%s' inFilament=%d inVendor=%d\n", currentField, inFilament, inVendor);
+        const char* colorHex = fil["color_hex"] | "";
+        if (colorHex[0] == '#') {
+            strncpy(outDetails.color_hex, colorHex, sizeof(outDetails.color_hex) - 1);
+        } else if (colorHex[0] != '\0') {
+            snprintf(outDetails.color_hex, sizeof(outDetails.color_hex), "#%s", colorHex);
+        }
 
-            if (strcmp(currentField, "filament") == 0) {
-                if (reader.read() && reader.node_type() == json_node_type::object) {
-                    inFilament = true;
-                    filamentDepth = reader.depth();
-                }
-                continue;
-            } else if (inFilament && strcmp(currentField, "vendor") == 0) {
-                if (reader.read() && reader.node_type() == json_node_type::object) {
-                    inVendor = true;
-                    vendorDepth = reader.depth();
-                }
-                continue;
-            }
+        outDetails.extruder_temp = fil["settings_extruder_temp"] | 0;
+        outDetails.bed_temp = fil["settings_bed_temp"] | 0;
+        outDetails.density = fil["density"] | 0.0f;
+        outDetails.diameter_mm = fil["diameter"] | 0.0f;
 
-            // Read next value
-            if (!reader.read()) {
-                break;
-            }
-            // Skip nested objects/arrays we don't care about (e.g. "extra": {})
-            if (reader.node_type() == json_node_type::object ||
-                reader.node_type() == json_node_type::array) {
-                int skipDepth = reader.depth();
-                while (reader.read()) {
-                    if ((reader.node_type() == json_node_type::end_object ||
-                         reader.node_type() == json_node_type::end_array) &&
-                        reader.depth() <= skipDepth) {
-                        break;
-                    }
-                }
-                continue;
-            }
-            //Serial.printf("  [PARSE] got value for field '%s', node_type=%d, inFilament=%d, inVendor=%d\n", currentField, reader.node_type(), inFilament, inVendor);
+        if (outDetails.initial_weight_g == 0.0f) {
+            outDetails.initial_weight_g = fil["weight"] | 0.0f;
+        }
 
-            // Extract fields based on context
-            if (inVendor) {
-                if (strcmp(currentField, "name") == 0) {
-                    readStringValue(reader, outDetails.manufacturer, sizeof(outDetails.manufacturer));
-                }
-            } else if (inFilament) {
-                if (strcmp(currentField, "material") == 0) {
-                    //Serial.printf("  [PARSE] reading 'material' field\n");
-                    if (readStringValue(reader, outDetails.material_type, sizeof(outDetails.material_type))) {
-                        hasMaterial = true;
-                        //Serial.printf("  [PARSE] SUCCESS: material=%s\n", outDetails.material_type);
-                    } else {
-                        //Serial.printf("  [PARSE] FAILED: readStringValue returned false\n");
-                    }
-                } else if (strcmp(currentField, "name") == 0) {
-                    // Fallback to 'name' field if 'material' hasn't been set yet
-                    // (real Spoolman API uses 'name' for material type in some responses)
-                    if (outDetails.material_type[0] == '\0') {
-                        if (readStringValue(reader, outDetails.material_type, sizeof(outDetails.material_type))) {
-                            hasMaterial = true;
-                        }
-                    }
-                } else if (strcmp(currentField, "color_hex") == 0) {
-                    char colorBuf[8] = {0};
-                    if (readStringValue(reader, colorBuf, sizeof(colorBuf))) {
-                        // Ensure color has '#' prefix
-                        if (colorBuf[0] == '#') {
-                            strncpy(outDetails.color_hex, colorBuf, sizeof(outDetails.color_hex) - 1);
-                        } else {
-                            snprintf(outDetails.color_hex, sizeof(outDetails.color_hex), "#%s", colorBuf);
-                        }
-                    }
-                } else if (strcmp(currentField, "settings_extruder_temp") == 0) {
-                    int temp = 0;
-                    if (readIntValue(reader, temp)) {
-                        outDetails.extruder_temp = static_cast<int16_t>(temp);
-                    }
-                } else if (strcmp(currentField, "settings_bed_temp") == 0) {
-                    int temp = 0;
-                    if (readIntValue(reader, temp)) {
-                        outDetails.bed_temp = static_cast<int16_t>(temp);
-                    }
-                } else if (strcmp(currentField, "density") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.density = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.density = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "diameter") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.diameter_mm = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.diameter_mm = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "weight") == 0) {
-                    // Fallback capacity if initial_weight is not set
-                    if (outDetails.initial_weight_g == 0.0f && reader.value_type() == json_value_type::real) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_real());
-                    }
-                }
-            } else {
-                // Top-level spool fields
-                if (strcmp(currentField, "id") == 0) {
-                    int id = -1;
-                    //Serial.printf("  [PARSE] reading 'id' field, node_type=%d\n", reader.node_type());
-                    if (readIntValue(reader, id)) {
-                        outDetails.spoolman_id = id;
-                        hasId = true;
-                        //Serial.printf("  [PARSE] SUCCESS: id=%d\n", id);
-                    } else {
-                        //Serial.printf("  [PARSE] FAILED: readIntValue returned false\n");
-                    }
-                } else if (strcmp(currentField, "remaining_weight") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.remaining_weight_g = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.remaining_weight_g = static_cast<float>(reader.value_int());
-                    }
-                } else if (strcmp(currentField, "initial_weight") == 0) {
-                    if (reader.value_type() == json_value_type::real) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_real());
-                    } else if (reader.value_type() == json_value_type::integer) {
-                        outDetails.initial_weight_g = static_cast<float>(reader.value_int());
-                    }
-                }
-            }
-        } else if (nodeType == json_node_type::end_object) {
-            // Track exit from nested objects
-            if (inVendor && reader.depth() <= vendorDepth) {
-                inVendor = false;
-            } else if (inFilament && reader.depth() <= filamentDepth) {
-                inFilament = false;
-            }
+        JsonObject vendor = fil["vendor"];
+        if (!vendor.isNull()) {
+            const char* vendorName = vendor["name"] | "";
+            strncpy(outDetails.manufacturer, vendorName, sizeof(outDetails.manufacturer) - 1);
         }
     }
 
-    // Mark as valid if we got the essential fields
+    bool hasId = outDetails.spoolman_id > 0;
+    bool hasMaterial = outDetails.material_type[0] != '\0';
     outDetails.valid = hasId && hasMaterial;
 
     if (outDetails.valid) {
