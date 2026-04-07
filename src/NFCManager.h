@@ -116,6 +116,10 @@ private:
     // Scan task
     static void scanTaskFunc(void* param);
     void scanLoop();
+    bool prepareRF();
+    bool isSkippableDuplicate(const uint8_t* uid, uint8_t uidLength);
+    void handleNewTag(uint8_t* uid, uint8_t uidLength);
+    void handleTagAbsent();
 
     // Internal operations
     bool readAndParseTag(uint8_t* uid, uint8_t uid_length);

@@ -406,161 +406,105 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
     }
 }
 
-void NFCManager::scanLoop() {
-    uint32_t scanCount = 0;
-    uint32_t detectCount = 0;
-    uint32_t failCount = 0;
+// ── Scan loop helpers ───────────────────────────────────────
 
-    Serial.println("NFCManager: scanLoop() started, polling every 50ms");
-
+bool NFCManager::prepareRF() {
+    if (consecutiveFailures_ >= RESTART_THRESHOLD) {
+        Serial.println("NFCManager: CRITICAL - too many consecutive failures, restarting ESP");
 #ifndef NATIVE_TEST
-    // Register this task with the ESP32 hardware watchdog.
-    // If scanLoop() hangs for >NFC_WDT_TIMEOUT_S (e.g., stuck in driver I/O),
-    // the watchdog triggers a system reset automatically.
-    esp_task_wdt_init(NFC_WDT_TIMEOUT_S, true);
-    esp_task_wdt_add(NULL);
+        delay(100);
+        ESP.restart();
 #endif
+    }
+    if (consecutiveFailures_ > 0 && (consecutiveFailures_ % RECOVERY_THRESHOLD) == 0) {
+        attemptRecovery();
+    }
 
-    // Initial reset + RF setup
-    connection_->reset();
-    connection_->setupRF();
-
-    // One-time startup diagnostic
-    connection_->logDiagnostics();
-
-    while (true) {
-#ifndef NATIVE_TEST
-        esp_task_wdt_reset();
-#endif
-        uint8_t uid[8];
-        uint8_t uidLength = 0;
-        scanCount++;
-
-        // Log heartbeat every 200 scans (~10 seconds)
-        //if (scanCount % 200 == 0) {
-        //    Serial.printf("NFCManager: heartbeat scan=%lu detected=%lu failed=%lu\n",
-        //                  scanCount, detectCount, failCount);
-        //}
-
-        // Watchdog: check if we've exceeded failure thresholds
-        if (consecutiveFailures_ >= RESTART_THRESHOLD) {
-            Serial.println("NFCManager: CRITICAL - too many consecutive failures, restarting ESP");
-#ifndef NATIVE_TEST
-            delay(100);  // let serial flush
-            ESP.restart();
-#endif
+    // Full hardware reset only when no tag present — reset cuts RF, de-powering passive tags
+    if (!lastSeenValid) {
+        connection_->reset();
+    }
+    if (!connection_->setupRF()) {
+        consecutiveFailures_++;
+        Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
+                      consecutiveFailures_, lastSeenValid ? 1 : 0);
+        if (lastSeenValid) {
+            Serial.println("NFCManager: clearing lastSeenValid to force hardware reset");
+            lastSeenValid = false;
         }
-        if (consecutiveFailures_ > 0 && (consecutiveFailures_ % RECOVERY_THRESHOLD) == 0) {
-            attemptRecovery();
-        }
+        return false;
+    }
 
-        // Re-arm RF field for each scan.
-        // Only do a full hardware reset when no tag is present — reset briefly cuts the RF
-        // field, de-powering any passive tag in the field and causing false TAG_REMOVED events.
-        // When a tag is already detected, only re-arm the transceiver state via setupRF().
-        if (!lastSeenValid) {
+    // Give tag time to power up after RF field reset
+    if (!lastSeenValid) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    consecutiveFailures_ = 0;
+    return true;
+}
+
+bool NFCManager::isSkippableDuplicate(const uint8_t* uid, uint8_t uidLength) {
+    if (isDuplicateSpool(uid, uidLength)) return true;
+
+    if (!suppressReDetection_) return false;
+
+    char uidHex[17];
+    for (uint8_t i = 0; i < uidLength && i < 8; i++) {
+        sprintf(uidHex + (i * 2), "%02X", uid[i]);
+    }
+    uidHex[uidLength * 2] = '\0';
+    return strcmp(uidHex, suppressReDetectionUid_) == 0;
+}
+
+void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
+    Serial.println("NFCManager: New spool detected, reading tag...");
+    TagScanResult scan = classifyTag(uid, uidLength);
+
+    if (scan.kind == TagKind::BambuTag) {
+        if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
+            memcpy(currentSpool.uid, uid, uidLength);
+            currentSpool.uid_length = uidLength;
+            currentSpool.present = true;
+            currentSpool.blank_tag_present = false;
+            currentSpool.kind = TagKind::BambuTag;
+            currentSpool.tag_data_valid = false;
+            lastTigerTagValid_ = false;
+            memcpy(lastSeenUid, uid, uidLength);
+            lastSeenUidLength = uidLength;
+            lastSeenValid = true;
+            lastSeenMs = millis();
+            xSemaphoreGive(tagMutex);
+        }
+        Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
+        sendGenericTagMessage();
+        return;
+    }
+
+    if (scan.kind == TagKind::GenericUidTag) {
+        readAndProcessISO14443Tag(uid, uidLength, scan);
+        return;
+    }
+
+    // ISO15693 — attempt OpenPrintTag parse with retries
+    bool readOk = false;
+    for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
+        if (attempt > 0) {
+            Serial.printf("NFCManager: Read attempt %d — resetting RF...\n", attempt + 1);
             connection_->reset();
+            bool rfOk = connection_->setupRF();
+            Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
-        if (!connection_->setupRF()) {
-            consecutiveFailures_++;
-            Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
-                          consecutiveFailures_, lastSeenValid ? 1 : 0);
-            // If RF is stuck with a tag still marked present, clear the flag so the
-            // next iteration performs a full reset() before retrying setupRF().
-            if (lastSeenValid) {
-                Serial.println("NFCManager: clearing lastSeenValid to force hardware reset");
-                lastSeenValid = false;
-            }
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
+        Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
+        readOk = readAndParseTag(uid, uidLength);
+        Serial.printf("NFCManager: readAndParseTag attempt %d: %s\n", attempt + 1, readOk ? "OK" : "FAILED");
+    }
 
-        // Give tag time to power up from RF field before sending inventory.
-        // Only needed after a reset (which cuts RF); skip when tag is already present.
-        if (!lastSeenValid) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+    if (readOk) return;
 
-        // setupRF succeeded, chip is responsive
-        consecutiveFailures_ = 0;
-
-        // Detect tag
-        if (connection_->detectTag(uid, &uidLength)) {
-            detectCount++;
-            // Log UID on first detection
-            if (!lastSeenValid || memcmp(uid, lastSeenUid, uidLength) != 0) {
-                Serial.printf("NFCManager: Tag detected! UID=");
-                for (uint8_t i = 0; i < uidLength; i++) {
-                    Serial.printf("%02X", uid[i]);
-                }
-                Serial.println("");
-            }
-
-            // Store UID for addressed read/write commands
-            connection_->setCurrentUid(uid, uidLength);
-
-            // Check if this is the same spool we already processed
-            // Also suppress re-detection if writes are in progress for this tag
-            bool shouldSkipReRead = isDuplicateSpool(uid, uidLength);
-
-            if (suppressReDetection_) {
-                char uidHex[17];
-                for (uint8_t i = 0; i < uidLength && i < 8; i++) {
-                    sprintf(uidHex + (i * 2), "%02X", uid[i]);
-                }
-                uidHex[uidLength * 2] = '\0';
-
-                if (strcmp(uidHex, suppressReDetectionUid_) == 0) {
-                    shouldSkipReRead = true;  // Skip re-read for tag being written to
-                }
-            }
-
-            if (!shouldSkipReRead) {
-                Serial.println("NFCManager: New spool detected, reading tag...");
-                TagScanResult scan = classifyTag(uid, uidLength);
-
-                if (scan.kind == TagKind::BambuTag) {
-                    // Bambu Lab MIFARE Classic — UID-only (data is encrypted)
-                    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
-                        memcpy(currentSpool.uid, uid, uidLength);
-                        currentSpool.uid_length = uidLength;
-                        currentSpool.present = true;
-                        currentSpool.blank_tag_present = false;
-                        currentSpool.kind = TagKind::BambuTag;
-                        currentSpool.tag_data_valid = false;
-                        lastTigerTagValid_ = false;
-                        memcpy(lastSeenUid, uid, uidLength);
-                        lastSeenUidLength = uidLength;
-                        lastSeenValid = true;
-                        lastSeenMs = millis();
-                        xSemaphoreGive(tagMutex);
-                    }
-                    Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
-                    sendGenericTagMessage();
-                } else if (scan.kind == TagKind::GenericUidTag) {
-                    readAndProcessISO14443Tag(uid, uidLength, scan);
-                } else {
-
-                // ISO15693 — attempt OpenPrintTag parse
-                // readAndParseTag manages its own mutex internally
-                bool readOk = false;
-                for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
-                    if (attempt > 0) {
-                        Serial.printf("NFCManager: Read attempt %d — resetting RF...\n", attempt + 1);
-                        connection_->reset();
-                        bool rfOk = connection_->setupRF();
-                        Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
-                        vTaskDelay(pdMS_TO_TICKS(100));
-                    }
-                    Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
-                    readOk = readAndParseTag(uid, uidLength);
-                    Serial.printf("NFCManager: readAndParseTag attempt %d: %s\n", attempt + 1, readOk ? "OK" : "FAILED");
-                }
-if (!readOk) {
+    // All retries failed — treat as blank tag
     Serial.println("NFCManager: readAndParseTag() failed after retries - treating as blank tag");
-
-    bool blankStateCaptured = false;
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (uint8_t i = 0; i < uidLength && i < 8; i++) {
             sprintf(currentSpool.spool_id + (i * 2), "%02X", uid[i]);
@@ -572,54 +516,74 @@ if (!readOk) {
         currentSpool.tag_data_valid = false;
         currentSpool.blank_tag_present = true;
         currentSpool.kind = TagKind::BlankTag;
-
         memcpy(lastSeenUid, uid, uidLength);
         lastSeenUidLength = uidLength;
         lastSeenValid = true;
         lastSeenMs = millis();
-        blankStateCaptured = true;
         xSemaphoreGive(tagMutex);
-    } else {
-        Serial.println("NFCManager: Could not acquire tagMutex");
-    }
-
-    if (blankStateCaptured) {
         sendBlankTagMessage();
     }
 }
-                } // end ISO15693 else branch
-            } else {
-                // Tag is a duplicate - skip re-reading
-                // This log would be too verbose (every 50ms), so commenting out
-                // Serial.println("NFCManager: Same tag detected, skipping read");
-            }
 
-            // Process any pending write requests while tag is present
-            processWriteQueue();
-        } else {
-            // No tag detected - clear state
-            if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                if (lastSeenValid) {
-                    Serial.println("NFCManager: Tag removed");
+void NFCManager::handleTagAbsent() {
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
-                    // Send TAG_REMOVED message before clearing state
-                    sendTagRemovedMessage();
-                }
-                currentSpool.present = false;
-                currentSpool.blank_tag_present = false;
-                lastSeenValid = false;
-                lastTigerTagValid_ = false;
-                lastOpenTag3DValid_ = false;
+    if (lastSeenValid) {
+        Serial.println("NFCManager: Tag removed");
+        sendTagRemovedMessage();
+    }
+    currentSpool.present = false;
+    currentSpool.blank_tag_present = false;
+    lastSeenValid = false;
+    lastTigerTagValid_ = false;
+    lastOpenTag3DValid_ = false;
+    suppressReDetection_ = false;
+    suppressReDetectionUid_[0] = '\0';
+    xSemaphoreGive(tagMutex);
+}
 
-                // Clear suppression if tag removed
-                suppressReDetection_ = false;
-                suppressReDetectionUid_[0] = '\0';
+// ── Main scan loop ──────────────────────────────────────────
 
-                xSemaphoreGive(tagMutex);
-            }
+void NFCManager::scanLoop() {
+    Serial.println("NFCManager: scanLoop() started, polling every 50ms");
+
+#ifndef NATIVE_TEST
+    esp_task_wdt_init(NFC_WDT_TIMEOUT_S, true);
+    esp_task_wdt_add(NULL);
+#endif
+
+    connection_->reset();
+    connection_->setupRF();
+    connection_->logDiagnostics();
+
+    while (true) {
+#ifndef NATIVE_TEST
+        esp_task_wdt_reset();
+#endif
+        uint8_t uid[8];
+        uint8_t uidLength = 0;
+
+        if (!prepareRF()) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
         }
 
-        // Small delay to prevent tight loop
+        if (connection_->detectTag(uid, &uidLength)) {
+            if (!lastSeenValid || memcmp(uid, lastSeenUid, uidLength) != 0) {
+                Serial.printf("NFCManager: Tag detected! UID=");
+                for (uint8_t i = 0; i < uidLength; i++) Serial.printf("%02X", uid[i]);
+                Serial.println("");
+            }
+            connection_->setCurrentUid(uid, uidLength);
+
+            if (!isSkippableDuplicate(uid, uidLength)) {
+                handleNewTag(uid, uidLength);
+            }
+            processWriteQueue();
+        } else {
+            handleTagAbsent();
+        }
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
