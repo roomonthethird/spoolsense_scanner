@@ -231,9 +231,9 @@ static int httpPatch(const char* path, const char* body, String& response) {
     return code;
 }
 
-// Find a spool by nfc_id using ArduinoJson streaming filter.
-// Only id, archived, and extra.nfc_id are parsed — everything else is skipped,
-// keeping memory usage low (~4KB) regardless of how many spools exist.
+// Find a spool by nfc_id using ArduinoJson's DeserializationOption::Filter.
+// The filter tells ArduinoJson to skip all fields except id, archived, and
+// extra.nfc_id during parsing — keeps memory at ~4KB regardless of spool count.
 static int streamFindSpoolByNfcId(const char* path, const char* uuid) {
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
     char url[256];

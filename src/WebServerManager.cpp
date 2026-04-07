@@ -1792,6 +1792,8 @@ void WebServerManager::handleApiSpoolmanFindFilament() {
 
 // ── Enrichment save helpers ─────────────────────────────────
 
+// Search Spoolman for a vendor by name, create if not found.
+// confirmedId: -1 = search needed, -2 = user declined match, >0 = already confirmed
 int WebServerManager::enrichFindOrCreateVendor(WiFiClient& client, HTTPClient& http,
                                                 const char* baseUrl, const char* manufacturer, int confirmedId) {
     if (confirmedId != -1 || manufacturer[0] == '\0') return confirmedId;
@@ -1837,6 +1839,8 @@ int WebServerManager::enrichFindOrCreateVendor(WiFiClient& client, HTTPClient& h
     return vendorId;
 }
 
+// Search Spoolman filaments by vendor, match material+color client-side (#92).
+// Creates a new filament if no match found.
 int WebServerManager::enrichFindOrCreateFilament(WiFiClient& client, HTTPClient& http,
                                                    const char* baseUrl, const char* material, const char* colorHex,
                                                    int vendorId, float density, float diameter,
@@ -1905,6 +1909,7 @@ int WebServerManager::enrichFindOrCreateFilament(WiFiClient& client, HTTPClient&
     return filamentId;
 }
 
+// Fetch all spools and match nfc_id client-side — Spoolman's extra_field filter is unreliable
 int WebServerManager::enrichFindSpoolByUid(WiFiClient& client, HTTPClient& http,
                                             const char* baseUrl, const char* quotedUid, float& outInitialWeight) {
     char url[256];
@@ -1933,6 +1938,7 @@ int WebServerManager::enrichFindSpoolByUid(WiFiClient& client, HTTPClient& http,
     return spoolId;
 }
 
+// PATCH existing spool — Spoolman uses used_weight (not remaining_weight) for weight tracking
 bool WebServerManager::enrichUpdateSpool(WiFiClient& client, HTTPClient& http, const char* baseUrl,
                                            int spoolId, int filamentId, float remainingG, float existingInitialWeight) {
     char url[256];

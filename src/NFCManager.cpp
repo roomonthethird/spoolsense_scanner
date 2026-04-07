@@ -443,10 +443,11 @@ bool NFCManager::prepareRF() {
     return true;
 }
 
+// Skip re-reading a tag we already processed, or one being actively written to
 bool NFCManager::isSkippableDuplicate(const uint8_t* uid, uint8_t uidLength) {
-    if (isDuplicateSpool(uid, uidLength)) return true;
+    if (isDuplicateSpool(uid, uidLength)) return true;  // same tag as last scan cycle
 
-    if (!suppressReDetection_) return false;
+    if (!suppressReDetection_) return false;  // no active write batch
 
     char uidHex[17];
     for (uint8_t i = 0; i < uidLength && i < 8; i++) {
@@ -460,6 +461,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
     Serial.println("NFCManager: New spool detected, reading tag...");
     TagScanResult scan = classifyTag(uid, uidLength);
 
+    // Bambu tags use MIFARE Classic (encrypted) — we can only read the UID
     if (scan.kind == TagKind::BambuTag) {
         if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
@@ -470,7 +472,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
             currentSpool.kind = TagKind::BambuTag;
             currentSpool.tag_data_valid = false;
             lastTigerTagValid_ = false;
-            memcpy(lastSeenUid, uid, uidLength);
+            memcpy(lastSeenUid, uid, uidLength);  // dedup: don't re-read same tag next cycle
             lastSeenUidLength = uidLength;
             lastSeenValid = true;
             lastSeenMs = millis();
@@ -481,12 +483,13 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
         return;
     }
 
+    // ISO14443A: TigerTag, OpenTag3D, OpenSpool, or generic UID
     if (scan.kind == TagKind::GenericUidTag) {
         readAndProcessISO14443Tag(uid, uidLength, scan);
         return;
     }
 
-    // ISO15693 — attempt OpenPrintTag parse with retries
+    // ISO15693 (ICODE SLIX2): OpenPrintTag with retries — RF can be flaky at range
     bool readOk = false;
     for (int attempt = 0; attempt < 3 && !readOk; attempt++) {
         if (attempt > 0) {
@@ -494,7 +497,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
             connection_->reset();
             bool rfOk = connection_->setupRF();
             Serial.printf("NFCManager: setupRF after reset: %s\n", rfOk ? "OK" : "FAILED");
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(100));  // let RF stabilize after reset
         }
         Serial.printf("NFCManager: readAndParseTag attempt %d\n", attempt + 1);
         readOk = readAndParseTag(uid, uidLength);
@@ -503,7 +506,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
 
     if (readOk) return;
 
-    // All retries failed — treat as blank tag
+    // All retries failed — tag is present but unreadable, show as blank so web UI can format it
     Serial.println("NFCManager: readAndParseTag() failed after retries - treating as blank tag");
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (uint8_t i = 0; i < uidLength && i < 8; i++) {
@@ -525,10 +528,11 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
     }
 }
 
+// Tag left the field — clear state and notify the system
 void NFCManager::handleTagAbsent() {
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
-    if (lastSeenValid) {
+    if (lastSeenValid) {  // only send removal if we had a tag
         Serial.println("NFCManager: Tag removed");
         sendTagRemovedMessage();
     }
@@ -537,7 +541,7 @@ void NFCManager::handleTagAbsent() {
     lastSeenValid = false;
     lastTigerTagValid_ = false;
     lastOpenTag3DValid_ = false;
-    suppressReDetection_ = false;
+    suppressReDetection_ = false;       // allow fresh detection on next tag
     suppressReDetectionUid_[0] = '\0';
     xSemaphoreGive(tagMutex);
 }
@@ -1554,17 +1558,20 @@ static opt_error_t applyWriteUpdate(opt_tag_t& tag, const NFCWriteRequest& reque
 
 // ── Write helpers ────────────────────────────────────────────
 
+// Build an NDEF TLV wrapper around a MIME-typed payload.
+// Used by OpenTag3D and OpenSpool write paths. Pads to 4-byte page boundary.
+// Returns total bytes written to outBuf, or 0 if buffer too small.
 static uint16_t buildNdefTlv(const char* mimeType, const uint8_t* payload, uint16_t payloadLen,
                               uint8_t* outBuf, uint16_t outBufSize) {
     uint8_t mimeLen = (uint8_t)strlen(mimeType);
-    bool sr = (payloadLen <= 255);
-    uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);
+    bool sr = (payloadLen <= 255);                   // Short Record: 1-byte payload length
+    uint8_t ndefHeaderSize = 2 + (sr ? 1 : 4);      // flags + typeLen + payloadLen(1 or 4)
     uint16_t ndefRecordLen = ndefHeaderSize + mimeLen + payloadLen;
 
-    bool longTlv = (ndefRecordLen > 254);
+    bool longTlv = (ndefRecordLen > 254);            // 3-byte TLV length if record > 254
     uint16_t tlvHeaderSize = 1 + (longTlv ? 3 : 1);
-    uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;
-    uint16_t paddedSize = totalSize + ((4 - (totalSize % 4)) % 4);
+    uint16_t totalSize = tlvHeaderSize + ndefRecordLen + 1;  // +1 for 0xFE terminator
+    uint16_t paddedSize = totalSize + ((4 - (totalSize % 4)) % 4);  // NTAG pages are 4 bytes
 
     if (paddedSize > outBufSize) return 0;
 
@@ -1578,8 +1585,8 @@ static uint16_t buildNdefTlv(const char* mimeType, const uint8_t* payload, uint1
         outBuf[idx++] = (uint8_t)ndefRecordLen;
     }
 
-    uint8_t ndefFlags = 0xC0 | 0x02;
-    if (sr) ndefFlags |= 0x10;
+    uint8_t ndefFlags = 0xC0 | 0x02;  // MB + ME + TNF=media-type
+    if (sr) ndefFlags |= 0x10;       // Short Record flag
     outBuf[idx++] = ndefFlags;
     outBuf[idx++] = mimeLen;
     if (sr) {
