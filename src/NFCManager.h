@@ -119,6 +119,7 @@ private:
 
     // Internal operations
     bool readAndParseTag(uint8_t* uid, uint8_t uid_length);
+    void readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength, const TagScanResult& scan);
     bool formatNewSpool();
     TagScanResult classifyTag(const uint8_t* uid, uint8_t uid_length);
     void sendSpoolDetectedMessage(bool suppress_spoolman_sync = false);
