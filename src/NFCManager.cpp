@@ -187,6 +187,99 @@ void NFCManager::scanTaskFunc(void* param) {
     self->scanLoop();
 }
 
+// ── NDEF helpers ────────────────────────────────────────────
+
+struct NdefRecord {
+    const char* mimeType;    // pointer into pageData (not owned)
+    uint8_t mimeLen;
+    uint32_t payloadLen;
+    uint16_t payloadOffset;  // offset from start of pageData
+    bool found;
+};
+
+// Scan TLV records in pageData for an NDEF media-type record.
+// Returns the first NDEF record found with TNF=media-type (0x02).
+static NdefRecord findNdefMediaRecord(const uint8_t* pageData, uint16_t bytesRead) {
+    NdefRecord rec = {};
+    uint16_t pos = 0;
+    while (pos < bytesRead) {
+        uint8_t tlvType = pageData[pos++];
+        if (tlvType == 0x00) continue;
+        if (tlvType == 0xFE) break;
+        if (pos >= bytesRead) break;
+
+        uint16_t tlvLen = pageData[pos++];
+        if (tlvLen == 0xFF) {
+            if (pos + 2 > bytesRead) break;
+            tlvLen = (uint16_t)(pageData[pos] << 8) | pageData[pos + 1];
+            pos += 2;
+        }
+
+        if (tlvType != 0x03) { pos += tlvLen; continue; }
+
+        uint16_t ndefStart = pos;
+        if (ndefStart >= bytesRead) break;
+
+        uint8_t ndefFlags = pageData[ndefStart];
+        uint8_t tnf = ndefFlags & 0x07;
+        if (tnf != 0x02 || ndefStart + 1 >= bytesRead) break;
+
+        uint8_t typeLen = pageData[ndefStart + 1];
+        bool sr = (ndefFlags & 0x10) != 0;
+        uint16_t headerSize = 2 + (sr ? 1 : 4);
+        if (ndefStart + headerSize + typeLen > bytesRead) break;
+
+        uint32_t payloadLen = 0;
+        if (sr) {
+            payloadLen = pageData[ndefStart + 2];
+        } else {
+            payloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
+                         ((uint32_t)pageData[ndefStart + 3] << 16) |
+                         ((uint32_t)pageData[ndefStart + 4] << 8) |
+                         pageData[ndefStart + 5];
+        }
+
+        rec.mimeType = (const char*)(pageData + ndefStart + headerSize);
+        rec.mimeLen = typeLen;
+        rec.payloadLen = payloadLen;
+        rec.payloadOffset = ndefStart + headerSize + typeLen;
+        rec.found = true;
+        break;
+    }
+    return rec;
+}
+
+// Read NDEF payload bytes, doing an extended page read if the initial 40-byte read
+// didn't contain the full payload. Returns bytes copied into outBuf.
+uint16_t NFCManager::readNdefPayload(const NdefRecord& rec, const uint8_t* pageData, uint16_t bytesRead,
+                                      uint8_t* outBuf, uint16_t outBufSize) {
+    if (!rec.found || rec.payloadLen == 0) return 0;
+
+    uint16_t available = (rec.payloadOffset < bytesRead) ? bytesRead - rec.payloadOffset : 0;
+    uint16_t needed = (rec.payloadLen > outBufSize) ? outBufSize : (uint16_t)rec.payloadLen;
+
+    if (available >= rec.payloadLen) {
+        memcpy(outBuf, pageData + rec.payloadOffset, needed);
+        return needed;
+    }
+
+    // Extended read — payload spans beyond the initial 40-byte read
+    uint8_t startPage = 4 + (rec.payloadOffset / 4);
+    uint16_t pagesNeeded = (uint16_t)((rec.payloadLen + 3) / 4) + 1;
+    if (pagesNeeded > 50) pagesNeeded = 50;
+
+    uint8_t extBuf[256] = {0};
+    uint16_t extRead = connection_->readISO14443Pages(startPage, (uint8_t)pagesNeeded, extBuf, sizeof(extBuf));
+    uint16_t offsetInPage = rec.payloadOffset % 4;
+    if (extRead <= offsetInPage) return 0;
+
+    uint16_t payloadBytes = extRead - offsetInPage;
+    if (payloadBytes > rec.payloadLen) payloadBytes = (uint16_t)rec.payloadLen;
+    if (payloadBytes > outBufSize) payloadBytes = outBufSize;
+    memcpy(outBuf, extBuf + offsetInPage, payloadBytes);
+    return payloadBytes;
+}
+
 // ── ISO14443A tag read + classification ─────────────────────
 // Reads pages 4-13, tries TigerTag → OpenTag3D → OpenSpool → GenericUID.
 // Updates currentSpool state and sends the appropriate message.
@@ -216,136 +309,36 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
 
     // Scan NDEF TLV for OpenTag3D or OpenSpool
     if (!isTigerTag && bytesRead >= 4) {
-        uint16_t pos = 0;
-        while (pos < bytesRead) {
-            uint8_t tlvType = pageData[pos++];
-            if (tlvType == 0x00) continue;
-            if (tlvType == 0xFE) break;
-            if (pos >= bytesRead) break;
-
-            uint16_t tlvLen = pageData[pos++];
-            if (tlvLen == 0xFF) {
-                if (pos + 2 > bytesRead) break;
-                tlvLen = (uint16_t)(pageData[pos] << 8) | pageData[pos + 1];
-                pos += 2;
-            }
-
-            if (tlvType == 0x03) {
-                uint16_t ndefStart = pos;
-                if (ndefStart >= bytesRead) break;
-
-                uint8_t ndefFlags = pageData[ndefStart];
-                uint8_t tnf = ndefFlags & 0x07;
-                if (tnf == 0x02 && ndefStart + 1 < bytesRead) {
-                    uint8_t typeLen = pageData[ndefStart + 1];
-                    bool sr = (ndefFlags & 0x10) != 0;
-                    uint16_t headerSize = 2 + (sr ? 1 : 4);
-                    if (ndefStart + headerSize + typeLen <= bytesRead) {
-                        const char* mime = OT3D_MIME_TYPE;
-                        size_t mimeLen = strlen(mime);
-                        if (typeLen == mimeLen &&
-                            memcmp(pageData + ndefStart + headerSize, mime, mimeLen) == 0) {
-                            uint32_t payloadLen = 0;
-                            if (sr) {
-                                payloadLen = pageData[ndefStart + 2];
-                            } else {
-                                payloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
-                                             ((uint32_t)pageData[ndefStart + 3] << 16) |
-                                             ((uint32_t)pageData[ndefStart + 4] << 8) |
-                                             pageData[ndefStart + 5];
-                            }
-
-                            uint16_t payloadOffset = ndefStart + headerSize + typeLen;
-                            uint16_t availableInFirstRead = (payloadOffset < bytesRead) ? bytesRead - payloadOffset : 0;
-
-                            uint8_t fullPayload[OT3D_EXTENDED_MIN];
-                            uint16_t payloadBytes = 0;
-
-                            if (availableInFirstRead >= payloadLen) {
-                                memcpy(fullPayload, pageData + payloadOffset, payloadLen);
-                                payloadBytes = (uint16_t)payloadLen;
-                            } else {
-                                uint8_t payloadStartPage = 4 + (payloadOffset / 4);
-                                uint16_t totalPagesNeeded = (uint16_t)((payloadLen + 3) / 4) + 1;
-                                if (totalPagesNeeded > 50) totalPagesNeeded = 50;
-
-                                uint8_t extendedData[200] = {0};
-                                uint16_t extendedRead = connection_->readISO14443Pages(
-                                    payloadStartPage, (uint8_t)totalPagesNeeded, extendedData, sizeof(extendedData));
-
-                                uint16_t offsetInPage = payloadOffset % 4;
-                                if (extendedRead > offsetInPage) {
-                                    payloadBytes = extendedRead - offsetInPage;
-                                    if (payloadBytes > payloadLen) payloadBytes = (uint16_t)payloadLen;
-                                    if (payloadBytes > sizeof(fullPayload)) payloadBytes = sizeof(fullPayload);
-                                    memcpy(fullPayload, extendedData + offsetInPage, payloadBytes);
-                                }
-                            }
-
-                            if (payloadBytes >= OT3D_CORE_SIZE) {
-                                opentag3d_result_t res = opentag3d_decode(fullPayload, payloadBytes, &ot3dData);
-                                if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
-                                    isOpenTag3D = true;
-                                    if (res == OT3D_VERSION_WARNING) {
-                                        Serial.printf("NFCManager: OpenTag3D tag version %u ahead of supported %u — parsing anyway\n",
-                                                      ot3dData.tag_version, OT3D_SUPPORTED_VERSION);
-                                    }
-                                } else if (res == OT3D_VERSION_ERROR) {
-                                    Serial.printf("NFCManager: OpenTag3D major version too new (%u) — cannot parse\n",
-                                                  ot3dData.tag_version);
-                                }
-                            }
+        NdefRecord rec = findNdefMediaRecord(pageData, bytesRead);
+        if (rec.found) {
+            const char* ot3dMime = OT3D_MIME_TYPE;
+            if (rec.mimeLen == strlen(ot3dMime) && memcmp(rec.mimeType, ot3dMime, rec.mimeLen) == 0) {
+                uint8_t payload[OT3D_EXTENDED_MIN];
+                uint16_t payloadBytes = readNdefPayload(rec, pageData, bytesRead, payload, sizeof(payload));
+                if (payloadBytes >= OT3D_CORE_SIZE) {
+                    opentag3d_result_t res = opentag3d_decode(payload, payloadBytes, &ot3dData);
+                    if (res == OT3D_OK || res == OT3D_VERSION_WARNING) {
+                        isOpenTag3D = true;
+                        if (res == OT3D_VERSION_WARNING) {
+                            Serial.printf("NFCManager: OpenTag3D tag version %u ahead of supported %u — parsing anyway\n",
+                                          ot3dData.tag_version, OT3D_SUPPORTED_VERSION);
                         }
-
-                        // Check for OpenSpool (application/json + "protocol":"openspool")
-                        if (!isOpenTag3D) {
-                            const char* jsonMime = "application/json";
-                            size_t jsonMimeLen = strlen(jsonMime);
-                            if (typeLen == jsonMimeLen &&
-                                memcmp(pageData + ndefStart + headerSize, jsonMime, jsonMimeLen) == 0) {
-                                uint32_t osPayloadLen = 0;
-                                if (sr) {
-                                    osPayloadLen = pageData[ndefStart + 2];
-                                } else {
-                                    osPayloadLen = ((uint32_t)pageData[ndefStart + 2] << 24) |
-                                                   ((uint32_t)pageData[ndefStart + 3] << 16) |
-                                                   ((uint32_t)pageData[ndefStart + 4] << 8) |
-                                                   pageData[ndefStart + 5];
-                                }
-                                uint16_t osOffset = ndefStart + headerSize + typeLen;
-                                uint8_t osPayload[256] = {0};
-                                uint16_t osBytes = 0;
-
-                                if (osOffset + osPayloadLen <= bytesRead) {
-                                    osBytes = (uint16_t)osPayloadLen;
-                                    if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
-                                    memcpy(osPayload, pageData + osOffset, osBytes);
-                                } else {
-                                    uint8_t osStartPage = 4 + (osOffset / 4);
-                                    uint16_t osPagesNeeded = (uint16_t)((osPayloadLen + 3) / 4) + 1;
-                                    if (osPagesNeeded > 50) osPagesNeeded = 50;
-                                    uint8_t osExtData[256] = {0};
-                                    uint16_t osExtRead = connection_->readISO14443Pages(
-                                        osStartPage, (uint8_t)osPagesNeeded, osExtData, sizeof(osExtData));
-                                    uint16_t osOffInPage = osOffset % 4;
-                                    if (osExtRead > osOffInPage) {
-                                        osBytes = osExtRead - osOffInPage;
-                                        if (osBytes > osPayloadLen) osBytes = (uint16_t)osPayloadLen;
-                                        if (osBytes > sizeof(osPayload)) osBytes = sizeof(osPayload);
-                                        memcpy(osPayload, osExtData + osOffInPage, osBytes);
-                                    }
-                                }
-
-                                if (osBytes > 0 && parseOpenSpool(osPayload, osBytes, openSpoolData)) {
-                                    isOpenSpool = true;
-                                }
-                            }
-                        }
+                    } else if (res == OT3D_VERSION_ERROR) {
+                        Serial.printf("NFCManager: OpenTag3D major version too new (%u) — cannot parse\n",
+                                      ot3dData.tag_version);
                     }
                 }
-                break;
-            } else {
-                pos += tlvLen;
+            }
+
+            if (!isOpenTag3D) {
+                const char* jsonMime = "application/json";
+                if (rec.mimeLen == strlen(jsonMime) && memcmp(rec.mimeType, jsonMime, rec.mimeLen) == 0) {
+                    uint8_t payload[256];
+                    uint16_t payloadBytes = readNdefPayload(rec, pageData, bytesRead, payload, sizeof(payload));
+                    if (payloadBytes > 0 && parseOpenSpool(payload, payloadBytes, openSpoolData)) {
+                        isOpenSpool = true;
+                    }
+                }
             }
         }
     }
