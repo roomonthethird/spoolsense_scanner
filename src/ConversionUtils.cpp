@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdio>
 
+// Material and color conversion utilities for OpenPrintTag/OpenSpool payload mapping
 uint8_t materialTypeFromString(const char* type) {
     if (strcmp(type, "PLA") == 0) return OPT_MATERIAL_TYPE_PLA;
     if (strcmp(type, "PETG") == 0) return OPT_MATERIAL_TYPE_PETG;
@@ -13,7 +14,7 @@ uint8_t materialTypeFromString(const char* type) {
     if (strcmp(type, "Nylon") == 0) return OPT_MATERIAL_TYPE_PA6;
     if (strcmp(type, "PVA") == 0) return OPT_MATERIAL_TYPE_PVA;
     if (strcmp(type, "HIPS") == 0) return OPT_MATERIAL_TYPE_HIPS;
-    return OPT_MATERIAL_TYPE_PLA; // default
+    return OPT_MATERIAL_TYPE_PLA;  // safe fallback for unknown material type
 }
 
 const char* materialTypeToString(uint8_t type) {
@@ -38,7 +39,7 @@ bool parseHexColor(const char* hex, uint8_t* rgba) {
     rgba[0] = r;
     rgba[1] = g;
     rgba[2] = b;
-    rgba[3] = 255;
+    rgba[3] = 255;  // always opaque for spool colors
     return true;
 }
 
@@ -56,13 +57,13 @@ float getDefaultDensity(uint8_t material_type) {
             return 1.21f;
         case OPT_MATERIAL_TYPE_PC:
             return 1.20f;
-        case OPT_MATERIAL_TYPE_PA6:  // Nylon
-            return 1.14f;
+        case OPT_MATERIAL_TYPE_PA6:
+            return 1.14f;  // Nylon
         case OPT_MATERIAL_TYPE_PVA:
             return 1.23f;
         case OPT_MATERIAL_TYPE_HIPS:
             return 1.04f;
         default:
-            return 1.20f;  // Generic default
+            return 1.20f;  // generic fallback, close to common materials
     }
 }

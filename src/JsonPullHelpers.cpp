@@ -1,6 +1,7 @@
 #include "JsonPullHelpers.h"
 #include <cstring>
 
+// Streaming JSON parsing utilities: NATIVE_TEST guards WiFi code, JsonFieldExtractor handles depth-aware field navigation
 #ifndef NATIVE_TEST
 HttpClientStream::HttpClientStream(WiFiClient& client) : m_stream(&client) {}
 
@@ -37,6 +38,7 @@ bool JsonFieldExtractor::readStringValue(char* out, size_t outSize) {
 
     append();
     if (node == json_node_type::value_part) {
+        // streaming parser may split large strings; reassemble all parts
         while (m_reader.read()) {
             json_node_type next = m_reader.node_type();
             if (next != json_node_type::value_part &&
@@ -59,6 +61,7 @@ bool JsonFieldExtractor::findFieldAtCurrentDepth(const char* fieldName) {
             m_reader.depth() == depth) {
             return false;
         }
+        // only match fields at exact depth to avoid nested shadowing
         if (m_reader.node_type() == json_node_type::field &&
             m_reader.depth() == depth &&
             strcmp(m_reader.value(), fieldName) == 0) {
@@ -119,6 +122,7 @@ bool JsonFieldExtractor::navigateToField(const char* path) {
             return false;
         }
         char* next = strtok_r(nullptr, ".", &save);
+        // intermediate path segments must be objects to continue traversal
         if (next != nullptr && m_reader.node_type() != json_node_type::object) {
             return false;
         }
@@ -128,6 +132,7 @@ bool JsonFieldExtractor::navigateToField(const char* path) {
 }
 
 bool JsonFieldExtractor::enterArray(const char* fieldName) {
+    // null fieldName means reader is already positioned on array, just verify
     if (fieldName == nullptr) {
         return m_reader.read() && m_reader.node_type() == json_node_type::array;
     }
@@ -139,6 +144,7 @@ bool JsonFieldExtractor::nextArrayElement() {
         if (m_reader.node_type() == json_node_type::end_array) {
             return false;
         }
+        // skip array separators/metadata; stop at first element value
         if (m_reader.node_type() == json_node_type::object ||
             m_reader.node_type() == json_node_type::array ||
             m_reader.node_type() == json_node_type::value ||
@@ -159,6 +165,7 @@ void JsonFieldExtractor::skipValue() {
     const json_node_type endNode = m_reader.node_type() == json_node_type::object
         ? json_node_type::end_object
         : json_node_type::end_array;
+    // consume tokens until closing bracket at matching depth
     while (m_reader.read()) {
         if (m_reader.node_type() == endNode && m_reader.depth() == startDepth) {
             return;
@@ -167,5 +174,5 @@ void JsonFieldExtractor::skipValue() {
 }
 
 void JsonFieldExtractor::reset() {
-    // json_reader streams cannot rewind; callers should create a new reader.
+    // streaming parser cannot rewind — create new extractor for new parse
 }

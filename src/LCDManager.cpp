@@ -2,6 +2,10 @@
 #include <Arduino.h>
 #include <cstring>
 
+// LCDManager — 16x2 I2C LCD display manager with 4-line paging, screen auto-off timeout,
+// and message queue for thread-safe updates from ApplicationManager. Runs dedicated task on core 0.
+// DisplayI interface for compatibility with optional TFT display backend.
+
 LCDManager::LCDManager(uint8_t lcd_Addr, uint8_t lcd_cols, uint8_t lcd_rows)
     : _lcd(lcd_Addr, lcd_cols, lcd_rows), _lcd_cols(lcd_cols), _messageQueue(nullptr), _taskHandle(nullptr),
       _activeLineCount(2), _currentPage(0), _lastPageSwitchTimeMs(0), _lastChangeTime(0),
@@ -11,13 +15,14 @@ void LCDManager::begin() {
     _lcd.init();
     _lcd.backlight();
     _lcd.clear();
-    _messageQueue = xQueueCreate(8, sizeof(ScreenMessage));
+    _messageQueue = xQueueCreate(8, sizeof(ScreenMessage));  // async updates from other tasks
     _lastChangeTime = millis();
 }
 
 void LCDManager::updateScreen(const char* line1, const char* line2) {
     ScreenMessage msg;
     memset(&msg, 0, sizeof(msg));
+    // truncate to display width (16 cols max for standard I2C LCD)
     size_t copyLen = (_lcd_cols < 16) ? _lcd_cols : 16;
     auto copyLine = [copyLen](char* dst, const char* src) {
         if (src == nullptr) {
@@ -30,6 +35,7 @@ void LCDManager::updateScreen(const char* line1, const char* line2) {
 
     unsigned long nowMs = millis();
     LCDDisplayMessage displayMsg;
+    // serialize display logic access from multiple callers
     taskENTER_CRITICAL(&_stateMux);
     displayMsg = _displayLogic.prepareTwoLineMessage(line1, line2, nowMs);
     taskEXIT_CRITICAL(&_stateMux);
@@ -40,6 +46,7 @@ void LCDManager::updateScreen(const char* line1, const char* line2) {
     copyLine(msg.line4, displayMsg.line4);
     msg.lineCount = displayMsg.lineCount;
 
+    // non-blocking queue send to LCDTask
     xQueueSend(_messageQueue, &msg, 0);
 }
 
@@ -57,6 +64,7 @@ void LCDManager::updateScreen(const char* line1, const char* line2, const char* 
     };
 
     LCDDisplayMessage displayMsg;
+    // serialize display logic access from multiple callers
     taskENTER_CRITICAL(&_stateMux);
     displayMsg = _displayLogic.prepareFourLineMessage(line1, line2, line3, line4);
     taskEXIT_CRITICAL(&_stateMux);
@@ -67,6 +75,7 @@ void LCDManager::updateScreen(const char* line1, const char* line2, const char* 
     copyLine(msg.line4, displayMsg.line4);
     msg.lineCount = displayMsg.lineCount;
 
+    // non-blocking queue send to LCDTask
     xQueueSend(_messageQueue, &msg, 0);
 }
 
@@ -78,7 +87,7 @@ void LCDManager::setScreenTimeoutMs(uint32_t timeoutMs) {
     _screenOff = false;
     taskEXIT_CRITICAL(&_stateMux);
 
-    // If the display was off, wake it after timeout changes.
+    // wake backlight if screen was off (allows runtime timeout reconfiguration)
     if (wasScreenOff) {
         _lcd.backlight();
     }
@@ -92,7 +101,7 @@ void LCDManager::startTask() {
         this,
         1,
         &_taskHandle,
-        0  // Run on core 0
+        0  // core 0 avoids contention with BLE/WiFi on core 1
     );
     Serial.println("LCDManager: Task started on core 0");
 }
@@ -105,11 +114,12 @@ void LCDManager::taskFunc(void* param) {
 void LCDManager::taskLoop() {
     while (true) {
         processQueue();
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(50));  // 20 Hz update rate (sufficient for human-readable display)
     }
 }
 
 void LCDManager::processQueue() {
+    // render only changed lines to minimize I2C writes (expensive on 16x2 display)
     auto renderLines = [this](const char* line1, const char* line2) {
         bool changed = false;
 
@@ -118,6 +128,7 @@ void LCDManager::processQueue() {
             _currentLine1[sizeof(_currentLine1) - 1] = '\0';
             _lcd.setCursor(0, 0);
             _lcd.print(_currentLine1);
+            // clear rest of line (needed when new text is shorter than previous)
             for (size_t i = strlen(_currentLine1); i < _lcd_cols; ++i) {
                 _lcd.print(" ");
             }
@@ -129,6 +140,7 @@ void LCDManager::processQueue() {
             _currentLine2[sizeof(_currentLine2) - 1] = '\0';
             _lcd.setCursor(0, 1);
             _lcd.print(_currentLine2);
+            // clear rest of line
             for (size_t i = strlen(_currentLine2); i < _lcd_cols; ++i) {
                 _lcd.print(" ");
             }
@@ -138,6 +150,7 @@ void LCDManager::processQueue() {
         return changed;
     };
 
+    // wake backlight and reset timeout on screen activity (message arrival)
     auto markScreenActivity = [this]() {
         bool wakeScreen = false;
         taskENTER_CRITICAL(&_stateMux);
@@ -155,6 +168,7 @@ void LCDManager::processQueue() {
 
     ScreenMessage msg;
     if (xQueueReceive(_messageQueue, &msg, 0) == pdTRUE) {
+        // detect new message by comparing all lines + line count
         uint8_t previousActiveLineCount = _activeLineCount;
         char previousLine1[17];
         char previousLine2[17];
@@ -183,7 +197,7 @@ void LCDManager::processQueue() {
 
         bool changed = renderLines(_activeLine1, _activeLine2);
 
-        // Check if this is a new message (any line content or line count changed)
+        // detect actual content change (not just queue noise from identical updates)
         bool isNewMessage = (strcmp(previousLine1, _activeLine1) != 0 ||
                             strcmp(previousLine2, _activeLine2) != 0 ||
                             strcmp(previousLine3, _activeLine3) != 0 ||
@@ -194,6 +208,7 @@ void LCDManager::processQueue() {
             markScreenActivity();
         }
 
+        // notify display logic of what was rendered (for UI animation state)
         if (changed || previousActiveLineCount != _activeLineCount) {
             unsigned long nowMs = millis();
             LCDDisplayMessage displayedMsg;
@@ -212,6 +227,7 @@ void LCDManager::processQueue() {
         }
     }
 
+    // auto-rotate 4-line messages (alternating pages every FOUR_LINE_PAGE_DURATION_MS)
     bool pageSwitched = false;
     if (_activeLineCount == 4 && (millis() - _lastPageSwitchTimeMs >= FOUR_LINE_PAGE_DURATION_MS)) {
         _currentPage = (_currentPage == 0) ? 1 : 0;
@@ -225,10 +241,9 @@ void LCDManager::processQueue() {
         } else {
             renderLines(_activeLine3, _activeLine4);
         }
-        // Don't reset screen timeout during page flips - only when new messages arrive
     }
 
-    // Turn off screen after timeout. A timeout of 0 disables auto-off.
+    // auto-off timer (timeoutMs = 0 disables, screenOff = true means already off)
     uint32_t timeoutMs = 0;
     unsigned long lastChangeTime = 0;
     bool screenOff = false;
@@ -246,28 +261,34 @@ void LCDManager::processQueue() {
     }
 }
 
-// DisplayI interface — delegates to existing updateScreen methods
+// ── DisplayI Interface (compatibility layer) ──────────────────────────────
+
+// show 2 lines on display
 void LCDManager::showText(const char* line1, const char* line2) {
     updateScreen(line1, line2 ? line2 : "");
 }
 
+// show 4 lines with paging
 void LCDManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
     updateScreen(line1, line2, line3, line4);
 }
 
+// keypad prompt with tool number
 void LCDManager::showKeypad(const char* digits) {
     char line1[17];
     snprintf(line1, sizeof(line1), "Tool: T%s", digits && digits[0] ? digits : "_");
     updateScreen(line1, "# Confirm  * Clr");
 }
 
+// write success/failure with format string
 void LCDManager::showWriteResult(bool success, const char* format) {
     char line2[17];
     snprintf(line2, sizeof(line2), "%s", format ? format : "");
     updateScreen(success ? "Write OK!" : "Write Failed!", line2);
 }
 
+// spool details from Spoolman lookup
 void LCDManager::showSpool(const DisplaySpoolData& spool) {
     char line1[17];
     char line2[17];

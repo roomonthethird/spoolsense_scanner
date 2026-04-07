@@ -1,3 +1,7 @@
+// ApplicationManager.cpp — State machine and message queue dispatcher. Coordinates NFC tag
+// detections, print lifecycle, Spoolman sync, HA publishing, keypad input, and display updates.
+// Runs on the main loop (non-blocking, drain QUEUE_SIZE messages per cycle).
+
 #include "ApplicationManager.h"
 #include "UserConfig.h"
 #ifndef NATIVE_TEST
@@ -20,17 +24,24 @@
 #include <cstring>
 
 #ifdef NATIVE_TEST
+// Unit tests: faster delays to reduce test execution time
 static constexpr uint32_t TAG_REMOVED_STATUS_DELAY_MS = 25;
 static constexpr uint32_t TYPE_REMAIN_DISPLAY_DELAY_MS = 25;
 #else
+// Production: 5s delay after tag removed before showing status screen (debounce rapid re-taps)
 static constexpr uint32_t TAG_REMOVED_STATUS_DELAY_MS = 5000;
+// Production: 5s delay for Type/Remain display (user reads the tag info first)
 static constexpr uint32_t TYPE_REMAIN_DISPLAY_DELAY_MS = 5000;
 #endif
+
+// ── Singleton ────────────────────────────────────────────────────────────────
 
 ApplicationManager& ApplicationManager::getInstance() {
     static ApplicationManager instance;
     return instance;
 }
+
+// ── Lifecycle ───────────────────────────────────────────────────────────────
 
 bool ApplicationManager::begin(DisplayI* display) {
     if (messageQueue != nullptr) {
@@ -55,28 +66,32 @@ bool ApplicationManager::sendMessage(const AppMessage& msg, uint32_t waitMs) {
         return false;
     }
 
+    // Non-blocking (waitMs=0) or blocking with timeout; called from ISRs and task context
     TickType_t ticksToWait = (waitMs == 0) ? 0 : pdMS_TO_TICKS(waitMs);
     BaseType_t result = xQueueSend(messageQueue, &msg, ticksToWait);
     return result == pdTRUE;
 }
 
 void ApplicationManager::processMessages() {
+    // Main loop: drain message queue at soft rate limit (QUEUE_SIZE cap prevents starvation)
     if (messageQueue == nullptr) {
         return;
     }
 
     AppMessage msg;
     size_t processed = 0;
+    // Non-blocking receive: drain up to QUEUE_SIZE messages per loop cycle
     while (processed < QUEUE_SIZE && xQueueReceive(messageQueue, &msg, 0) == pdTRUE) {
         handleMessage(msg);
         processed++;
     }
 
+    // Tag removed: delay before showing status screen (debounce rapid re-taps)
     if (pendingStatusAfterTagRemoved) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - tagRemovedAtMs);
         if (elapsedMs >= TAG_REMOVED_STATUS_DELAY_MS) {
-            // Don't overwrite display if user is typing a tool number.
-            // On TFT, keep showing spool data — screen timeout handles dimming.
+            // Don't overwrite display if user is typing a tool number — mask status screen behind keypad
+            // TFT: keep spool data visible, let screen timeout handle dimming after 30s inactivity
 #ifndef NATIVE_TEST
             bool isTft = ConfigurationManager::getInstance().isTftEnabled();
 #else
@@ -89,8 +104,7 @@ void ApplicationManager::processMessages() {
         }
     }
 
-
-    // Check for delayed Type/Remain display
+    // Type/Remain: deferred display (user finishes reading tag info before material name shown)
     if (pendingTypeRemainDisplay && display_) {
         uint32_t elapsedMs = static_cast<uint32_t>(millis() - typeRemainScheduledAtMs);
         if (elapsedMs >= TYPE_REMAIN_DISPLAY_DELAY_MS) {
@@ -118,7 +132,10 @@ void ApplicationManager::processMessages() {
 
 }
 
+// ── Display ─────────────────────────────────────────────────────────────────
+
 void ApplicationManager::showStatusScreen() {
+    // LCD idle screen: 3-indicator status (WiFi, Spoolman, Home Assistant) with ?/+/! symbols
     if (display_ == nullptr) {
         return;
     }
@@ -126,6 +143,7 @@ void ApplicationManager::showStatusScreen() {
 #ifndef NATIVE_TEST
     auto& config = ConfigurationManager::getInstance();
 
+    // WiFi: ? = unconfigured, + = connected, ! = configured but disconnected
     char wifiInd;
     if (strlen(config.getWiFiSSID()) == 0) {
         wifiInd = '?';
@@ -133,6 +151,7 @@ void ApplicationManager::showStatusScreen() {
         wifiInd = (WiFi.status() == WL_CONNECTED) ? '+' : '!';
     }
 
+    // Spoolman: ? = unconfigured, + = configured (assume OK when no URL check available)
     char smInd;
     if (strlen(config.getSpoolmanURL()) == 0) {
         smInd = '?';
@@ -140,6 +159,7 @@ void ApplicationManager::showStatusScreen() {
         smInd = '+';
     }
 
+    // Home Assistant: ? = disabled, + = MQTT connected, ! = enabled but not connected
     char haInd;
     if (!config.getHAEnabled()) {
         haInd = '?';
@@ -149,7 +169,7 @@ void ApplicationManager::showStatusScreen() {
         haInd = HomeAssistantManager::getInstance().isConnected() ? '+' : '!';
     }
 #else
-    // Native tests do not initialize network integrations.
+    // Native tests: all integrations stubbed to ?
     char wifiInd = '?';
     char smInd = '?';
     char haInd = '?';
@@ -163,6 +183,7 @@ void ApplicationManager::showStatusScreen() {
 }
 
 void ApplicationManager::scheduleTypeRemainDisplay(const char* material_name, float kg_remaining) {
+    // Deferred display: show material name + remaining weight after 5s (user reads tag data first)
     strncpy(delayedDisplayMaterialName, material_name, sizeof(delayedDisplayMaterialName) - 1);
     delayedDisplayMaterialName[sizeof(delayedDisplayMaterialName) - 1] = '\0';
     delayedDisplayKgRemaining = kg_remaining;
@@ -170,7 +191,10 @@ void ApplicationManager::scheduleTypeRemainDisplay(const char* material_name, fl
     typeRemainScheduledAtMs = millis();
 }
 
+// ── Message Dispatch ────────────────────────────────────────────────────────
+
 void ApplicationManager::handleMessage(const AppMessage& msg) {
+    // Route each message type to its handler (tag detections, print events, HA commands, etc.)
     switch (msg.type) {
         case AppMessageType::PRINT_STARTED:
             handlePrintStarted(msg);
@@ -230,14 +254,16 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
     }
 }
 
+// ── Print Lifecycle ─────────────────────────────────────────────────────────
+
 void ApplicationManager::handlePrintStarted(const AppMessage& msg) {
     Serial.printf("EVENT: PrintStarted - job_id=%d\n",
         msg.payload.printStarted.job_id);
 
-    // Request fresh spool detection
+    // Trigger fresh NFC spool detection (tag may have changed since last detection)
     NFCManager::getInstance().requestCurrentSpool();
 
-    // Transition to monitoring state
+    // Arm spool tracking: remember starting spool to detect mid-print changes and deduct at end
     currentState = AppState::MONITORING_PRINT;
     currentJobId = msg.payload.printStarted.job_id;
     startingSpoolId[0] = '\0';
@@ -282,6 +308,7 @@ void ApplicationManager::handlePrintEnded(const AppMessage& msg) {
                  "{\"state\":\"idle\",\"last_job_id\":%d,\"filament_used_g\":%.1f",
                  pe.job_id, pe.filament_used_grams);
 
+        // Multi-tool: append per-extruder filament usage (Bambu AMS / toolchanger)
         if (pe.tool_count > 1 && n > 0 && static_cast<size_t>(n) < sizeof(json) - 2) {
             n += snprintf(json + n, sizeof(json) - n, ",\"tool_count\":%d,\"per_tool\":[", pe.tool_count);
             for (int i = 0; i < pe.tool_count && static_cast<size_t>(n) < sizeof(json) - 10; i++) {
@@ -293,6 +320,7 @@ void ApplicationManager::handlePrintEnded(const AppMessage& msg) {
             }
         }
 
+        // Defensive bounds check: snprintf can return ≥ sizeof(json) on truncation
         if (static_cast<size_t>(n) < sizeof(json) - 2) {
             json[n++] = '}';
             json[n] = '\0';
@@ -301,13 +329,16 @@ void ApplicationManager::handlePrintEnded(const AppMessage& msg) {
     }
 }
 
+// ── NFC Tag Detection ────────────────────────────────────────────────────────
+
 void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     Serial.printf("EVENT: SpoolDetected - spool_id=%s, material_type=%u, kg_remaining=%.3f\n",
         msg.payload.spoolDetected.spool_id,
         msg.payload.spoolDetected.material_type,
         msg.payload.spoolDetected.kg_remaining);
 
-    smartTagEnrichment_ = SmartTagEnrichment{};  // clear on new tag
+    // Clear prior Spoolman enrichment data (UID lookup results, temps, etc.)
+    smartTagEnrichment_ = SmartTagEnrichment{};
 
     #ifndef NATIVE_TEST
     if (ConfigurationManager::getInstance().isLedEnabled()) {
@@ -329,25 +360,26 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
     #endif
 
+    // Spool tracking for print deduction: detect mid-print changes (multi-material, failed toolchanger)
     if (currentState == AppState::MONITORING_PRINT) {
         if (startingSpoolId[0] == '\0') {
-            // First spool detected during this print - capture it
+            // First spool read of this print — anchor point for deduction
             strncpy(startingSpoolId, msg.payload.spoolDetected.spool_id, sizeof(startingSpoolId) - 1);
             startingSpoolId[sizeof(startingSpoolId) - 1] = '\0';
             Serial.printf("ApplicationManager: Captured starting spool: %s\n", startingSpoolId);
         } else if (strcmp(startingSpoolId, msg.payload.spoolDetected.spool_id) != 0) {
-            // Different spool detected during print
+            // Different spool detected — flag so finishPrint() doesn't auto-update
             spoolChangedDuringPrint = true;
             Serial.printf("ApplicationManager: WARNING - Spool changed during print! Was %s, now %s\n",
                 startingSpoolId, msg.payload.spoolDetected.spool_id);
         }
     }
 
-    // Clear any pending delayed Type/Remain display (new spool detected)
+    // Cancel pending deferred displays — new tag supersedes them
     pendingTypeRemainDisplay = false;
     pendingStatusAfterTagRemoved = false;
 
-    // Update display with spool info (dedupe by spool_id)
+    // Display: suppress redundant spool updates via spool_id dedup
     if (display_ && strcmp(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id) != 0) {
         strncpy(lastDisplayedSpoolId, msg.payload.spoolDetected.spool_id, sizeof(lastDisplayedSpoolId) - 1);
         lastDisplayedSpoolId[sizeof(lastDisplayedSpoolId) - 1] = '\0';
@@ -376,6 +408,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     // Publish tag state to HA (always, regardless of mode)
     {
         const auto& s = msg.payload.spoolDetected;
+        // Home Assistant MQTT: publish full spool state (material, temps, density, etc.)
         char colorHex[8];
         snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
                  s.primary_color[0], s.primary_color[1], s.primary_color[2]);
@@ -389,16 +422,17 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
                  s.spool_id, s.material_name, s.material_name, colorHex,
                  s.manufacturer, s.kg_remaining * 1000.0f, s.initial_weight_g,
                  s.spoolman_id);
-        // Clamp len to prevent buffer overrun on conditional appends (#79)
+        // Defensive bounds: snprintf can return ≥ sizeof(json) on truncation; must check before appending
         if (len < 0) len = 0;
         if (static_cast<size_t>(len) >= sizeof(json)) len = sizeof(json) - 1;
+        // Optionally append temps/density if non-zero (smart tags may not have all fields)
         if (s.min_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_print_temp\":%d", s.min_print_temp);
         if (s.max_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_print_temp\":%d", s.max_print_temp);
         if (s.min_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_bed_temp\":%d", s.min_bed_temp);
         if (s.max_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_bed_temp\":%d", s.max_bed_temp);
         if (s.density > 0.0f      && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"density\":%.2f", s.density);
         if (s.diameter > 0.0f     && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
-        // Re-clamp before closing brace — snprintf return can exceed buffer
+        // Re-clamp: appends can exceed buffer, so re-check before closing brace
         if (static_cast<size_t>(len) >= sizeof(json) - 1) len = sizeof(json) - 2;
         json[len++] = '}';
         json[len] = '\0';
@@ -408,8 +442,8 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
 
 #ifndef NATIVE_TEST
-    // Trigger Spoolman sync if configured (only in SELF_DIRECTED mode)
-    // Skip if suppress_spoolman_sync is set (e.g., after write_spoolman_spool batch)
+    // Spoolman sync: auto-update remaining weight (SELF_DIRECTED mode only)
+    // Suppress flag can gate this per-tag (e.g., after batch write to Spoolman)
     if (automationMode == AutomationMode::SELF_DIRECTED &&
         SpoolmanManager::getInstance().isConfigured() &&
         !msg.payload.spoolDetected.suppress_spoolman_sync) {
@@ -418,10 +452,12 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
 #endif
 
 #ifndef NATIVE_TEST
-    // Trigger UID lookup for Spoolman enrichment on smart tags (read-only, any mode)
+    // Spoolman UID lookup: enrich smart tag display with database info (temps, density, diameter, etc.)
+    // Read-only path: triggered in any mode, any tag that doesn't have suppress flag set
     if (SpoolmanManager::getInstance().isConfigured() &&
         !msg.payload.spoolDetected.suppress_spoolman_sync) {
         const char* fmt = msg.payload.spoolDetected.tag_format;
+        // Check if this is a "smart tag" (format stores material data on tag, not generic UID)
         bool isSmart = (strcmp(fmt, "TigerTag") == 0 ||
                         strcmp(fmt, "OpenTag3D") == 0 ||
                         strcmp(fmt, "OpenSpool") == 0 ||
@@ -430,12 +466,14 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
             SpoolmanSyncRequest req = {};
             strncpy(req.spool_id, msg.payload.spoolDetected.spool_id,
                     sizeof(req.spool_id) - 1);
-            req.lookup_only = true;
+            req.lookup_only = true;  // Read-only: enrich display, don't write back
             SpoolmanManager::getInstance().enqueueSync(req);
         }
     }
 #endif
 }
+
+// ── Spoolman Integration ────────────────────────────────────────────────────
 
 void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     Serial.printf("EVENT: SpoolUpdated - spool_id=%s, update_type=%u, success=%s\n",
@@ -443,7 +481,7 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
         msg.payload.spoolUpdated.update_type,
         msg.payload.spoolUpdated.success ? "true" : "false");
 
-    // Get current spool state for material name (needed for delayed display)
+    // Fetch current spool material name from NFCManager state (for deferred display)
     char materialName[32] = {0};
     float kgRemaining = msg.payload.spoolUpdated.kg_remaining;
 
@@ -484,9 +522,10 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
                      kgRemaining * 1000.0f);
             if (spoolmanConfigured) {
+                // Show "syncing" — SPOOLMAN_SYNCED event will show final display + schedule Type/Remain
                 display_->showText(line1, "Syncing Spoolman");
-                // Type/Remain will be scheduled after SPOOLMAN_SYNCED
             } else {
+                // No Spoolman: show final result immediately, then deferred Type/Remain
                 char line2[17];
                 snprintf(line2, sizeof(line2), "Remain: %.0fg",
                          kgRemaining * 1000.0f);
@@ -519,10 +558,10 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
         SpoolmanManager::getInstance().invalidateCachedSpoolmanId(msg.payload.spoolUpdated.spool_id);
     }
 
-    // Trigger Spoolman sync after relevant successful tag updates (only in SELF_DIRECTED mode)
+    // After write: sync to Spoolman (SELF_DIRECTED mode) to broadcast updated weight immediately
     if (automationMode == AutomationMode::SELF_DIRECTED &&
         spoolmanConfigured && msg.payload.spoolUpdated.success && shouldSyncAfterUpdate) {
-        // Read current spool state from NFCManager to get full tag data
+        // Reconstruct SpoolDetectedPayload from NFCManager state (has full tag data)
         CurrentSpoolState state;
         if (NFCManager::getInstance().getCurrentSpoolState(state) && state.tag_data_valid) {
             SpoolDetectedPayload fakeSpool;
@@ -548,8 +587,8 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
             fakeSpool.spoolman_id = tagSpoolmanId;
             enqueueSpoolmanSync(fakeSpool);
         } else {
-            // NFC state may be temporarily unavailable right after a write.
-            // Force a re-read so SPOOL_DETECTED re-emits with full tag data and triggers sync.
+            // NFC state transiently unavailable right after write — defer via re-read
+            // When SPOOL_DETECTED re-emits, it will trigger the normal sync path
             Serial.println("ApplicationManager: Spool update sync deferred; requesting fresh spool read");
             NFCManager::getInstance().requestCurrentSpool();
         }
@@ -557,27 +596,32 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
 #endif
 }
 
+// ── Blank/Generic Tags ───────────────────────────────────────────────────────
+
 void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
     Serial.printf("EVENT: BlankTagDetected - spool_id=%s\n",
         msg.payload.blankTag.spool_id);
 #ifndef NATIVE_TEST
     if (ConfigurationManager::getInstance().isLedEnabled()) {
-        ledManager.showOff();          // target = OFF, restored after flash
+        // Flash error: target will be restored by LED task after animation completes
+        ledManager.showOff();
         ledManager.flashParseFailed();
     }
 #endif
 
+    // Cancel status screen timer — new tag event supersedes
     pendingStatusAfterTagRemoved = false;
 
+    // Display: suppress redundant updates via dedup (same blank tag scanned again)
     if (display_ && strcmp(lastDisplayedBlankId, msg.payload.blankTag.spool_id) != 0) {
         strncpy(lastDisplayedBlankId, msg.payload.blankTag.spool_id, sizeof(lastDisplayedBlankId) - 1);
         lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
-        lastDisplayedSpoolId[0] = '\0';  // Clear so valid spool re-displays if swapped
+        lastDisplayedSpoolId[0] = '\0';  // Clear smart tag display — allow re-display if tag swapped
 
         display_->showText4("**** Spool ****", "*** Scanned ***", "Unknown Tag", "Use app to setup");
     }
 
-    // Publish blank tag state to HA
+    // HA MQTT: publish blank tag detected (no tag data present)
     {
         char json[256];
         snprintf(json, sizeof(json),
@@ -598,22 +642,25 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         msg.payload.genericTag.spool_id);
 #ifndef NATIVE_TEST
     if (ConfigurationManager::getInstance().isLedEnabled()) {
-        ledManager.showOff();          // target = OFF, restored after flash
+        // Flash detection: target will be restored by LED task
+        ledManager.showOff();
         ledManager.flashTagDetected();
     }
 #endif
 
+    // Cancel status screen timer — new tag event supersedes
     pendingStatusAfterTagRemoved = false;
 
+    // Display: suppress redundant updates (dedup by UID)
     if (display_ && strcmp(lastDisplayedBlankId, msg.payload.genericTag.spool_id) != 0) {
         strncpy(lastDisplayedBlankId, msg.payload.genericTag.spool_id, sizeof(lastDisplayedBlankId) - 1);
         lastDisplayedBlankId[sizeof(lastDisplayedBlankId) - 1] = '\0';
-        lastDisplayedSpoolId[0] = '\0';
+        lastDisplayedSpoolId[0] = '\0';  // Clear smart tag display — allow re-display if tag swapped
 
         display_->showText4("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
     }
 
-    // Publish generic tag state to HA (pre-lookup)
+    // HA MQTT: publish generic tag state (UID only, no material data yet; awaiting Spoolman lookup)
     {
         char json[256];
         snprintf(json, sizeof(json),
@@ -627,18 +674,19 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
     }
 
-    // Trigger Spoolman UID lookup — result will arrive via SPOOLMAN_SYNCED
+    // Enqueue Spoolman UID lookup (result → SPOOLMAN_SYNCED event)
 #ifndef NATIVE_TEST
     if (SpoolmanManager::getInstance().isConfigured()) {
         SpoolmanSyncRequest req = {};
         strncpy(req.spool_id, msg.payload.genericTag.spool_id, sizeof(req.spool_id) - 1);
-        req.lookup_only = true;
+        req.lookup_only = true;  // Read-only: enrich display, don't write back
         SpoolmanManager::getInstance().enqueueSync(req);
     }
 #endif
 }
 
 void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
+    // Deduction: auto-remove filament weight from tag after print (SELF_DIRECTED mode) or HA-controlled
     if (spoolChangedDuringPrint) {
         Serial.println("ApplicationManager: Spool changed during print - not updating weight");
         if (display_) {
@@ -659,15 +707,15 @@ void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
         Serial.printf("ApplicationManager: Updating spool %s - removing %.2fg\n",
             startingSpoolId, gramsUsed);
 
-        // Only auto-update NFC tag in SELF_DIRECTED mode
+        // Auto-deduction: SELF_DIRECTED mode only (HA controlled mode requires explicit HA command)
         if (automationMode == AutomationMode::SELF_DIRECTED) {
             if (display_) {
                 display_->showText("Updating spool..", "");
             }
 
-            // Enqueue write request with expected spool ID
+            // Enqueue write with expected spool ID validation (prevent wrong tag updates)
             NFCWriteRequest request;
-            request.request_id = millis();  // Simple unique ID
+            request.request_id = NFCManager::getInstance().generateRequestId();
             request.type = NFCWriteType::REMOVE_WEIGHT;
             strncpy(request.expected_spool_id, startingSpoolId, sizeof(request.expected_spool_id) - 1);
             request.expected_spool_id[sizeof(request.expected_spool_id) - 1] = '\0';
@@ -675,6 +723,7 @@ void ApplicationManager::finishPrint(float gramsUsed, bool /*canceled*/) {
 
             NFCManager::getInstance().enqueueWrite(request);
         } else {
+            // HA controlled: wait for explicit HA command (deduction via middleware)
             if (display_) {
                 display_->showText("Print done", "HA controlled");
             }
@@ -698,15 +747,16 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     float kgRemaining = msg.payload.spoolmanSynced.kg_remaining;
 
 #ifndef NATIVE_TEST
+    // Generic tag writeback: populate NFC tag with Spoolman data if lookup succeeded
     if (msg.payload.spoolmanSynced.is_uid_lookup && msg.payload.spoolmanSynced.success) {
-        // Validate the tag is still present and matches the lookup UID before
-        // writing — the tag may have been removed while the Spoolman request was in flight
+        // Safety: verify tag still present and matches UID (may have been removed during Spoolman request)
         CurrentSpoolState spoolState;
         bool tagStillPresent = NFCManager::getInstance().getCurrentSpoolState(spoolState)
                                && spoolState.present
                                && spoolState.kind == TagKind::GenericUidTag
                                && strcmp(spoolState.spool_id, msg.payload.spoolmanSynced.spool_id) == 0;
         if (tagStillPresent) {
+            // Populate writeback fields for WRITE_TAG operation (enqueued in web UI)
             GenericTagSpoolInfo info = {};
             strncpy(info.material_type, msg.payload.spoolmanSynced.material_name, sizeof(info.material_type) - 1);
             strncpy(info.manufacturer, msg.payload.spoolmanSynced.manufacturer, sizeof(info.manufacturer) - 1);
@@ -721,9 +771,10 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     }
 #endif
 
+    // Display handling: differs for generic UID tags (show Spoolman data) vs smart tags (store enrichment)
     if (display_) {
         if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup) {
-            // Determine if the current tag is a generic UID tag or a smart tag
+            // Success on UID lookup: check if tag is generic or smart to decide display strategy
 #ifndef NATIVE_TEST
             CurrentSpoolState state;
             bool gotState = NFCManager::getInstance().getCurrentSpoolState(state);
@@ -732,7 +783,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             bool isGeneric = true;
 #endif
             if (isGeneric) {
-                // Original path: show spool graphic with Spoolman data (tag had no data)
+                // Generic UID tag: no tag data — fill display with Spoolman data
                 DisplaySpoolData spool{};
                 strncpy(spool.brand, msg.payload.spoolmanSynced.manufacturer, sizeof(spool.brand) - 1);
                 strncpy(spool.material, materialName, sizeof(spool.material) - 1);
@@ -741,10 +792,10 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
                 strncpy(spool.colorHex, colorSrc, sizeof(spool.colorHex) - 1);
                 spool.remainingWeight = kgRemaining * 1000.0f;
                 spool.totalWeight = msg.payload.spoolmanSynced.initial_weight_g;
-                spool.tagType = 5;
+                spool.tagType = 5;  // "Spoolman" pseudo-type for display badge
                 display_->showSpool(spool);
             } else {
-                // Smart tag enrichment — store result, don't change display
+                // Smart tag: tag already has data (shown by handleSpoolDetected) — just cache enrichment for web UI
                 smartTagEnrichment_.valid = true;
                 smartTagEnrichment_.spoolman_id = msg.payload.spoolmanSynced.spoolman_id;
                 smartTagEnrichment_.remaining_g = kgRemaining * 1000.0f;
@@ -756,8 +807,9 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
                               smartTagEnrichment_.spoolman_id, smartTagEnrichment_.remaining_g);
             }
         } else if (msg.payload.spoolmanSynced.success) {
-            // Smart tag — don't overwrite, handleSpoolDetected already showed correct data
+            // Success on write update (not UID lookup): smart tag — display already set by handleSpoolDetected
         } else if (msg.payload.spoolmanSynced.is_uid_lookup) {
+            // Lookup failed: generic tag not in Spoolman — show error for generic only
 #ifndef NATIVE_TEST
             CurrentSpoolState state;
             bool gotState = NFCManager::getInstance().getCurrentSpoolState(state);
@@ -768,8 +820,9 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             if (isGeneric) {
                 display_->showText("Generic Tag", "Not in Spoolman");
             }
-            // For smart tags: lookup failed, but tag already showed its own data — no display change needed
+            // Smart tag lookup failed: tag has its own data, already displayed — no change needed
         } else {
+            // Write update failed: show error with remaining weight
             char line1[17];
             snprintf(line1, sizeof(line1), "Updated: %.0fg",
                      kgRemaining * 1000.0f);
@@ -783,7 +836,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     }
 
 #ifndef NATIVE_TEST
-    // Update recent spool sync status
+    // Cache sync result in NFCManager (used by web UI to mark "synced" on reader page)
     if (msg.payload.spoolmanSynced.success && !msg.payload.spoolmanSynced.is_uid_lookup) {
         NFCManager::getInstance().updateRecentSpoolSyncStatus(
             msg.payload.spoolmanSynced.spool_id, true);
@@ -812,29 +865,33 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 #endif
 }
 
+// ── Tag Lifecycle ───────────────────────────────────────────────────────────
+
 void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     Serial.printf("EVENT: TagRemoved - spool_id=%s\n",
         msg.payload.tagRemoved.spool_id);
 
-    // smartTagEnrichment_ NOT cleared here — persists until next tag scan
-    // so the reader page can pick it up even after tag removal
+    // Persist smartTagEnrichment_ for reader page access after tag removal
+    // (enrichment data is read-only, safe to keep across scan cycles)
 
-    // LED intentionally not changed — keep showing last filament color until next scan
+    // LED: keep showing last filament color until next scan (user sees color change on tag swap)
 
-    // Clear displayed spool so next scan re-displays
+    // Clear dedup state so next scan re-displays (even if same spool reinserted)
     lastDisplayedSpoolId[0] = '\0';
     lastDisplayedBlankId[0] = '\0';
 #ifndef NATIVE_TEST
     NFCManager::getInstance().clearGenericTagSpoolInfo();
 #endif
+    // Arm deferred status screen: show status after 5s delay (debounce rapid re-taps)
     tagRemovedAtMs = millis();
     pendingStatusAfterTagRemoved = true;
 
-    // Publish tag removed to HA — retain last spool data with present:false
+    // HA MQTT: publish tag removed state by flipping present:false in cached JSON
     if (lastHAStateJson_[0] != '\0') {
         char removed[512];
         char* pos = strstr(lastHAStateJson_, "\"present\":true");
         if (pos) {
+            // Replace "present":true with "present":false, keep rest of payload
             size_t prefix_len = pos - lastHAStateJson_;
             memcpy(removed, lastHAStateJson_, prefix_len);
             snprintf(removed + prefix_len, sizeof(removed) - prefix_len,
@@ -845,6 +902,7 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
             publishToHA("tag/state", lastHAStateJson_, true);
         }
     } else {
+        // Fallback: no prior state cached, publish blank removal
         publishToHA("tag/state",
                     "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
                     "\"material_type\":\"\","
@@ -855,12 +913,16 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
     }
 }
 
+// ── Home Assistant Integration ───────────────────────────────────────────────
+
 void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
     Serial.printf("EVENT: HAWriteTag - expected_uid=%s\n",
         msg.payload.haWriteTag.expected_uid);
 
-    // Enqueue individual write requests for each field
+    // Batch write: HA sends spool data as atomic update (temperature-gated in HA automation)
     const auto& p = msg.payload.haWriteTag;
+
+    // Enqueue field-by-field write requests: NFCManager batches them and monitors for success
 
     // Material type
     NFCWriteRequest req;
@@ -887,10 +949,10 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
     strncpy(req.data.brand_name, p.manufacturer, sizeof(req.data.brand_name) - 1);
     NFCManager::getInstance().enqueueWrite(req);
 
-    // Remaining weight (set consumed = initial - remaining)
+    // Remaining weight: compute consumed = initial - remaining (tag stores "used", not "remaining")
     if (p.initial_weight_g > 0) {
         float consumed = p.initial_weight_g - p.remaining_g;
-        if (consumed < 0) consumed = 0;
+        if (consumed < 0) consumed = 0;  // Guard against negative (can happen if tag re-wound)
         memset(&req, 0, sizeof(req));
         req.request_id = NFCManager::getInstance().generateRequestId();
         req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
@@ -899,7 +961,7 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
         NFCManager::getInstance().enqueueWrite(req);
     }
 
-    // Spoolman ID
+    // Spoolman ID: optional write (HA may not have looked up ID yet)
     if (p.spoolman_id > 0) {
         memset(&req, 0, sizeof(req));
         req.request_id = NFCManager::getInstance().generateRequestId();
@@ -911,24 +973,28 @@ void ApplicationManager::handleHAWriteTag(const AppMessage& msg) {
 }
 
 void ApplicationManager::handleHAUpdateRemaining(const AppMessage& msg) {
+    // HA-controlled weight update: used when print ends or mid-print deduction is requested
     Serial.printf("EVENT: HAUpdateRemaining - expected_uid=%s, consumed_g=%.2f\n",
         msg.payload.haUpdateRemaining.expected_uid,
         msg.payload.haUpdateRemaining.consumed_g);
 
     const auto& p = msg.payload.haUpdateRemaining;
 
-    // HA task computes consumed = initial - remaining before sending this message.
+    // HA computed consumed = initial - remaining on its side before sending this command
     NFCWriteRequest req;
     memset(&req, 0, sizeof(req));
-    req.request_id = millis();
+    req.request_id = NFCManager::getInstance().generateRequestId();
     req.type = NFCWriteType::SET_CONSUMED_WEIGHT;
     strncpy(req.expected_spool_id, p.expected_uid, sizeof(req.expected_spool_id) - 1);
     req.data.consumed_weight = p.consumed_g;
     NFCManager::getInstance().enqueueWrite(req);
 }
 
+// ── Spoolman Sync Helper ────────────────────────────────────────────────────
+
 #ifndef NATIVE_TEST
 void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) {
+    // Build Spoolman sync request from smart tag data
     SpoolmanSyncRequest req;
     memset(&req, 0, sizeof(req));
     strncpy(req.spool_id, spool.spool_id, sizeof(req.spool_id) - 1);
@@ -938,11 +1004,11 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
     req.remaining_weight_g = spool.kg_remaining * 1000.0f;
     req.initial_weight_g = spool.initial_weight_g;
 
-    // Use tag density if available, otherwise use default
+    // Use tag density if available; fallback to material defaults if missing
     if (spool.density > 0.0f) {
         req.density = spool.density;
     } else {
-        // Default densities by material
+        // Conservative defaults: PLA/PETG > ABS (accounts for different filament shrinkage)
         switch (spool.material_type) {
             case OPT_MATERIAL_TYPE_PLA:  req.density = 1.24f; break;
             case OPT_MATERIAL_TYPE_PETG: req.density = 1.27f; break;
@@ -951,11 +1017,12 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
         }
     }
 
-    // Use tag diameter if available, otherwise default 1.75mm
+    // Use tag diameter if available, otherwise default 1.75mm (standard filament)
     req.diameter = (spool.diameter > 0.0f) ? spool.diameter : 1.75f;
 
     req.spoolman_id = spool.spoolman_id;
 
+    // Optional tag fields (may be 0/empty if not stored on tag)
     strncpy(req.material_name, spool.material_name, sizeof(req.material_name) - 1);
     req.min_print_temp = spool.min_print_temp;
     req.max_print_temp = spool.max_print_temp;
@@ -971,7 +1038,10 @@ void ApplicationManager::enqueueSpoolmanSync(const SpoolDetectedPayload& spool) 
 }
 #endif
 
+// ── Printer Integration ──────────────────────────────────────────────────────
+
 void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
+    // Printer mismatch alerts: filament name/ID, temperature exceedance (from middleware blueprints)
     const auto& w = msg.payload.printerWarning;
     Serial.printf("EVENT: PrinterWarning type=%s expected=%s actual=%s\n",
                   w.warning_type, w.expected, w.actual);
@@ -995,7 +1065,7 @@ void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
     }
 #endif
 
-    // Publish to HA
+    // Publish to HA for automation / alerting
     char json[192];
     if (strcmp(w.warning_type, "filament_mismatch") == 0) {
         snprintf(json, sizeof(json),
@@ -1009,7 +1079,10 @@ void ApplicationManager::handlePrinterWarning(const AppMessage& msg) {
     publishToHA("printer/warning", json, false);
 }
 
+// ── MQTT Publish Helper ──────────────────────────────────────────────────────
+
 void ApplicationManager::publishToHA(const char* topicSuffix, const char* payload, bool retained) {
+    // HA MQTT: enqueue publish request (non-blocking; HomeAssistantManager handles batching)
 #ifndef NATIVE_TEST
     auto& ha = HomeAssistantManager::getInstance();
     if (!ha.isConfigured()) return;
@@ -1021,7 +1094,7 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
     HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
     snprintf(req.topic, sizeof(req.topic), "spoolsense/%s/%s", deviceId, topicSuffix);
     strncpy(req.payload, payload, sizeof(req.payload) - 1);
-    req.retained = retained;
+    req.retained = retained;  // Retained: broker keeps last value for new subscribers
 
     ha.enqueuePublish(req);
 #else
@@ -1034,10 +1107,12 @@ void ApplicationManager::publishToHA(const char* topicSuffix, const char* payloa
 // ── Keypad handlers ─────────────────────────────────────────────────────────
 
 void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
+    // Keypad input: accumulate tool number digits (0-9)
     char digit = msg.payload.keypadDigit.digit;
     Serial.printf("EVENT: KeypadDigit - '%c'\n", digit);
-    pendingKeypadPrompt = false;  // Cancel prompt — user is already typing
+    pendingKeypadPrompt = false;  // User is typing — suppress status screen prompt
 
+    // Append digit to buffer (capped at 16 chars)
     if (keypadBufferLen_ < sizeof(keypadBuffer_) - 1) {
         keypadBuffer_[keypadBufferLen_++] = digit;
         keypadBuffer_[keypadBufferLen_] = '\0';
@@ -1049,6 +1124,7 @@ void ApplicationManager::handleKeypadDigit(const AppMessage& msg) {
 }
 
 void ApplicationManager::handleKeypadConfirm() {
+    // Keypad confirm (#): send ASSIGN_SPOOL gcode to Moonraker with accumulated tool number
     Serial.println("EVENT: KeypadConfirm");
 
     if (keypadBufferLen_ == 0) {
@@ -1057,7 +1133,7 @@ void ApplicationManager::handleKeypadConfirm() {
     }
 
 #ifndef NATIVE_TEST
-    // Check if a spool was recently scanned (doesn't need to still be on the reader)
+    // Safety: require a recent spool scan (doesn't need to be currently present on reader)
     CurrentSpoolState state;
     bool hasScannedSpool = NFCManager::getInstance().getCurrentSpoolState(state) &&
                            (state.present || state.spool_id[0] != '\0');
@@ -1069,6 +1145,7 @@ void ApplicationManager::handleKeypadConfirm() {
     }
 #endif
 
+    // Send ASSIGN_SPOOL to Moonraker (HTTP mutex acquired in sendAssignSpool)
     if (sendAssignSpool(keypadBuffer_)) {
         if (display_) {
             char line[17];
@@ -1077,11 +1154,13 @@ void ApplicationManager::handleKeypadConfirm() {
         }
     }
 
+    // Clear buffer after completion
     keypadBuffer_[0] = '\0';
     keypadBufferLen_ = 0;
 }
 
 void ApplicationManager::handleKeypadCancel() {
+    // Keypad cancel (*): clear accumulated digits
     Serial.println("EVENT: KeypadCancel");
     keypadBuffer_[0] = '\0';
     keypadBufferLen_ = 0;
@@ -1092,8 +1171,9 @@ void ApplicationManager::handleKeypadCancel() {
 }
 
 bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
+    // Send ASSIGN_SPOOL TOOL=Tn gcode to Moonraker (Klipper-AFC integration)
 #ifndef NATIVE_TEST
-    // Validate tool number is digits-only (prevent GCode injection)
+    // Input validation: tool number must be digits-only (prevent GCode injection)
     for (const char* p = toolNumber; *p; p++) {
         if (*p < '0' || *p > '9') {
             Serial.printf("ApplicationManager: Invalid tool number '%s'\n", toolNumber);
@@ -1101,6 +1181,7 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
         }
     }
 
+    // Require Moonraker URL (cannot send GCode without it)
     const char* moonrakerUrl = ConfigurationManager::getInstance().getMoonrakerURL();
     if (!moonrakerUrl || moonrakerUrl[0] == '\0') {
         Serial.println("ApplicationManager: Moonraker URL not configured — cannot assign spool");
@@ -1108,6 +1189,7 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
         return false;
     }
 
+    // Serialize HTTP access: prevent concurrent requests from Spoolman/HA/Printer tasks
     extern SemaphoreHandle_t g_httpMutex;
     if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(3000)) != pdTRUE) {
         Serial.println("ApplicationManager: Could not acquire HTTP mutex for ASSIGN_SPOOL");
@@ -1115,6 +1197,7 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
         return false;
     }
 
+    // Moonraker /printer/gcode/script endpoint (runs arbitrary Klipper GCode)
     char url[192];
     snprintf(url, sizeof(url), "%s/printer/gcode/script", moonrakerUrl);
 
@@ -1126,13 +1209,14 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
 
     WiFiClient client;
     HTTPClient http;
-    http.setConnectTimeout(1000);
-    http.setTimeout(2000);
+    http.setConnectTimeout(1000);  // 1s timeout: WiFi may be degraded
+    http.setTimeout(2000);          // 2s response timeout
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     int code = http.POST(postBody);
     http.end();
 
+    // Release mutex for other HTTP clients
     if (g_httpMutex) xSemaphoreGive(g_httpMutex);
 
     Serial.printf("ApplicationManager: ASSIGN_SPOOL T%s — HTTP %d\n", toolNumber, code);
@@ -1144,6 +1228,6 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
     return true;
 #else
     (void)toolNumber;
-    return true;
+    return true;  // Native test: pretend success
 #endif
 }

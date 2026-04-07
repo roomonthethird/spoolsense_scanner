@@ -5,19 +5,23 @@
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 
+// PrusaLinkStrategy — fetches job metadata, filament per-tool data, temps from
+// Prusa printers via /api/v1 (status, info, job endpoints). Integrates with
+// PrinterManager for pre-print filament/temperature validation.
+
 static constexpr size_t URL_BUF = 192;
 
+// guard against buffer overflows and silent truncation
 static bool buildUrl(char* out, size_t sz, const char* base, const char* path) {
     int n = snprintf(out, sz, "%s%s", base, path);
     return n > 0 && static_cast<size_t>(n) < sz;
 }
 
-// ---------------------------------------------------------------------------
-// update() — called each poll cycle
-// ---------------------------------------------------------------------------
+// ── API Polling ────────────────────────────────────────────────────────────
 
+// fetch job state, progress, filament metadata; serializes HTTP calls via mutex
 void PrusaLinkStrategy::update() {
-    // Reset transient state
+    // discard previous state (caller reads live fields from strategy object)
     connected_ = false;
     hasJob_ = false;
     jobId_ = -1;
@@ -28,6 +32,7 @@ void PrusaLinkStrategy::update() {
     expectedNozzleTemp_ = 0.0f;
     expectedBedTemp_ = 0.0f;
 
+    // prevent concurrent HTTP requests (shared with other managers)
     bool mutexHeld = false;
     if (httpMutex_) {
         if (xSemaphoreTake(httpMutex_, pdMS_TO_TICKS(10000)) != pdTRUE) {
@@ -37,11 +42,12 @@ void PrusaLinkStrategy::update() {
         mutexHeld = true;
     }
 
-    // Fetch status first. Once reachable, fetch static info once.
+    // status is fastest; once connected, fetch static info once per session
     if (fetchStatus()) {
         if (!infoFetched_) {
             fetchInfo();
         }
+        // only fetch job details if status indicated active job
         if (hasJob_) {
             fetchJob();
         }
@@ -52,10 +58,7 @@ void PrusaLinkStrategy::update() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// fetchStatus() — GET /api/v1/status
-// ---------------------------------------------------------------------------
-
+// lightweight endpoint to detect active job and progress; 10s per PrinterManager poll
 bool PrusaLinkStrategy::fetchStatus() {
     auto& cfg = ConfigurationManager::getInstance();
     const char* baseUrl = cfg.getPrusaLinkURL();
@@ -67,7 +70,7 @@ bool PrusaLinkStrategy::fetchStatus() {
     if (!buildUrl(url, sizeof(url), baseUrl, "/api/v1/status")) return false;
 
     HTTPClient http;
-    http.useHTTP10(true);
+    http.useHTTP10(true);    // avoid Connection: keep-alive overhead
     http.setReuse(false);
     http.setTimeout(8000);
     http.begin(url);
@@ -84,7 +87,7 @@ bool PrusaLinkStrategy::fetchStatus() {
 
     connected_ = true;
 
-    // Parse with filter — only extract job.id, job.progress, printer temps
+    // filter reduces memory footprint (esp32 heap pressure); omit unnecessary fields
     StaticJsonDocument<64> filter;
     filter["job"]["id"] = true;
     filter["job"]["progress"] = true;
@@ -113,10 +116,7 @@ bool PrusaLinkStrategy::fetchStatus() {
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// fetchInfo() — GET /api/v1/info (called once on first successful connection)
-// ---------------------------------------------------------------------------
-
+// static printer capabilities (MMU, nozzle size) — fetched once per session
 void PrusaLinkStrategy::fetchInfo() {
     auto& cfg = ConfigurationManager::getInstance();
     const char* baseUrl = cfg.getPrusaLinkURL();
@@ -135,7 +135,7 @@ void PrusaLinkStrategy::fetchInfo() {
     int code = http.GET();
     if (code != 200) {
         http.end();
-        return;  // will retry next cycle
+        return;  // retry next poll cycle
     }
 
     StaticJsonDocument<64> filter;
@@ -159,10 +159,7 @@ void PrusaLinkStrategy::fetchInfo() {
     infoFetched_ = true;
 }
 
-// ---------------------------------------------------------------------------
-// fetchJob() — GET /api/v1/job
-// ---------------------------------------------------------------------------
-
+// gcode metadata: filament usage, types, temps (per-tool for XL printers)
 bool PrusaLinkStrategy::fetchJob() {
     auto& cfg = ConfigurationManager::getInstance();
     const char* baseUrl = cfg.getPrusaLinkURL();
@@ -180,7 +177,7 @@ bool PrusaLinkStrategy::fetchJob() {
 
     int code = http.GET();
     if (code == 204) {
-        // No active job
+        // 204 means no active job (expected if status detected hasJob_ = true but job ended mid-request)
         http.end();
         return true;
     }
@@ -190,7 +187,7 @@ bool PrusaLinkStrategy::fetchJob() {
         return false;
     }
 
-    // Parse with filter — extract state, file.meta fields + per-tool arrays
+    // filter reduces memory; omit unnecessary metadata
     StaticJsonDocument<256> filter;
     filter["state"] = true;
     filter["file"]["meta"]["filament used [g]"] = true;
@@ -210,17 +207,16 @@ bool PrusaLinkStrategy::fetchJob() {
         return false;
     }
 
-    // Job state
     const char* state = doc["state"] | "";
     strncpy(jobState_, state, sizeof(jobState_) - 1);
     jobState_[sizeof(jobState_) - 1] = '\0';
 
-    // Filament usage from gcode metadata
+    // extract gcode metadata for PrinterManager filament/temperature validation
     JsonObject meta = doc["file"]["meta"];
     if (!meta.isNull()) {
         totalFilamentG_ = meta["filament used [g]"] | 0.0f;
 
-        // Pre-print validation data
+        // filament type string from slicer for pre-print mismatch check
         const char* filType = meta["filament_type"] | "";
         strncpy(expectedFilamentType_, filType, sizeof(expectedFilamentType_) - 1);
         expectedFilamentType_[sizeof(expectedFilamentType_) - 1] = '\0';
@@ -228,7 +224,7 @@ bool PrusaLinkStrategy::fetchJob() {
         expectedNozzleTemp_ = meta["temperature"] | 0.0f;
         expectedBedTemp_ = meta["bed_temperature"] | 0.0f;
 
-        // Per-tool arrays (XL multi-head)
+        // per-tool arrays for multi-head printers (Prusa XL)
         toolCount_ = 0;
         JsonArray filPerTool = meta["filament used [g] per tool"];
         if (!filPerTool.isNull()) {
@@ -265,10 +261,7 @@ bool PrusaLinkStrategy::fetchJob() {
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// fetchDeferredFilament() — retry job API after print ends
-// ---------------------------------------------------------------------------
-
+// retry job API after print ends (gcode metadata sometimes arrives after completion)
 float PrusaLinkStrategy::fetchDeferredFilament(int expectedJobId) {
     if (expectedJobId < 0) return 0.0f;
 
@@ -278,14 +271,13 @@ float PrusaLinkStrategy::fetchDeferredFilament(int expectedJobId) {
 
     float result = 0.0f;
 
-    // Fix #4: Acquire/release mutex per attempt so we don't block HTTP
-    // traffic during backoff delays
+    // release mutex between attempts to allow other HTTP users to proceed during backoff
     for (int attempt = 1; attempt <= 3; attempt++) {
         if (attempt > 1) {
             vTaskDelay(pdMS_TO_TICKS(attempt * 1000));
         }
 
-        // Acquire mutex for this attempt only
+        // acquire mutex only for this HTTP call, not for entire attempt sequence
         if (httpMutex_ != nullptr) {
             if (xSemaphoreTake(httpMutex_, pdMS_TO_TICKS(10000)) != pdTRUE) {
                 continue;
@@ -321,7 +313,7 @@ float PrusaLinkStrategy::fetchDeferredFilament(int expectedJobId) {
         }
         http.end();
 
-        // Release mutex before backoff delay
+        // release mutex before backoff delay (allow concurrent HTTP requests)
         if (httpMutex_ != nullptr) xSemaphoreGive(httpMutex_);
     }
     return result;

@@ -1,3 +1,7 @@
+// LEDManager — WS2812B RGB(W) LED control with task-based animation and breathing.
+// Board-specific color order: DevKitC uses GRB, standard S3 uses RGB, others use GRBW.
+// Synchronous methods (showBooting, showReady, etc.) for pre-task setup; async state setters queue to FreeRTOS task.
+
 #include "LEDManager.h"
 #include "UserConfig.h"
 
@@ -13,17 +17,21 @@
 #endif
 
 #if defined(BOARD_S3_DEVKITC)
+// DevKitC WS2812B requires GRB byte order instead of standard RGB
 LEDManager::LEDManager()
     : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRB + NEO_KHZ800) {}
 #elif defined(BOARD_ESP32_S3)
+// Standard ESP32-S3 uses RGB byte order
 LEDManager::LEDManager()
     : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_RGB + NEO_KHZ800) {}
 #else
+// Generic ESP32 uses RGBW (warm white channel)
 LEDManager::LEDManager()
     : _initialized(false), _taskStarted(false), _pixel(1, 0, NEO_GRBW + NEO_KHZ800) {}
 #endif
 
 void LEDManager::begin(uint8_t pin) {
+    // Reconfirm color order in case of pin conflicts that forced constructor re-init
 #if defined(BOARD_S3_DEVKITC)
     _pixel.updateType(NEO_GRB + NEO_KHZ800);
 #elif defined(BOARD_ESP32_S3)
@@ -33,7 +41,7 @@ void LEDManager::begin(uint8_t pin) {
 #endif
     _pixel.setPin(pin);
     _pixel.begin();
-    _pixel.setBrightness(64);
+    _pixel.setBrightness(64);  // safe default to avoid overcurrent on 5V rail
     _pixel.show();
     _initialized = true;
 }
@@ -43,6 +51,7 @@ void LEDManager::startTask() {
 #ifndef NATIVE_TEST
     _mutex = xSemaphoreCreateMutex();
     if (_mutex == nullptr) return;
+    // Core 1 for animation task — keeps UI responsive on Core 0
     xTaskCreatePinnedToCore(ledTaskFunc, "LEDTask", 2048, this, 1, &_taskHandle, 1);
     _taskStarted = true;
 #endif
@@ -55,9 +64,11 @@ void LEDManager::startTask() {
 void LEDManager::showBooting() {
     if (!_initialized) return;
 #if defined(BOARD_ESP32_S3)
-    _pixel.setPixelColor(0, _pixel.Color(255, 255, 255));  // RGB white
+    // White via RGB channels
+    _pixel.setPixelColor(0, _pixel.Color(255, 255, 255));
 #else
-    _pixel.setPixelColor(0, _pixel.Color(0, 0, 0, 255));   // RGBW white via W channel
+    // White via W channel (more efficient, avoids heating RGB)
+    _pixel.setPixelColor(0, _pixel.Color(0, 0, 0, 255));
 #endif
     _pixel.show();
 }
@@ -76,7 +87,7 @@ void LEDManager::showWifiFailed() {
 
 void LEDManager::showReady() {
     if (!_initialized) return;
-    _pixel.setPixelColor(0, _pixel.Color(0, 0, 255, 0));  // blue
+    _pixel.setPixelColor(0, _pixel.Color(0, 0, 255, 0));  // blue (system ready for scanning)
     _pixel.show();
 }
 
@@ -89,9 +100,8 @@ void LEDManager::showOff() {
     setTarget(LEDMode::OFF, 0, 0, 0);
 }
 
-// Black (0,0,0) is indistinguishable from LED off — substitute dim white
-// so the user can tell a spool is scanned. The scan flash pattern provides
-// scan feedback; the steady color should always be visible.
+// Black (0,0,0) spool color is visually identical to LED off — users can't tell
+// if spool is loaded. Substitute dim gray so the color state is always visible.
 static void substituteBlack(uint8_t& r, uint8_t& g, uint8_t& b) {
     if (r == 0 && g == 0 && b == 0) { r = 0x33; g = 0x33; b = 0x33; }
 }
@@ -167,6 +177,7 @@ void LEDManager::setPixelOff() {
 void LEDManager::setTarget(LEDMode mode, uint8_t r, uint8_t g, uint8_t b) {
 #ifndef NATIVE_TEST
     if (_taskStarted && _mutex) {
+        // Queue state update to animation task via mutex + notify
         xSemaphoreTake(_mutex, portMAX_DELAY);
         _target.mode = mode;
         _target.r = r;
@@ -177,7 +188,7 @@ void LEDManager::setTarget(LEDMode mode, uint8_t r, uint8_t g, uint8_t b) {
         return;
     }
 #endif
-    // Pre-task: write directly
+    // Pre-task: no task running yet, apply directly
     _target.mode = mode;
     _target.r = r;
     _target.g = g;
@@ -192,6 +203,7 @@ void LEDManager::setTarget(LEDMode mode, uint8_t r, uint8_t g, uint8_t b) {
 void LEDManager::requestFlash(FlashType type) {
 #ifndef NATIVE_TEST
     if (_taskStarted && _mutex) {
+        // Queue flash request to animation task (task will run it then restore target state)
         xSemaphoreTake(_mutex, portMAX_DELAY);
         _flashReq.type = type;
         _flashReq.pending = true;
@@ -200,7 +212,7 @@ void LEDManager::requestFlash(FlashType type) {
         return;
     }
 #endif
-    // Pre-task fallback: blocking flash
+    // Pre-task: no task running yet, run flash synchronously (blocking)
     switch (type) {
         case FlashType::TAG_DETECTED:
             for (int i = 0; i < 3; i++) {
@@ -292,10 +304,10 @@ void LEDManager::ledTaskLoop() {
             xSemaphoreGive(_mutex);
         }
 
-        // Block until notification or 10ms tick (for breathing animation)
+        // Wait for setTarget/requestFlash notification OR 10ms tick for breathing animation
         ulTaskNotifyTake(pdTRUE, isBreathing ? pdMS_TO_TICKS(10) : portMAX_DELAY);
 
-        // Read state
+        // Snapshot state from shared members (protected by mutex)
         xSemaphoreTake(_mutex, portMAX_DELAY);
         bool hasFlash = _flashReq.pending;
         FlashType flashType = _flashReq.type;
@@ -303,7 +315,7 @@ void LEDManager::ledTaskLoop() {
         Target target = _target;
         xSemaphoreGive(_mutex);
 
-        // Execute flash first, then re-read target
+        // Flash plays immediately, then we restore the target state
         if (hasFlash) {
             runFlash(flashType);
             xSemaphoreTake(_mutex, portMAX_DELAY);
@@ -311,7 +323,7 @@ void LEDManager::ledTaskLoop() {
             xSemaphoreGive(_mutex);
         }
 
-        // Apply target state
+        // Apply target state (or next frame of breathing animation)
         switch (target.mode) {
             case LEDMode::OFF:
                 setPixelOff();
@@ -320,11 +332,11 @@ void LEDManager::ledTaskLoop() {
                 setPixelColor(target.r, target.g, target.b);
                 break;
             case LEDMode::BREATHING: {
-                // Advance one step of the sine-wave breath
-                // 200 steps × 10ms wait = 2s per full breath cycle
+                // Sine-wave breathing: 200 steps × 10ms = 2s full cycle
+                // t² curve gives faster fade-in, slower fade-out (feels more natural)
                 static constexpr uint16_t BREATH_STEPS = 200;
                 float t = sinf((float)_breathStep / (float)BREATH_STEPS * (float)M_PI);
-                float brightness = t * t;  // t² for smoother fade shape
+                float brightness = t * t;
                 setPixelColor(
                     (uint8_t)(target.r * brightness),
                     (uint8_t)(target.g * brightness),

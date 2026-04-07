@@ -1,3 +1,7 @@
+// HomeAssistantManager — MQTT discovery and command handler for Home Assistant integration.
+// Publishes spool state (UID, color, remaining weight) and subscribes to HA commands
+// (write_tag, update_remaining). FreeRTOS task maintains MQTT connection with exponential backoff.
+
 #include "HomeAssistantManager.h"
 #include "ApplicationManager.h"
 #include "ConfigurationManager.h"
@@ -8,7 +12,7 @@
   #include <Arduino.h>
   #include <WiFi.h>
   #include <json.hpp>
-  
+
   #include <esp_heap_caps.h>
   #include "NFCManager.h"
   #include "NFCTypes.h"
@@ -166,6 +170,7 @@ bool HomeAssistantManager::isConnected() const {
 }
 
 bool HomeAssistantManager::begin() {
+    // Publish queue decouples ApplicationManager requests from MQTT task timing
     publishQueue = xQueueCreate(QUEUE_SIZE, sizeof(HAPublishRequest));
     if (publishQueue == nullptr) {
         Serial.println("HomeAssistantManager: Failed to create publish queue");
@@ -173,6 +178,7 @@ bool HomeAssistantManager::begin() {
     }
 #ifndef NATIVE_TEST
     if (taskControlMutex == nullptr) {
+        // Mutex protects task lifecycle (startTask/stopTask race conditions)
         taskControlMutex = xSemaphoreCreateMutex();
         if (taskControlMutex == nullptr) {
             Serial.println("HomeAssistantManager: Failed to create task control mutex");
@@ -181,6 +187,7 @@ bool HomeAssistantManager::begin() {
     }
 #endif
 
+    // Device ID from MAC address suffix — immutable per device, used for MQTT client ID and topic prefix
     getDeviceId(deviceId_, sizeof(deviceId_));
     Serial.printf("HomeAssistantManager: Initialized (device_id=%s)\n", deviceId_);
     return true;
@@ -233,12 +240,14 @@ void HomeAssistantManager::startTask() {
         return;
     }
 
+    // Reset task state for clean (re)start — exponential backoff timer and last reconnect attempt
     stopRequested_ = false;
     connected_ = false;
     lastMqttState_ = -1;
-    reconnectDelay_ = 1000;
+    reconnectDelay_ = 1000;  // initial backoff, doubles on each failure
     lastReconnectAttempt_ = 0;
 
+    // Core 1 for MQTT task — keeps main WiFi/NFC/application logic on Core 0
     BaseType_t rc = xTaskCreatePinnedToCore(
         taskFunc,
         "HATask",
@@ -246,7 +255,7 @@ void HomeAssistantManager::startTask() {
         this,
         TASK_PRIORITY,
         &taskHandle,
-        1  // Core 1 (align with other network/application tasks)
+        1
     );
     if (rc != pdPASS || taskHandle == nullptr) {
         size_t free8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -335,6 +344,7 @@ void HomeAssistantManager::taskLoop() {
                   xPortGetCoreID(), static_cast<int>(WiFi.status()));
     auto& config = ConfigurationManager::getInstance();
 
+    // One-time MQTT client config (buffer size, callback for incoming commands)
     mqttClient.setClient(wifiClient);
     mqttClient.setServer(config.getHAMqttHost(), config.getHAMqttPort());
     mqttClient.setBufferSize(1024);
@@ -350,29 +360,19 @@ void HomeAssistantManager::taskLoop() {
             break;
         }
 
-        
         uint32_t now = millis();
 
-        /*
-        if (now - lastHeartbeatMs >= 5000) {
-            lastHeartbeatMs = now;
-            Serial.printf("HomeAssistantManager: heartbeat connected=%s wifi=%d mqtt_state=%d stack_hw=%u\n",
-                          mqttClient.connected() ? "true" : "false",
-                          static_cast<int>(WiFi.status()),
-                          mqttClient.state(),
-                          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
-        }
-        */
-
+        // Main loop: reconnect if needed, drain publish queue, process MQTT
         if (!mqttClient.connected()) {
             if (now - lastReconnectAttempt_ >= reconnectDelay_) {
                 lastReconnectAttempt_ = now;
                 if (reconnect()) {
                     connected_ = true;
                     lastMqttState_ = 0;
-                    reconnectDelay_ = 1000; // Reset backoff
+                    reconnectDelay_ = 1000;  // reset exponential backoff on success
                     Serial.println("HomeAssistantManager: MQTT connected, publishing discovery/state");
-                    lastDiscoveryUid_[0] = '\0';  // Reset dedupe so reconnect publishes fresh
+                    // Reset discovery deduplication so reconnect publishes fresh entities
+                    lastDiscoveryUid_[0] = '\0';
                     publishDiscovery();
                     subscribeCommands();
                     publishAvailability("online");
@@ -380,7 +380,7 @@ void HomeAssistantManager::taskLoop() {
                     Serial.println("HomeAssistantManager: Connected to MQTT broker");
                 } else {
                     connected_ = false;
-                    // Exponential backoff
+                    // Exponential backoff: 1s → 2s → 4s → ... up to MAX (avoid broker hammering)
                     reconnectDelay_ = (reconnectDelay_ < MAX_RECONNECT_DELAY)
                         ? reconnectDelay_ * 2 : MAX_RECONNECT_DELAY;
                     lastMqttState_ = mqttClient.state();
@@ -390,7 +390,7 @@ void HomeAssistantManager::taskLoop() {
             }
         }
 
-        // Drain publish queue
+        // Process queued publishes from ApplicationManager (tag scans, writes, etc.)
         HAPublishRequest req;
         while (xQueueReceive(publishQueue, &req, 0) == pdTRUE) {
             if (mqttClient.connected()) {
@@ -400,9 +400,9 @@ void HomeAssistantManager::taskLoop() {
                 snprintf(tagStateTopic, sizeof(tagStateTopic), "spoolsense/%s/tag/state", deviceId_);
                 snprintf(tagAttrsTopic, sizeof(tagAttrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
                 if (strcmp(req.topic, tagStateTopic) == 0) {
-                    // Keep spool attributes aligned with the state payload source.
+                    // Mirror state payload to attributes topic for unified spool context in HA
                     mqttClient.publish(tagAttrsTopic, req.payload, req.retained);
-                    // Only re-publish discovery when UID changes (command topics include UID).
+                    // Republish discovery only on UID change (command topics include UID, so discovery topics must too)
                     CurrentSpoolState state;
                     char currentUid[17] = {0};
                     if (NFCManager::getInstance().getCurrentSpoolState(state) &&
@@ -418,9 +418,11 @@ void HomeAssistantManager::taskLoop() {
         }
 
         if (mqttClient.connected()) {
+            // Process incoming MQTT messages (commands from HA)
             mqttClient.loop();
         }
 
+        // Main loop iteration: allow other tasks to run
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
@@ -446,21 +448,23 @@ void HomeAssistantManager::taskLoop() {
 bool HomeAssistantManager::reconnect() {
     auto& config = ConfigurationManager::getInstance();
 
-    // Build client ID
+    // Client ID is unique per device (MAC-based) for broker deduplication
     char clientId[32];
     snprintf(clientId, sizeof(clientId), "spoolsense_%s", deviceId_);
 
-    // Build LWT topic
+    // Last-Will-Testament: publish "offline" if client drops unexpectedly
     char lwtTopic[64];
     snprintf(lwtTopic, sizeof(lwtTopic), "spoolsense/%s/availability", deviceId_);
 
     bool result;
     if (strlen(config.getHAMqttUser()) > 0) {
+        // Authenticated connection (username/password or cert-based)
         result = mqttClient.connect(clientId,
                                      config.getHAMqttUser(),
                                      config.getHAMqttPass(),
                                      lwtTopic, 0, true, "offline");
     } else {
+        // Anonymous connection (open broker)
         result = mqttClient.connect(clientId, lwtTopic, 0, true, "offline");
     }
 
@@ -489,9 +493,10 @@ void HomeAssistantManager::subscribeCommands() {
 }
 
 void HomeAssistantManager::publishDiscovery() {
-    // Discovery payloads use abbreviated HA keys to fit in 768-byte buffer.
+    // Discovery payloads use abbreviated HA keys (~) to fit in 768-byte buffer.
     char baseTopic[48];
     snprintf(baseTopic, sizeof(baseTopic), "spoolsense/%s", deviceId_);
+    // Include current UID in discovery so write commands are automatically scoped to the loaded spool
     char currentUid[64] = {0};
     CurrentSpoolState spoolState;
     if (NFCManager::getInstance().getCurrentSpoolState(spoolState) &&
@@ -502,11 +507,13 @@ void HomeAssistantManager::publishDiscovery() {
     char updateRemainingCmdTopic[128];
     char writeTagCmdTopic[128];
     if (currentUid[0] != '\0') {
+        // Command topics include UID: prevents accidental commands to wrong tag on multi-scanner setup
         snprintf(updateRemainingCmdTopic, sizeof(updateRemainingCmdTopic),
                  "~/cmd/update_remaining/%s", currentUid);
         snprintf(writeTagCmdTopic, sizeof(writeTagCmdTopic),
                  "~/cmd/write_tag/%s", currentUid);
     } else {
+        // No spool loaded: generic command topics (fallback)
         snprintf(updateRemainingCmdTopic, sizeof(updateRemainingCmdTopic),
                  "~/cmd/update_remaining");
         snprintf(writeTagCmdTopic, sizeof(writeTagCmdTopic),
@@ -593,7 +600,7 @@ void HomeAssistantManager::publishDiscovery() {
         publishDiscoveryPayload("text", objectId, payload);
     };
 
-    // Single spool sensor with spool fields represented as attributes.
+    // Spool sensor: presence + tag metadata (color, weight, material) as attributes
     {
         char payload[768];
         int written = snprintf(payload, sizeof(payload),
@@ -633,9 +640,7 @@ void HomeAssistantManager::publishDiscovery() {
         }
     }
 
-    // Legacy openprinttag_ entity cleanup removed — no users on the old naming.
-
-    // UID is carried in command topic; payload contains only values.
+    // UID is encoded in topic path (not payload) for clean command routing and deduplication
     char updateRemainingCmdTpl[128];
     snprintf(updateRemainingCmdTpl, sizeof(updateRemainingCmdTpl),
              "{\\\"remaining_g\\\": {{ value | float }}}");
@@ -679,6 +684,7 @@ void HomeAssistantManager::publishDiscovery() {
 void HomeAssistantManager::publishCurrentTagState() {
     CurrentSpoolState& spool = spoolScratch_;
 
+    // Snapshot current spool state from NFC manager
     bool got = NFCManager::getInstance().getCurrentSpoolState(spool);
     char stateTopic[64];
     char attrsTopic[64];
@@ -686,6 +692,7 @@ void HomeAssistantManager::publishCurrentTagState() {
     snprintf(attrsTopic, sizeof(attrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
 
     if (!got || !spool.present) {
+        // Empty state: signal to HA that no spool is loaded (UI should show "no spool" message)
         const char* emptyState =
             "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,\"material_type\":\"\","
             "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
@@ -697,7 +704,7 @@ void HomeAssistantManager::publishCurrentTagState() {
         return;
     }
 
-    // Build payload based on tag type
+    // Extract tag-specific fields (OpenPrintTag, TigerTag, OpenTag3D, or UID-only)
     const char* materialType = "";
     const char* materialName = "";
     char manufacturer[64] = {0};
@@ -708,19 +715,19 @@ void HomeAssistantManager::publishCurrentTagState() {
     bool tagDataValid = false;
 
     if (spool.kind == TagKind::TigerTag) {
-        // TigerTag — read from cached TigerTag data
+        // TigerTag: brand, material, color, weight from tag (no consumption tracking)
         TigerTagData tt;
         if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
             tagDataValid = true;
-            materialType = tt.material_name;  // e.g. "PLA"
+            materialType = tt.material_name;
             materialName = tt.material_name;
             strncpy(manufacturer, tt.brand_name, sizeof(manufacturer) - 1);
             snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
             fullWeight = tt.weight_g;
-            remaining = tt.weight_g;  // TigerTag has no consumed weight
+            remaining = tt.weight_g;
         }
     } else if (spool.kind == TagKind::OpenTag3D) {
-        // OpenTag3D — read from cached parsed data
+        // OpenTag3D: material, color, weight (no consumption tracking)
         opentag3d_t ot3d;
         if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
             tagDataValid = true;
@@ -733,10 +740,10 @@ void HomeAssistantManager::publishCurrentTagState() {
                      ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
             fullWeight = (ot3d.has_extended && ot3d.measured_filament_weight_g > 0)
                          ? ot3d.measured_filament_weight_g : ot3d.target_weight_g;
-            remaining = fullWeight;  // OpenTag3D has no consumed weight
+            remaining = fullWeight;
         }
     } else if (spool.tag_data_valid) {
-        // OpenPrintTag — read from opt_tag_t
+        // OpenPrintTag: material, brand, color, weight, consumed, spoolman ID (full enrichment)
         tagDataValid = true;
         uint8_t matType = 0;
         opt_get_material_type(&spool.tag_data, &matType);
@@ -745,7 +752,7 @@ void HomeAssistantManager::publishCurrentTagState() {
         char customName[33] = {0};
         if (opt_get_material_name(&spool.tag_data, customName, sizeof(customName)) == OPT_OK
                 && customName[0] != '\0') {
-            // Use custom name — need static buffer since materialName is a pointer
+            // Custom name is static to avoid stack pollution from temporary string
             static char nameBuf[33];
             strncpy(nameBuf, customName, sizeof(nameBuf) - 1);
             materialName = nameBuf;
@@ -762,10 +769,10 @@ void HomeAssistantManager::publishCurrentTagState() {
         float consumed = 0.0f;
         opt_get_consumed_weight(&spool.tag_data, &consumed);
         remaining = fullWeight - consumed;
-        if (remaining < 0) remaining = 0;
+        if (remaining < 0) remaining = 0;  // consumed can exceed initial if tag was re-wound
         opt_get_gp_spoolman_id(&spool.tag_data, &spoolmanId);
     }
-    // BambuTag / GenericUidTag — tagDataValid stays false, UID-only payload
+    // BambuTag / GenericUidTag: UID-only, no tag metadata (tagDataValid stays false)
 
     char json[384];
     snprintf(json, sizeof(json),
@@ -785,9 +792,10 @@ void HomeAssistantManager::publishCurrentTagState() {
                   spool.spool_id, (int)spool.kind);
 }
 
-// Static callback - routes to instance
+// MQTT library callback: invoked by mqttClient.loop() on subscribed messages
+// Static context — routes to instance's handleCommand for processing
 void HomeAssistantManager::mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
-    // Null-terminate payload
+    // Null-terminate payload buffer (MQTT payload is not null-terminated)
     char buf[384];
     size_t copyLen = (length < sizeof(buf) - 1) ? length : sizeof(buf) - 1;
     memcpy(buf, payload, copyLen);
@@ -799,8 +807,8 @@ void HomeAssistantManager::mqttCallback(char* topic, uint8_t* payload, unsigned 
 void HomeAssistantManager::handleCommand(const char* topic, const char* payload) {
     Serial.printf("HomeAssistantManager: Command received: %s payload=%s\n", topic, payload);
 
-    // Parse topic to extract command name (and optional uid suffix)
-    // Format: spoolsense/{id}/cmd/{command}[/uid]
+    // Parse command topic: spoolsense/{id}/cmd/{command}[/uid]
+    // UID in topic allows discovery to publish uid-specific commands (safe multi-scanner mode)
     char cmdPrefix[64];
     snprintf(cmdPrefix, sizeof(cmdPrefix), "spoolsense/%s/cmd/", deviceId_);
 
@@ -822,11 +830,10 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         strncpy(command, commandPath, sizeof(command) - 1);
     }
     if (strcmp(command, "response") == 0) {
-        return;
+        return;  // ignore echo of our own responses
     }
 
-    // set_color: set the LED to a specific color from Spoolman lookup
-    // No tag required — this is sent by the middleware for UID-only tags
+    // set_color: LED color from Spoolman (middleware sends, no tag validation needed)
     if (strcmp(command, "set_color") == 0) {
         if (strlen(payload) == 6) {
             uint8_t r, g, b;
@@ -839,6 +846,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // Parse command payload (JSON with optional uid, filament_type, color, etc.)
     ParsedHACommandPayload cmdPayload;
     if (!parseHACommandPayload(payload, cmdPayload)) {
         Serial.printf("HomeAssistantManager: JSON parse error\n");
@@ -846,6 +854,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // Require a loaded tag for write/update commands (tag present + valid state)
     CurrentSpoolState& spool = spoolScratch_;
     if (!NFCManager::getInstance().getCurrentSpoolState(spool) || !spool.present) {
         Serial.printf("HomeAssistantManager: Rejecting cmd '%s': no tag present\n", command);
@@ -853,6 +862,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // Resolve UID: prefer payload, then topic, then reject (no UID = can't validate target)
     const char* uidFromPayload = cmdPayload.has_uid ? cmdPayload.uid : "";
     const char* uid = (strlen(uidFromPayload) > 0) ? uidFromPayload : uidFromTopic;
     if (strlen(uid) == 0) {
@@ -861,6 +871,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // UID mismatch: safeguard against stale commands (tag changed, discovery wasn't re-published)
     if (strcmp(uid, spool.spool_id) != 0) {
         Serial.printf("HomeAssistantManager: Rejecting cmd '%s': uid_mismatch expected=%s actual=%s\n",
                       command, uid, spool.spool_id);
@@ -876,7 +887,8 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
     }
 
     if (strcmp(command, "write_tag") == 0) {
-        // Default write_tag fields from current tag to support partial updates from HA UI.
+        // Partial tag updates from HA UI: use current tag values as defaults
+        // (preserves fields the user didn't modify, so only changed fields are written)
         uint8_t currentMaterial = OPT_MATERIAL_TYPE_PLA;
         uint8_t currentColor[4] = {255, 255, 255, 255};
         char currentManufacturer[64] = {0};
@@ -885,6 +897,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         int32_t currentSpoolmanId = -1;
 
         if (spool.tag_data_valid) {
+            // Extract current field values from tag to serve as defaults for partial updates
             opt_get_material_type(&spool.tag_data, &currentMaterial);
             opt_get_primary_color(&spool.tag_data, currentColor);
             opt_get_brand_name(&spool.tag_data, currentManufacturer, sizeof(currentManufacturer));
@@ -943,6 +956,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         publishCommandResponse(command, true, nullptr);
 
     } else if (strcmp(command, "update_remaining") == 0) {
+        // Lightweight spool update: just record consumed weight without full tag rewrite
         if (!cmdPayload.has_remaining_g || cmdPayload.remaining_g < 0.0f) {
             Serial.printf("HomeAssistantManager: update_remaining: missing or negative remaining_g in payload\n");
             publishCommandResponse(command, false, "missing_remaining_g");
@@ -956,11 +970,11 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
             return;
         }
 
-        // Compute consumed weight from current tag data
+        // Back-calculate consumed weight: consumed = full - remaining
         float fullWeight = 0.0f;
         opt_get_actual_full_weight(&spool.tag_data, &fullWeight);
         float consumed = fullWeight - remainingG;
-        if (consumed < 0) consumed = 0;
+        if (consumed < 0) consumed = 0;  // remaining can exceed initial if tag was re-wound
         Serial.printf("HomeAssistantManager: update_remaining uid=%s full=%.1f remaining=%.1f consumed=%.1f\n",
                       uid, fullWeight, remainingG, consumed);
 

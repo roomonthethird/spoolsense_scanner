@@ -1,20 +1,12 @@
 #include "TFTManager.h"
 #include <Arduino.h>
 
-// ---------------------------------------------------------------------------
-// Tag type icon bitmaps — 32x32 monochrome, stored in flash.
-// Each is a const uint8_t array. 1 = foreground pixel, 0 = background.
-// These are minimal symbolic icons — replace with your own designs.
-//
-// Format: row-major, 1 bit per pixel packed into bytes (32 bytes per row,
-// but we use a simple 32x32 byte array here for clarity at the cost of
-// ~1KB per icon. Fine for 5 icons = ~5KB flash.)
-// ---------------------------------------------------------------------------
+// TFT display controller for 240x240 ST7789 or GC9A01 (round). Manages sprite rendering to PSRAM
+// (16-bit color), screen timeout/breathing animations, and OTA progress. Task runs on core 0.
+// Sprite reduces flicker vs direct-to-panel rendering; 5ms task loop allows other tasks to run.
 
-// Generic NFC icon (concentric arcs suggesting radio waves)
-// ---------------------------------------------------------------------------
-// Color constants
-// ---------------------------------------------------------------------------
+// Color constants for UI elements
+// ────────────────────────────────────────────────────────────────────────
 static const uint32_t COLOR_BG        = 0x000000;
 static const uint32_t COLOR_HEADER_BG = 0x1A1A2E;
 static const uint32_t COLOR_TEXT      = 0xFFFFFF;
@@ -50,18 +42,19 @@ TFTManager::TFTManager(TFTDriver driver)
 // ---------------------------------------------------------------------------
 void TFTManager::begin() {
     _tft.init();
-    delay(100);
+    delay(100);  // panel initialization delay
     _tft.setRotation(0);
     _tft.setBrightness(255);
     _tft.fillScreen(COLOR_BG);
 
 #ifdef BOARD_HAS_PSRAM
+    // 16-bit color needs PSRAM on S3-DevKitC: 240x240x2 bytes = 115KB, internal RAM only ~50KB free
     _sprite.setPsram(true);
     _sprite.setColorDepth(16);
     if (!_sprite.createSprite(_tft.width(), _tft.height())) {
         Serial.println("TFTManager: PSRAM sprite failed, falling back to 8-bit internal RAM");
         _sprite.setPsram(false);
-        _sprite.setColorDepth(8);
+        _sprite.setColorDepth(8);  // 8-bit indexed color fits in internal RAM; reduced colors
         if (!_sprite.createSprite(_tft.width(), _tft.height())) {
             Serial.println("TFTManager: WARNING — sprite allocation failed");
         }
@@ -77,18 +70,20 @@ void TFTManager::begin() {
     if (_messageQueue == nullptr) {
         Serial.println("TFTManager: WARNING — queue creation failed");
     }
-    _lastActivityMs = millis();
+    _lastActivityMs = millis();  // initialize timeout clock
 }
 
 void TFTManager::startTask() {
+    // 8192 bytes: TFT drawing operations + sprite manipulation use more stack than simple
+    // I2C LCD operations; sprite creation/pushSprite are stack-heavy due to local buffers
     BaseType_t result = xTaskCreatePinnedToCore(
         taskFunc,
         "TFTTask",
-        8192,   // TFT + sprite rendering needs more stack than LCD
+        8192,
         this,
-        1,
+        1,      // priority 1 (low; allows other tasks to preempt during 20ms delays)
         &_taskHandle,
-        0       // Core 0, same as LCDTask
+        0       // core 0: FreeRTOS main task and LCD also run here
     );
     if (result == pdPASS) {
         Serial.println("TFTManager: Task started on core 0");
@@ -203,14 +198,16 @@ void TFTManager::showError(const char* errMsg) {
 }
 
 void TFTManager::setScreenTimeoutMs(uint32_t timeoutMs) {
+    // Update timeout config and wake screen if off; uses critical section to avoid race
+    // with taskLoop checking _screenTimeoutMs during timeout calculation
     taskENTER_CRITICAL(&_stateMux);
     _screenTimeoutMs = timeoutMs;
-    _lastActivityMs = millis();
+    _lastActivityMs = millis();  // reset inactivity timer
     bool wasOff = _screenOff;
     _screenOff = false;
     taskEXIT_CRITICAL(&_stateMux);
     if (wasOff) {
-        _tft.setBrightness(255);
+        _tft.setBrightness(255);  // wake screen immediately
     }
 }
 
@@ -225,18 +222,19 @@ void TFTManager::taskFunc(void* param) {
 void TFTManager::taskLoop() {
     while (true) {
         processQueue();
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(20));  // 50 Hz update rate; allows other tasks to run between renders
     }
 }
 
 void TFTManager::processQueue() {
     TFTMessage msg;
     if (_messageQueue && xQueueReceive(_messageQueue, &msg, 0) == pdTRUE) {
+        // Message received: wake screen, reset timeout, and render
         taskENTER_CRITICAL(&_stateMux);
         _lastActivityMs = millis();
         bool wasOff = _screenOff;
         _screenOff = false;
-        _isBreathing = false;
+        _isBreathing = false;  // stop any prior breathing when new message arrives
         taskEXIT_CRITICAL(&_stateMux);
 
         if (wasOff) {
@@ -254,12 +252,13 @@ void TFTManager::processQueue() {
                 renderReady();
                 break;
             case TFTState::SpoolScanned:
+                // Breathing animation for low-weight spools (< 100g): visual cue for respool
                 _isBreathing = (msg.spool.remainingWeight > 0 &&
                                 msg.spool.remainingWeight <= 100.0f);
                 if (_isBreathing) {
                     _breathColor = hexToRgb(msg.spool.colorHex);
                     _breathBrightness = 255;
-                    _breathDirection = -1;
+                    _breathDirection = -1;  // start dimming
                 }
                 renderSpoolScanned(msg.spool);
                 break;
@@ -278,17 +277,18 @@ void TFTManager::processQueue() {
         }
     }
 
-    // Breathing animation tick
+    // Breathing animation: smooth pulse between 30 and 255 brightness; updates every BREATH_STEP_MS
     if (_isBreathing && (millis() - _lastBreathMs >= BREATH_STEP_MS)) {
         _lastBreathMs = millis();
         int16_t next = (int16_t)_breathBrightness + _breathDirection * 3;
+        // Clamp bounds and reverse direction at limits
         if (next <= 30)  { next = 30;  _breathDirection = 1; }
         if (next >= 255) { next = 255; _breathDirection = -1; }
         _breathBrightness = (uint8_t)next;
         _tft.setBrightness(_breathBrightness);
     }
 
-    // Screen timeout
+    // Screen timeout: turn off after inactivity period if configured (timeoutMs > 0)
     uint32_t timeoutMs;
     unsigned long lastActivity;
     bool screenOff;
@@ -336,10 +336,10 @@ void TFTManager::renderReady() {
     _sprite.setTextDatum(MC_DATUM);
     _sprite.drawString("SpoolSense", _tft.width() / 2, 14);
 
-    // Idle spool — grey fill
+    // Idle spool graphic: grey fill indicates no spool selected (waiting for tag)
     int cx = _tft.width() / 2;
     int cy = _tft.height() / 2 + 10;
-    drawSpool(cx, cy, 70, 28, COLOR_SPOOL_RIM);
+    drawSpool(cx, cy, 70, 28, COLOR_SPOOL_RIM);  // grey color = idle state
 
     // Prompt
     _sprite.setTextColor(COLOR_SUBTEXT);
@@ -495,39 +495,37 @@ void TFTManager::renderKeypadEntry(const char* toolNumber) {
 // ---------------------------------------------------------------------------
 
 void TFTManager::drawSpool(int cx, int cy, int outerR, int innerR, uint32_t fillColor) {
-    // Shadow
+    // Soft shadow for depth perception
     _sprite.fillCircle(cx + 3, cy + 3, outerR, 0x111111);
 
     // Outer rim (dark grey ring)
     _sprite.fillCircle(cx, cy, outerR, COLOR_SPOOL_RIM);
 
-    // Filament fill area (between rim and hub)
-    // We fill the full inner area with filament color, then draw spokes over it
+    // Filament fill: inner area up to rim shows spool color (matches tag data)
+    // Spokes drawn on top create visual separation between filled area and hub
     _sprite.fillCircle(cx, cy, outerR - 5, fillColor);
 
-    // Hub (inner dark circle)
+    // Hub (inner dark circle) — represents spool spindle
     _sprite.fillCircle(cx, cy, innerR, COLOR_SPOOL_HUB);
 
-    // Spokes — 6 evenly spaced
+    // Spokes: 6 radial lines simulate spool structure; improves visual clarity at small scales
     for (int i = 0; i < 6; i++) {
-        float angle = i * (M_PI / 3.0f);
+        float angle = i * (M_PI / 3.0f);  // 60° spacing
         int x1 = cx + (int)(cos(angle) * (innerR - 2));
         int y1 = cy + (int)(sin(angle) * (innerR - 2));
         int x2 = cx + (int)(cos(angle) * (outerR - 8));
         int y2 = cy + (int)(sin(angle) * (outerR - 8));
         _sprite.drawLine(x1, y1, x2, y2, COLOR_SPOOL_RIM);
-        _sprite.drawLine(x1+1, y1, x2+1, y2, COLOR_SPOOL_RIM); // 2px wide
+        _sprite.drawLine(x1+1, y1, x2+1, y2, COLOR_SPOOL_RIM);  // 2px wide for visibility
     }
 
-    // Rim outline
+    // Rim outline: crisp edge between spool and background
     _sprite.drawCircle(cx, cy, outerR, 0x666666);
     _sprite.drawCircle(cx, cy, outerR - 1, 0x555555);
 
-    // Hub outline
+    // Hub outline and center dot: focal point for visual balance
     _sprite.drawCircle(cx, cy, innerR, 0x555555);
-
-    // Hub centre dot
-    _sprite.fillCircle(cx, cy, 4, 0x888888);
+    _sprite.fillCircle(cx, cy, 4, 0x888888);  // spindle center
 }
 
 void TFTManager::drawWeightBar(int x, int y, int w, int h,
@@ -536,15 +534,16 @@ void TFTManager::drawWeightBar(int x, int y, int w, int h,
     ratio = constrain(ratio, 0.0f, 1.0f);
     int filled = (int)(w * ratio);
 
+    // Red bar when ≤10% remaining (visual alert for respool soon)
     uint32_t barColor = (ratio <= 0.1f) ? COLOR_BAR_LOW : COLOR_BAR_FG;
 
-    // Background
+    // Background tray
     _sprite.fillRoundRect(x, y, w, h, h / 2, COLOR_BAR_BG);
-    // Fill
+    // Filled portion (green or red)
     if (filled > 0) {
         _sprite.fillRoundRect(x, y, filled, h, h / 2, barColor);
     }
-    // Outline
+    // Outline for definition
     _sprite.drawRoundRect(x, y, w, h, h / 2, 0x555555);
 }
 
@@ -552,45 +551,46 @@ void TFTManager::drawTagIcon(uint8_t tagType, int x, int y) {
     const char* label = nullptr;
     uint32_t color = COLOR_SUBTEXT;
 
+    // Each tag format has a unique color and label for at-a-glance identification
     switch (tagType) {
         case TAG_TYPE_OPENPRINTTAG:
             label = "OPT";
-            color = 0x4FC3F7;
+            color = 0x4FC3F7;  // cyan
             break;
         case TAG_TYPE_TIGERTAG:
             label = "TT";
-            color = 0xFF9800;
+            color = 0xFF9800;  // orange
             break;
         case TAG_TYPE_OPENTAG3D:
             label = "OT3D";
-            color = 0x4CAF50;
+            color = 0x4CAF50;  // green
             break;
         case TAG_TYPE_BAMBU:
             label = "Bambu";
-            color = 0x1DB954;
+            color = 0x1DB954;  // Bambu's signature green
             break;
         case TAG_TYPE_NFC_PLAIN:
             label = "NFC+";
-            color = 0x00BCD4;
+            color = 0x00BCD4;  // cyan (generic NFC)
             break;
         case TAG_TYPE_OPENSPOOL:
             label = "OS";
-            color = 0xE91E63;
+            color = 0xE91E63;  // pink
             break;
         default:
-            return;
+            return;  // unknown type; skip label
     }
 
     _sprite.setTextColor(color);
     _sprite.setTextSize(1);
-    _sprite.setTextDatum(TR_DATUM);
+    _sprite.setTextDatum(TR_DATUM);  // top-right aligned
     _sprite.drawString(label, x + 22, y);
 }
 
 uint32_t TFTManager::hexToRgb(const char* hex) {
-    if (!hex || strlen(hex) < 6) return 0xCCCCCC;
+    if (!hex || strlen(hex) < 6) return 0xCCCCCC;  // grey fallback on invalid input
     char buf[7];
-    // Strip leading # if present
+    // Strip leading # if present (Spoolman color format: "#RRGGBB")
     const char* h = (hex[0] == '#') ? hex + 1 : hex;
     strncpy(buf, h, 6);
     buf[6] = '\0';
@@ -598,8 +598,8 @@ uint32_t TFTManager::hexToRgb(const char* hex) {
     return (uint32_t)val;
 }
 
-// Reserved for future use: dim spool graphic color when tag removed
-// (show last scanned spool at ~50% brightness to indicate "gone")
+// Blend color by scaling RGB components: used to dim spool graphic when tag leaves,
+// showing last-scanned spool at reduced brightness to indicate "no longer present"
 uint32_t TFTManager::dimColor(uint32_t color, uint8_t brightness) {
     uint8_t r = ((color >> 16) & 0xFF) * brightness / 255;
     uint8_t g = ((color >> 8)  & 0xFF) * brightness / 255;
@@ -622,18 +622,19 @@ void TFTManager::showText(const char* line1, const char* line2) {
 
 void TFTManager::showText4(const char* line1, const char* line2,
                            const char* line3, const char* line4) {
-    // Show all meaningful content — line3 as primary, line4 as secondary
-    // Prepend cleaned line1 context (strip LCD asterisk decoration) if present
+    // DisplayI interface bridging: 4-line LCD display → 2-line TFT; prioritize line3 (primary) + line4 (secondary)
+    // Strip line1 LCD decoration (asterisk borders: "*text*") for clean TFT output
     TFTMessage msg{};
-    msg.state = TFTState::WifiConnecting; // generic two-line status renderer
+    msg.state = TFTState::WifiConnecting;
     if (line1 && line3) {
-        // Strip asterisks/spaces from line1 for clean TFT display
+        // Remove LCD-specific frame: asterisks at start/end, leading spaces
         const char* clean = line1;
         while (*clean == '*' || *clean == ' ') clean++;
         size_t len = strlen(clean);
         while (len > 0 && (clean[len-1] == '*' || clean[len-1] == ' ')) len--;
         char stripped[48] = {};
         if (len > 0 && len < sizeof(stripped)) { memcpy(stripped, clean, len); stripped[len] = '\0'; }
+        // Prepend context label if available
         if (stripped[0]) {
             snprintf(msg.statusText, sizeof(msg.statusText), "%s: %s", stripped, line3);
         } else {
@@ -662,23 +663,22 @@ void TFTManager::showSpool(const DisplaySpoolData& spool) {
 // OTA support — free sprite for SSL heap, render directly to panel
 // ---------------------------------------------------------------------------
 void TFTManager::freeForOTA() {
-    // Stop the TFT task so no queue processing conflicts with direct writes.
-    // NOTE: The task and sprite are NOT restored after OTA failure — the device
-    // is expected to reboot (success) or require manual reboot (failure).
+    // Stop TFT task before OTA: queue messages from main task would race with direct
+    // frame buffer writes. OTA may reboot (success) or hang (failure); sprite not restored.
     if (_taskHandle != nullptr) {
         vTaskDelete(_taskHandle);
         _taskHandle = nullptr;
         Serial.println("TFTManager: Task stopped for OTA");
     }
 
-    // Delete sprite to free 57.6KB heap
+    // Delete sprite to recover 57.6KB heap for OTA SSL/HTTPS buffer (16-bit color on 240x240)
     _sprite.deleteSprite();
     Serial.printf("TFTManager: Sprite freed, heap now %u\n", ESP.getFreeHeap());
 
-    // Wake screen if it was off
+    // Wake screen for OTA progress display
     _tft.setBrightness(255);
 
-    // Draw OTA screen directly to panel (no sprite)
+    // Draw OTA screen directly to panel (bypass sprite to save time on each update)
     _tft.fillScreen(COLOR_BG);
 
     // Header bar
@@ -688,21 +688,21 @@ void TFTManager::freeForOTA() {
     _tft.setTextDatum(MC_DATUM);
     _tft.drawString("SpoolSense", _tft.width() / 2, 14);
 
-    // "Updating..." text
+    // Status text
     int cx = _tft.width() / 2;
     _tft.setTextColor(COLOR_TEXT);
     _tft.setTextSize(2);
     _tft.setTextDatum(MC_DATUM);
     _tft.drawString("Updating...", cx, 80);
 
-    // Progress bar outline (same position updateOTAProgress will fill)
+    // Progress bar outline (updateOTAProgress will fill this region)
     int barX = 20;
     int barY = 120;
     int barW = _tft.width() - 40;  // 200px on 240px display
     int barH = 20;
     _tft.drawRoundRect(barX, barY, barW, barH, barH / 2, 0x555555);
 
-    // "0%" text
+    // Initial percentage
     _tft.setTextColor(COLOR_SUBTEXT);
     _tft.setTextSize(1);
     _tft.setTextDatum(MC_DATUM);
@@ -718,14 +718,14 @@ void TFTManager::updateOTAProgress(uint8_t percent) {
     int barH = 20;
     int cx = _tft.width() / 2;
 
-    // Fill progress bar
+    // Update filled portion of progress bar (left-to-right)
     int filled = (barW * percent) / 100;
     if (filled > 0) {
         _tft.fillRoundRect(barX, barY, filled, barH, barH / 2, COLOR_ACCENT);
     }
 
-    // Clear and redraw percentage text
-    _tft.fillRect(cx - 30, 148, 60, 16, COLOR_BG);
+    // Erase old percentage text, redraw new value
+    _tft.fillRect(cx - 30, 148, 60, 16, COLOR_BG);  // clear old text area
     char pctStr[8];
     snprintf(pctStr, sizeof(pctStr), "%u%%", percent);
     _tft.setTextColor(COLOR_SUBTEXT);
@@ -737,22 +737,22 @@ void TFTManager::updateOTAProgress(uint8_t percent) {
 void TFTManager::showOTAError(const char* error) {
     int cx = _tft.width() / 2;
 
-    // Clear progress area
+    // Clear progress bar and text area
     _tft.fillRect(0, 60, _tft.width(), _tft.height() - 60, COLOR_BG);
 
-    // Error icon
+    // Error icon: red circle with X
     _tft.fillCircle(cx, 100, 22, 0xFF4444);
     _tft.setTextColor(COLOR_BG);
     _tft.setTextSize(3);
     _tft.setTextDatum(MC_DATUM);
     _tft.drawString("X", cx, 100);
 
-    // "Update Failed" text
+    // Error status
     _tft.setTextColor(COLOR_TEXT);
     _tft.setTextSize(1);
     _tft.drawString("Update Failed", cx, 135);
 
-    // Error detail
+    // Error details (e.g., "Connection timeout", "Not enough space")
     if (error && error[0]) {
         _tft.setTextColor(COLOR_SUBTEXT);
         _tft.drawString(error, cx, 155);

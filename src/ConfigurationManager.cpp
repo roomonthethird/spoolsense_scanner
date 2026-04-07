@@ -8,6 +8,8 @@
 #include <Preferences.h>
 #endif
 
+// ConfigurationManager — Singleton that loads compile-time and runtime (NVS) configuration.
+// Boot sequence: loadFromDeviceConfig() first, then loadFromNVS() overrides per-key where present.
 // NVS namespace and key names — must match spoolsense-installer nvs_keys.csv
 static const char* NVS_NAMESPACE = "spoolsense";
 static const char* NVS_KEY_WIFI_SSID      = "wifi_ssid";
@@ -32,14 +34,15 @@ static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
 static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 static const char* NVS_KEY_HOSTNAME      = "hostname";
 
-// Sanitize hostname: lowercase alphanum + hyphens, strip leading/trailing hyphens,
-// fall back to "spoolsense" if empty. Used at NVS boundaries and web API.
+// Sanitize hostname: enforce mDNS naming constraints (lowercase alphanum + hyphens,
+// no leading/trailing hyphens) and reject empty strings to avoid boot-time errors.
+// Used at NVS read/write boundaries and web config API to prevent invalid hostname propagation.
 void sanitizeHostname(char* buf, size_t cap) {
     char out[33] = {0};
     size_t n = 0;
     for (size_t i = 0; buf[i] && n < 32; i++) {
         char c = buf[i];
-        if (c >= 'A' && c <= 'Z') c = c + 32;
+        if (c >= 'A' && c <= 'Z') c = c + 32;  // normalize to lowercase
         if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
             out[n++] = c;
         }
@@ -47,7 +50,7 @@ void sanitizeHostname(char* buf, size_t cap) {
     while (n > 0 && out[0] == '-') { memmove(out, out + 1, n); n--; }
     while (n > 0 && out[n - 1] == '-') { out[--n] = '\0'; }
     if (n == 0) {
-        strncpy(out, "spoolsense", sizeof(out) - 1);
+        strncpy(out, "spoolsense", sizeof(out) - 1);  // fallback for empty hostname
     }
     strncpy(buf, out, cap - 1);
     buf[cap - 1] = '\0';
@@ -63,7 +66,8 @@ bool ConfigurationManager::begin() {
         return true;
     }
 
-    // Load compile-time defaults first, then override with NVS where present
+    // Layered config: compile-time defaults first, then NVS overrides per-key
+    // (allows partial NVS config without losing compile-time settings)
     loadFromDeviceConfig();
 
 #ifndef NATIVE_TEST
@@ -96,8 +100,9 @@ void ConfigurationManager::loadFromDeviceConfig() {
     _spoolmanUrl[sizeof(_spoolmanUrl) - 1] = '\0';
 
     _pollIntervalMs = 10000;
-    _lcdTimeoutMs = 15 * 60 * 1000;  // 15 mins
+    _lcdTimeoutMs = 15 * 60 * 1000;
 
+    // Home Assistant is only enabled if broker address is non-empty (user actively configured)
     const bool haConfigured = cfg.mqtt.host != nullptr && cfg.mqtt.host[0] != '\0';
     _haEnabled = haConfigured;
 
@@ -154,7 +159,8 @@ bool ConfigurationManager::loadFromNVS() {
 
     bool anyOverride = false;
 
-    // Per-key fallback: only override if the key exists in NVS
+    // Per-key loading: only override field if the key exists in NVS
+    // (preserves compile-time defaults for keys not yet saved to NVS)
     if (prefs.isKey(NVS_KEY_WIFI_SSID)) {
         prefs.getString(NVS_KEY_WIFI_SSID, _ssid, sizeof(_ssid));
         anyOverride = true;
@@ -368,13 +374,14 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     }
 
     prefs.putString(NVS_KEY_WIFI_SSID, update.wifi_ssid);
-    // Only write password if non-empty (empty = keep existing)
+    // Skip empty password (user didn't intend to change it via web UI)
     if (update.wifi_pass[0] != '\0') {
         prefs.putString(NVS_KEY_WIFI_PASS, update.wifi_pass);
     }
     prefs.putString(NVS_KEY_MQTT_HOST, update.mqtt_host);
     prefs.putUShort(NVS_KEY_MQTT_PORT, update.mqtt_port);
     prefs.putString(NVS_KEY_MQTT_USER, update.mqtt_user);
+    // Skip empty MQTT password for same reason as WiFi password
     if (update.mqtt_pass[0] != '\0') {
         prefs.putString(NVS_KEY_MQTT_PASS, update.mqtt_pass);
     }
@@ -389,17 +396,18 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     prefs.putString(NVS_KEY_MOONRAKER_URL, update.moonraker_url);
     prefs.putBool(NVS_KEY_PRUSALINK_ON, update.prusalink_on != 0);
     prefs.putString(NVS_KEY_PRUSALINK_URL, update.prusalink_url);
+    // Skip empty API key for same reason as passwords
     if (update.prusalink_api_key[0] != '\0') {
         prefs.putString(NVS_KEY_PRUSALINK_KEY, update.prusalink_api_key);
     }
     prefs.putString(NVS_KEY_NFC_READER, update.nfc_reader);
     char sanitizedHostname[33] = {0};
     strncpy(sanitizedHostname, update.hostname, sizeof(sanitizedHostname) - 1);
-    sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));
+    sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));  // enforce mDNS constraints before NVS write
     prefs.putString(NVS_KEY_HOSTNAME, sanitizedHostname);
 
-    // Clear Spoolman extra fields version so they're re-verified on next boot
-    // (handles Spoolman URL change, Spoolman reinstall, etc.)
+    // Invalidate Spoolman enrichment cache on config change to force re-fetch
+    // (config change could invalidate cached spool lookups)
     prefs.remove("sp_fields_v");
 
     prefs.end();

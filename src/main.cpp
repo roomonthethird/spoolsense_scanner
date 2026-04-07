@@ -21,7 +21,10 @@
 #include "BoardPins.h"
 #include <Wire.h>
 
-// Global HTTP mutex for serializing WiFi HTTP requests
+// main.cpp — ESP32 firmware entry point and hardware init. Manages WiFi, AP mode, NTP, display/LED/
+// keypad peripherals, NFC reader selection, and the main loop that dispatches to task managers
+
+// Global HTTP mutex for serializing WiFi HTTP requests (blocks SpoolmanManager + ApplicationManager + PrinterManager)
 SemaphoreHandle_t g_httpMutex = nullptr;
 
 // AP mode state
@@ -52,7 +55,7 @@ TFTManager* tftManagerPtr = nullptr;
 LEDManager ledManager;
 
 void startAPMode() {
-  // Generate SSID from last 4 hex digits of MAC
+  // Fallback when WiFi SSID not configured or connection fails — zero-CLI setup via captive portal
   uint8_t mac[6];
   WiFi.macAddress(mac);
   snprintf(g_apSSID, sizeof(g_apSSID), "SpoolSense-%02X%02X", mac[4], mac[5]);
@@ -63,7 +66,7 @@ void startAPMode() {
   WiFi.softAPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
   WiFi.softAP(g_apSSID);
 
-  // Captive portal DNS — redirect all lookups to our IP
+  // Captive portal: intercept DNS queries and redirect to config page
   dnsServer.start(53, "*", IPAddress(192,168,4,1));
 
   g_apModeActive = true;
@@ -138,7 +141,7 @@ void initWiFi() {
       Serial.println("Time obtained");
     }
 
-    delay(2000);
+    delay(2000);  // Display settle time before task managers start
     g_wifiWasConnected = true;
   } else {
     Serial.println("");
@@ -152,7 +155,9 @@ void retryNTP() {
   static unsigned long lastAttempt = 0;
 
   if (ntpObtained || g_apModeActive) return;
+  // Threshold check: ~Nov 2023 onward means time was synced (cheap way to detect valid UNIX time)
   if (time(nullptr) > 1700000000) { ntpObtained = true; return; }
+  // 30s throttle: NTP is slow, don't hammer it
   if (millis() - lastAttempt < 30000) return;
 
   lastAttempt = millis();
@@ -165,13 +170,14 @@ void checkWiFi() {
   if (g_apModeActive) return;
 
   unsigned long now = millis();
+  // Throttle checks to 5s interval to avoid thrashing WiFi state machine
   if (now - g_lastWifiCheckMs < WIFI_CHECK_INTERVAL_MS) return;
   g_lastWifiCheckMs = now;
 
   bool connected = (WiFi.status() == WL_CONNECTED);
 
   if (g_wifiWasConnected && !connected) {
-    // WiFi just dropped
+    // Transition from connected → disconnected
     Serial.println("WiFi: Connection lost — starting reconnection");
     auto& config = ConfigurationManager::getInstance();
     if (config.isTftEnabled() && tftManagerPtr) {
@@ -184,11 +190,12 @@ void checkWiFi() {
     WiFi.reconnect();
     g_wifiWasConnected = false;
   } else if (!connected && !g_wifiWasConnected) {
-    // Still disconnected — retry with backoff
+    // Disconnected → still disconnected: exponential backoff retry
     if (now - g_lastReconnectAttemptMs >= g_wifiReconnectDelay) {
       Serial.printf("WiFi: Reconnect attempt (backoff %lums)\n", g_wifiReconnectDelay);
       WiFi.reconnect();
       g_lastReconnectAttemptMs = now;
+      // Double backoff capped at 60s to avoid hammering WiFi radio
       if (g_wifiReconnectDelay < WIFI_RECONNECT_MAX_MS) {
         g_wifiReconnectDelay *= 2;
         if (g_wifiReconnectDelay > WIFI_RECONNECT_MAX_MS) {
@@ -197,7 +204,7 @@ void checkWiFi() {
       }
     }
   } else if (!g_wifiWasConnected && connected) {
-    // WiFi just reconnected
+    // Reconnected: re-advertise mDNS (IP may have changed if DHCP renewal)
     Serial.printf("WiFi: Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
     auto& config = ConfigurationManager::getInstance();
     if (config.isTftEnabled() && tftManagerPtr) {
@@ -206,7 +213,7 @@ void checkWiFi() {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
     }
 
-    // Re-initialize mDNS (IP may have changed)
+    // Re-initialize mDNS after reconnection — stale entries cause lookup failures
     MDNS.end();
     const char* hostname = ConfigurationManager::getInstance().getHostname();
     if (MDNS.begin(hostname)) {
@@ -227,8 +234,7 @@ void setup() {
   delay(1000);
   Serial.println("=== Starting setup ===");
 
-  // Initialize ConfigurationManager FIRST — reads NVS to determine which
-  // optional hardware features are enabled before initializing any peripherals
+  // ConfigurationManager MUST init before any hardware — it reads NVS to gate feature initialization
   if (!ConfigurationManager::getInstance().begin()) {
     Serial.println("ConfigurationManager init failed - halting");
     while (1) { delay(1000); }
@@ -242,7 +248,7 @@ void setup() {
   }
 
   if (config.isTftEnabled()) {
-    // TFT display — select driver from NVS (st7789 or gc9a01)
+    // TFT display: runtime driver selection (st7789 or gc9a01) from NVS
     TFTDriver tftDriver = TFTDriver::ST7789;
     if (strcmp(config.getTftDriver(), "gc9a01") == 0) {
         tftDriver = TFTDriver::GC9A01;
@@ -253,7 +259,7 @@ void setup() {
     tftManagerPtr->showBoot(FIRMWARE_VERSION);
     Serial.println("TFT initialized");
   } else if (config.isLcdEnabled()) {
-    // Initialize I2C with custom pins for LCD
+    // I2C LCD: custom pins to avoid conflicts with NFC/TFT SPI buses
     Wire.begin(PIN_LCD_SDA, PIN_LCD_SCL);
     Serial.println("I2C initialized");
 
@@ -269,7 +275,7 @@ void setup() {
     InputManager::getInstance().begin();
   }
 
-  // Initialize ApplicationManager (message queue) with display reference
+  // ApplicationManager: message queue dispatcher with optional display backing
   DisplayI* activeDisplay = nullptr;
   if (config.isTftEnabled()) {
     activeDisplay = tftManagerPtr;
@@ -284,14 +290,14 @@ void setup() {
   // Connect to WiFi
   initWiFi();
 
-  // Create global HTTP mutex for serializing HTTP requests
+  // Global mutex: guards all HTTP clients (SpoolmanManager, ApplicationManager ASSIGN_SPOOL, PrinterManager)
   g_httpMutex = xSemaphoreCreateMutex();
   if (g_httpMutex == nullptr) {
     Serial.println("Failed to create HTTP mutex - halting");
     while (1) { delay(1000); }
   }
 
-  // Skip network-dependent managers in AP mode
+  // Skip network-dependent managers in AP mode (config-only)
   if (!g_apModeActive) {
     // Initialize SpoolmanManager
     if (!SpoolmanManager::getInstance().begin(g_httpMutex)) {
@@ -303,7 +309,7 @@ void setup() {
       Serial.println("HomeAssistantManager init failed - continuing without HA");
     }
 
-    // Load automation mode from config
+    // Load automation mode from config: SELF_DIRECTED (auto tag updates) vs CONTROLLED_BY_HA (manual)
     {
       uint8_t mode = config.getAutomationMode();
       ApplicationManager::getInstance().setAutomationMode(static_cast<AutomationMode>(mode));
@@ -314,7 +320,7 @@ void setup() {
     Serial.println("AP mode active - skipping Spoolman, HA, automation init");
   }
 
-  // Select NFC reader based on NVS config
+  // NFC reader selection: PN532 (ISO14443A only) vs PN5180 (multi-format default)
   const char* nfcReader = config.getNfcReader();
   if (strcmp(nfcReader, "pn532") == 0) {
     Serial.println("NFC reader: PN532 (ISO14443A only)");
@@ -337,10 +343,9 @@ void setup() {
   }
 
   if (!g_apModeActive) {
-    // Start SpoolmanManager task
+    // Start network task managers
     SpoolmanManager::getInstance().startTask();
 
-    // Start HomeAssistantManager task
     Serial.printf("Setup: HA config before startTask: enabled=%s host='%s' host_len=%u port=%u user_set=%s\n",
                   config.getHAEnabled() ? "true" : "false",
                   config.getHAMqttHost(),
@@ -349,7 +354,7 @@ void setup() {
                   strlen(config.getHAMqttUser()) > 0 ? "true" : "false");
     HomeAssistantManager::getInstance().startTask();
 
-    // Start PrusaLink printer polling (if configured)
+    // PrusaLink printer polling: detects print start/end for spool deduction
     if (config.isPrusaLinkEnabled()) {
       PrinterManager::getInstance().begin();
       prusaLinkStrategy.setHttpMutex(g_httpMutex);
@@ -368,11 +373,11 @@ void setup() {
   }
 
   if (config.isLedEnabled()) {
-    ledManager.showReady();  // NFC + Spoolman + HA + scanner all initialized
-    ledManager.startTask();  // Start async LED task — all LED calls are non-blocking from here
+    ledManager.showReady();
+    ledManager.startTask();  // Async LED task — non-blocking calls from here
   }
 
-  // Start HTTP server (both STA and AP mode)
+  // HTTP server: available in both STA and AP modes (tag reader/writer web UI)
   if (WiFi.status() == WL_CONNECTED || g_apModeActive) {
     WebServerManager::getInstance().begin(g_apModeActive);
     WebServerManager::getInstance().setDisplay(activeDisplay);
@@ -382,28 +387,28 @@ void setup() {
 }
 
 void loop() {
-  // Process captive portal DNS in AP mode
+  // AP mode: respond to DNS queries (all redirected to config page)
   if (g_apModeActive) {
     dnsServer.processNextRequest();
   }
 
-  // Process any pending messages for the application
+  // Dispatch all queued application events (tag detections, print start/end, etc.)
   ApplicationManager::getInstance().processMessages();
 
-  // Process HTTP requests for the tag writer web UI
+  // HTTP server: handle web UI requests (reader/writer pages, config, OTA)
   WebServerManager::getInstance().handleClient();
 
-  // Poll keypad for key presses (if enabled)
+  // Keypad polling: 4x3 matrix for ASSIGN_SPOOL tool number entry
   if (ConfigurationManager::getInstance().isKeypadEnabled()) {
     InputManager::getInstance().poll();
   }
 
-  // WiFi reconnection watchdog (non-AP mode only, throttled to WIFI_CHECK_INTERVAL_MS)
+  // Watchdog: detect WiFi drops and reconnect with exponential backoff
   checkWiFi();
 
-  // NTP retry if boot-time sync failed (30s interval, non-blocking)
+  // Fallback: retry NTP sync if boot-time attempt failed (non-blocking 30s interval)
   retryNTP();
 
-  // LCD and NFC scanning are handled by their own tasks
+  // NFC scanning and other async work delegated to FreeRTOS tasks — 10ms soft delay prevents loop busywaiting
   delay(10);
 }

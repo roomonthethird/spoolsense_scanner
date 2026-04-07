@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <cstring>
 
+// Deserialize OpenSpool NDEF JSON payload into typed struct for rapid access
 bool parseOpenSpool(const uint8_t* json, size_t len, OpenSpoolData& out) {
     memset(&out, 0, sizeof(out));
     out.valid = false;
@@ -13,7 +14,7 @@ bool parseOpenSpool(const uint8_t* json, size_t len, OpenSpoolData& out) {
     if (err) return false;
 
     const char* protocol = doc["protocol"] | "";
-    if (strcmp(protocol, "openspool") != 0) return false;
+    if (strcmp(protocol, "openspool") != 0) return false;  // reject non-openspool payloads early
 
     strncpy(out.protocol, protocol, sizeof(out.protocol) - 1);
     strncpy(out.version, doc["version"] | "1.0", sizeof(out.version) - 1);

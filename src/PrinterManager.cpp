@@ -10,6 +10,10 @@ extern "C" {
 #include "openprinttag_lib.h"
 }
 
+// PrinterManager — tracks print job state (IDLE/TRACKING), validates filament metadata
+// vs NFC tag, caches per-tool filament data, detects job transitions, and notifies
+// ApplicationManager of print lifecycle events. Requires PrusaLink-compatible printer strategy.
+
 PrinterManager& PrinterManager::getInstance() {
     static PrinterManager instance;
     return instance;
@@ -21,15 +25,15 @@ void PrinterManager::begin() {
     currentJobTotalFilamentG_ = 0.0f;
     lastProgressPercent_ = 0.0f;
     missingJobPollCount_ = 0;
-    mismatchWarned_ = false;
-    tempWarned_ = false;
+    mismatchWarned_ = false;  // suppress duplicate filament-type warnings per job
+    tempWarned_ = false;       // suppress duplicate temperature warnings per job
     validationPending_ = true;
     cachedToolCount_ = 0;
     memset(cachedFilamentPerTool_, 0, sizeof(cachedFilamentPerTool_));
     Serial.println("PrinterManager: Initialized");
 }
 
-// Fix #6: Check xTaskCreate return value
+// validate task creation — silent failure would leave pollingTaskHandle_ dangling
 void PrinterManager::startPollingTask() {
     if (pollingTaskHandle_) {
         Serial.println("PrinterManager: Polling task already running");
@@ -83,6 +87,7 @@ void PrinterManager::poll() {
     if (!strategy_->isConnected()) {
         if (state_ == PrinterState::TRACKING) {
             missingJobPollCount_++;
+            // tolerate transient disconnections (WiFi glitches) without losing job context
             if (missingJobPollCount_ >= JOB_MISSING_GRACE) {
                 Serial.printf("PrinterManager: Job %d lost after disconnect\n", currentJobId_);
                 handleJobDisappeared();
@@ -94,6 +99,7 @@ void PrinterManager::poll() {
     if (!strategy_->hasActiveJob()) {
         if (state_ == PrinterState::TRACKING) {
             missingJobPollCount_++;
+            // tolerate transient API hiccups (job briefly missing before retry)
             if (missingJobPollCount_ >= JOB_MISSING_GRACE) {
                 Serial.printf("PrinterManager: Job %d missing from API\n", currentJobId_);
                 handleJobDisappeared();
@@ -111,11 +117,11 @@ void PrinterManager::poll() {
 
     if (state_ == PrinterState::IDLE) {
         if (strcmp(jobState, "PRINTING") == 0 || strcmp(jobState, "PAUSED") == 0) {
-            // Fix #2: Pass current progress so we don't lose it on mid-print detect
+            // capture initial progress for mid-print detection (user starts scan after print begins)
             handleJobDetected(jobId, totalFilamentG, progress);
         }
     } else if (state_ == PrinterState::TRACKING) {
-        // Job replaced?
+        // detect job replacement (queue changed, last job archived)
         if (jobId != currentJobId_) {
             resolveAndSendJobEnd(currentJobId_, lastProgressPercent_, false, "job_replaced");
             handleJobDetected(jobId, totalFilamentG, progress);
@@ -128,10 +134,10 @@ void PrinterManager::poll() {
             currentJobTotalFilamentG_ = totalFilamentG;
         }
 
-        // Fix #1: Keep per-tool cache updated while tracking
+        // refresh per-tool filament data in case gcode metadata updated
         cachePerToolData();
 
-        // Fix #3: Retry validation while tracking if it was pending
+        // retry filament validation if spool wasn't present at job start
         if (validationPending_) {
             checkFilamentMismatch();
         }
@@ -144,11 +150,9 @@ void PrinterManager::poll() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// handleJobDetected — IDLE → TRACKING
-// ---------------------------------------------------------------------------
+// ── Job Lifecycle ─────────────────────────────────────────────────────────
 
-// Fix #2: Accept initial progress so mid-print detection doesn't lose it
+// transition IDLE → TRACKING; captures initial progress, tries filament validation
 void PrinterManager::handleJobDetected(int jobId, float totalFilamentG, float progressPercent) {
     state_ = PrinterState::TRACKING;
     currentJobId_ = jobId;
@@ -159,7 +163,7 @@ void PrinterManager::handleJobDetected(int jobId, float totalFilamentG, float pr
     tempWarned_ = false;
     validationPending_ = true;
 
-    // Fix #1: Cache per-tool data at job start
+    // snapshot per-tool filament from gcode before job state changes
     cachePerToolData();
 
     AppMessage msg;
@@ -174,14 +178,12 @@ void PrinterManager::handleJobDetected(int jobId, float totalFilamentG, float pr
         Serial.printf("PrinterManager: WARNING — no filament metadata for job %d\n", jobId);
     }
 
-    // Fix #3: Try validation now, but don't give up if spool isn't ready
+    // attempt validation now; if spool isn't ready, retry during tracking
     checkFilamentMismatch();
 }
 
-// ---------------------------------------------------------------------------
-// cachePerToolData — snapshot per-tool totals from strategy
-// ---------------------------------------------------------------------------
-
+// snapshot per-tool filament from gcode metadata (needed when job_replaced detected,
+// since strategy object will have transitioned to replacement job's data)
 void PrinterManager::cachePerToolData() {
     if (!strategy_) return;
 
@@ -197,10 +199,7 @@ void PrinterManager::cachePerToolData() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// resolveAndSendJobEnd — TRACKING → IDLE
-// ---------------------------------------------------------------------------
-
+// transition TRACKING → IDLE; resolves filament used and per-tool metrics
 void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
                                            bool allowDeferred, const char* reason) {
     bool canceled = (progressPercent < 100.0f);
@@ -208,7 +207,7 @@ void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
     Serial.printf("PrinterManager: Resolving job %d reason=%s progress=%.1f%% filament=%.2fg\n",
                   jobId, reason, progressPercent, currentJobTotalFilamentG_);
 
-    // Try deferred filament lookup if we have no data
+    // deferred lookup allows gcode metadata to appear after job ends (some printers delay it)
     if (currentJobTotalFilamentG_ <= 0.0f && strategy_ != nullptr && allowDeferred) {
         float deferred = strategy_->fetchDeferredFilament(jobId);
         if (deferred > 0.0f) {
@@ -226,8 +225,7 @@ void PrinterManager::resolveAndSendJobEnd(int jobId, float progressPercent,
     msg.payload.printEnded.filament_used_grams = filamentUsed;
     msg.payload.printEnded.canceled = canceled;
 
-    // Fix #1: Use cached per-tool data instead of reading from strategy
-    // (strategy may already have the replacement job's data on job_replaced path)
+    // use cached per-tool data (not live strategy object, which may have next job's data)
     if (cachedToolCount_ > 0) {
         msg.payload.printEnded.tool_count = cachedToolCount_;
         for (int i = 0; i < cachedToolCount_; i++) {
@@ -261,12 +259,9 @@ void PrinterManager::handleJobDisappeared() {
     resolveAndSendJobEnd(currentJobId_, progress, true, "job_disappeared");
 }
 
-// ---------------------------------------------------------------------------
-// checkFilamentMismatch — compare gcode metadata vs NFC tag
-// Fix #3: Retries during tracking, separate flags for mismatch vs temp
-// ---------------------------------------------------------------------------
+// ── Filament Validation ───────────────────────────────────────────────────
 
-// Map OPT material enum to PrusaLink-compatible filament type string
+// map OPT material enum to PrusaLink-compatible string for gcode comparison
 static const char* optMaterialToString(uint8_t mat) {
     switch (mat) {
         case OPT_MATERIAL_TYPE_PLA:  return "PLA";
@@ -288,6 +283,7 @@ static const char* optMaterialToString(uint8_t mat) {
     }
 }
 
+// format filament/temperature mismatch for web UI display
 static void sendPrinterWarning(const char* type, const char* expected, const char* actual,
                                 float gcodeTemp = 0, int16_t tagMaxTemp = 0) {
     AppMessage warn;
@@ -313,7 +309,7 @@ void PrinterManager::checkFilamentMismatch() {
 
     validationPending_ = false;
 
-    // Filament type check
+    // warn once per job if gcode filament type doesn't match tag
     if (!mismatchWarned_) {
         const char* expected = strategy_->getExpectedFilamentType();
         if (expected[0] != '\0') {
@@ -333,7 +329,7 @@ void PrinterManager::checkFilamentMismatch() {
         }
     }
 
-    // Temperature range check
+    // warn once per job if gcode nozzle temp exceeds tag max + margin
     if (!tempWarned_) {
         float gcodeNozzle = strategy_->getExpectedNozzleTemp();
         if (gcodeNozzle <= 0.0f) return;
@@ -343,6 +339,7 @@ void PrinterManager::checkFilamentMismatch() {
         if (tagMaxTemp <= 0) return;
 
         tempWarned_ = true;
+        // 10C margin absorbs transient gcode tolerance variations
         if (gcodeNozzle > static_cast<float>(tagMaxTemp) + 10.0f) {
             Serial.printf("PrinterManager: TEMP WARNING — gcode %.0fC exceeds tag max %dC\n", gcodeNozzle, tagMaxTemp);
             sendPrinterWarning("temp_exceeds_max", nullptr, nullptr, gcodeNozzle, tagMaxTemp);

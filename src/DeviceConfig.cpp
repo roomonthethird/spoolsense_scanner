@@ -3,7 +3,9 @@
 #include "DeviceConfig.h"
 #include "UserConfig.h"
 
-// Fallback defaults for optional defines
+// Runtime device configuration: board profile, WiFi, MQTT, Spoolman, peripherals — populated from user build defines
+
+// Fallback defaults for optional build flags
 #ifndef AUTOMATION_MODE
 #define AUTOMATION_MODE 0
 #endif
@@ -14,6 +16,7 @@
 static const DeviceConfig kDeviceConfig = {
     .device_name = DEVICE_NAME,
 
+    // detect board at compile time to set SPI bus layout, pin definitions
     .board_profile =
 #if defined(BOARD_ESP32_S3)
         BoardProfile::ESP32_S3,
