@@ -3,7 +3,11 @@
 
 #ifndef NATIVE_TEST
 #include <WebServer.h>
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
 #endif
+
+#include "NFCTypes.h"
 
 class DisplayI;
 
@@ -78,6 +82,27 @@ private:
     volatile uint8_t _otaProgress = 0;
 
     DisplayI* _display = nullptr;
+
+    // Status serializers — per-tag-type JSON builders for /api/status
+    void serializeTigerTagStatus(JsonDocument& doc);
+    void serializeOpenTag3DStatus(JsonDocument& doc);
+    void serializeOpenSpoolStatus(JsonDocument& doc);
+    void serializeGenericUidStatus(JsonDocument& doc);
+    void serializeOpenPrintTagStatus(JsonDocument& doc, const CurrentSpoolState& state);
+    void serializeEnrichment(JsonDocument& doc);
+
+    // Enrichment save helpers — each step of the Spoolman save pipeline
+    int enrichFindOrCreateVendor(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                                  const char* manufacturer, int confirmedId);
+    int enrichFindOrCreateFilament(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                                    const char* material, const char* colorHex, int vendorId,
+                                    float density, float diameter, int bedTemp, int nozzleTemp, int confirmedId);
+    int enrichFindSpoolByUid(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                              const char* quotedUid, float& outInitialWeight);
+    bool enrichUpdateSpool(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                            int spoolId, int filamentId, float remainingG, float existingInitialWeight);
+    int enrichCreateSpool(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                           int filamentId, float remainingG, const char* quotedUid);
 
     void sendError(int code, const char* msg);
 #endif

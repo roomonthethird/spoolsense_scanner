@@ -1030,13 +1030,177 @@ void WebServerManager::handleApiOtaStatus() {
 // API: Status
 // ---------------------------------------------------------------------------
 
+// ── Status serializers ──────────────────────────────────────
+
+void WebServerManager::serializeTigerTagStatus(JsonDocument& doc) {
+    TigerTagData tt;
+    if (!NFCManager::getInstance().getLastTigerTagData(tt) || !tt.valid) return;
+
+    JsonObject obj = doc.createNestedObject("tigertag");
+    obj["material_id"] = tt.material_id;
+    obj["material_name"] = tt.material_name;
+    obj["brand_id"] = tt.brand_id;
+    obj["brand_name"] = tt.brand_name;
+    obj["weight_g"] = tt.weight_g;
+    obj["diameter_mm"] = tt.diameter_mm;
+    obj["aspect1_name"] = tt.aspect1_name;
+    obj["aspect2_name"] = tt.aspect2_name;
+
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
+    obj["color_hex"] = colorHex;
+
+    if (tt.nozzle_temp_min > 0) obj["nozzle_temp_min"] = tt.nozzle_temp_min;
+    if (tt.nozzle_temp_max > 0) obj["nozzle_temp_max"] = tt.nozzle_temp_max;
+    if (tt.bed_temp_min > 0) obj["bed_temp_min"] = tt.bed_temp_min;
+    if (tt.bed_temp_max > 0) obj["bed_temp_max"] = tt.bed_temp_max;
+    if (tt.dry_temp > 0) obj["dry_temp"] = tt.dry_temp;
+    if (tt.dry_time_hours > 0) obj["dry_time_hours"] = tt.dry_time_hours;
+}
+
+void WebServerManager::serializeOpenTag3DStatus(JsonDocument& doc) {
+    opentag3d_t ot3d;
+    if (!NFCManager::getInstance().getLastOpenTag3DData(ot3d)) return;
+
+    JsonObject obj = doc.createNestedObject("opentag3d");
+    obj["base_material"] = ot3d.base_material;
+    if (ot3d.material_modifiers[0]) obj["modifiers"] = ot3d.material_modifiers;
+    obj["manufacturer"] = ot3d.manufacturer;
+    if (ot3d.color_name[0]) obj["color_name"] = ot3d.color_name;
+
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+             ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
+    obj["color_hex"] = colorHex;
+
+    obj["target_weight_g"] = ot3d.target_weight_g;
+    obj["diameter_mm"] = opentag3d_diameter_mm(&ot3d);
+    if (ot3d.density_ugcm3 > 0) obj["density"] = opentag3d_density_gcc(&ot3d);
+
+    uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
+    uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
+    if (printTemp > 0) obj["print_temp"] = printTemp;
+    if (bedTemp > 0) obj["bed_temp"] = bedTemp;
+
+    if (ot3d.has_extended) {
+        if (ot3d.measured_filament_weight_g > 0) obj["measured_weight_g"] = ot3d.measured_filament_weight_g;
+        if (ot3d.empty_spool_weight_g > 0) obj["empty_spool_g"] = ot3d.empty_spool_weight_g;
+        if (ot3d.serial_number[0]) obj["serial_number"] = ot3d.serial_number;
+        uint16_t minPrint = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
+        uint16_t maxPrint = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
+        uint16_t minBed = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
+        uint16_t maxBed = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
+        if (minPrint > 0) obj["min_print_temp"] = minPrint;
+        if (maxPrint > 0) obj["max_print_temp"] = maxPrint;
+        if (minBed > 0) obj["min_bed_temp"] = minBed;
+        if (maxBed > 0) obj["max_bed_temp"] = maxBed;
+        uint16_t dryTemp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
+        if (dryTemp > 0) obj["dry_temp"] = dryTemp;
+        if (ot3d.dry_time_hours > 0) obj["dry_time_hours"] = ot3d.dry_time_hours;
+    }
+}
+
+void WebServerManager::serializeOpenSpoolStatus(JsonDocument& doc) {
+    OpenSpoolData os;
+    if (!NFCManager::getInstance().getLastOpenSpoolData(os) || !os.valid) return;
+
+    JsonObject obj = doc.createNestedObject("openspool");
+    obj["brand"] = os.brand;
+    obj["material"] = os.material;
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%s", os.color_hex);
+    obj["color_hex"] = colorHex;
+    obj["version"] = os.version;
+    if (os.min_temp > 0) obj["min_temp"] = os.min_temp;
+    if (os.max_temp > 0) obj["max_temp"] = os.max_temp;
+}
+
+void WebServerManager::serializeGenericUidStatus(JsonDocument& doc) {
+    GenericTagSpoolInfo spoolInfo;
+    NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
+    if (!spoolInfo.valid) return;
+
+    doc["material_name"] = spoolInfo.material_type;
+    doc["manufacturer"] = spoolInfo.manufacturer;
+    doc["color"] = spoolInfo.color_hex;
+    doc["remaining_g"] = spoolInfo.remaining_weight_g;
+    doc["spoolman_id"] = spoolInfo.spoolman_id;
+    if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
+    if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
+}
+
+void WebServerManager::serializeOpenPrintTagStatus(JsonDocument& doc, const CurrentSpoolState& state) {
+    if (!state.tag_data_valid) return;
+
+    uint8_t mat_type = 0;
+    opt_get_material_type(&state.tag_data, &mat_type);
+    doc["material_type"] = mat_type;
+    doc["material_name"] = materialTypeToString(mat_type);
+
+    uint8_t color[4] = {0};
+    if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
+        char colorHex[8];
+        snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", color[0], color[1], color[2]);
+        doc["color"] = colorHex;
+    } else {
+        doc["color"] = (const char*)nullptr;
+    }
+
+    char manufacturer[33] = {0};
+    opt_get_brand_name(&state.tag_data, manufacturer, sizeof(manufacturer));
+    doc["manufacturer"] = manufacturer;
+
+    float full_weight = 0.0f, consumed = 0.0f;
+    opt_get_actual_full_weight(&state.tag_data, &full_weight);
+    opt_get_consumed_weight(&state.tag_data, &consumed);
+    doc["remaining_g"] = full_weight - consumed;
+    doc["initial_weight_g"] = full_weight;
+
+    int32_t spoolman_id = -1;
+    opt_get_gp_spoolman_id(&state.tag_data, &spoolman_id);
+    doc["spoolman_id"] = spoolman_id;
+
+    float density = 0.0f;
+    if (opt_get_density(&state.tag_data, &density) == OPT_OK && density > 0.0f)
+        doc["density"] = density;
+    float diameter = 0.0f;
+    if (opt_get_filament_diameter(&state.tag_data, &diameter) == OPT_OK && diameter > 0.0f)
+        doc["diameter_mm"] = diameter;
+
+    char mat_name_custom[33] = {0};
+    if (opt_get_material_name(&state.tag_data, mat_name_custom, sizeof(mat_name_custom)) == OPT_OK
+            && mat_name_custom[0] != '\0')
+        doc["material_name"] = mat_name_custom;
+
+    int16_t t = 0;
+    if (opt_get_min_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["min_print_temp"] = t;
+    if (opt_get_max_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["max_print_temp"] = t;
+    if (opt_get_preheat_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["preheat_temp"] = t;
+    if (opt_get_min_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["min_bed_temp"] = t;
+    if (opt_get_max_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["max_bed_temp"] = t;
+}
+
+void WebServerManager::serializeEnrichment(JsonDocument& doc) {
+    SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
+    if (!enrichment.valid || doc.containsKey("spoolman")) return;
+
+    JsonObject sp = doc.createNestedObject("spoolman");
+    sp["spool_id"] = enrichment.spoolman_id;
+    sp["remaining_g"] = enrichment.remaining_g;
+    if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
+    if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
+    if (enrichment.density > 0) sp["density"] = enrichment.density;
+    if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
+}
+
+// ── /api/status ─────────────────────────────────────────────
+
 void WebServerManager::handleApiStatus() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
     CurrentSpoolState state;
     StaticJsonDocument<1536> doc;
 
-    // Always include device ID and firmware version
     char deviceId[8];
     HomeAssistantManager::getDeviceId(deviceId, sizeof(deviceId));
     doc["device_id"] = deviceId;
@@ -1048,186 +1212,22 @@ void WebServerManager::handleApiStatus() {
         doc["tag_data_valid"] = state.tag_data_valid;
         doc["tag_kind"] = tagKindToString(state.kind);
 
-        if (state.kind == TagKind::TigerTag) {
-            // TigerTag — include parsed TigerTag data
-            TigerTagData tt;
-            if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
-                JsonObject ttObj = doc.createNestedObject("tigertag");
-                ttObj["material_id"] = tt.material_id;
-                ttObj["material_name"] = tt.material_name;
-                ttObj["brand_id"] = tt.brand_id;
-                ttObj["brand_name"] = tt.brand_name;
-                ttObj["weight_g"] = tt.weight_g;
-                ttObj["diameter_mm"] = tt.diameter_mm;
-                ttObj["aspect1_name"] = tt.aspect1_name;
-                ttObj["aspect2_name"] = tt.aspect2_name;
-
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         tt.color_r, tt.color_g, tt.color_b);
-                ttObj["color_hex"] = colorHex;
-
-                if (tt.nozzle_temp_min > 0) ttObj["nozzle_temp_min"] = tt.nozzle_temp_min;
-                if (tt.nozzle_temp_max > 0) ttObj["nozzle_temp_max"] = tt.nozzle_temp_max;
-                if (tt.bed_temp_min > 0) ttObj["bed_temp_min"] = tt.bed_temp_min;
-                if (tt.bed_temp_max > 0) ttObj["bed_temp_max"] = tt.bed_temp_max;
-                if (tt.dry_temp > 0) ttObj["dry_temp"] = tt.dry_temp;
-                if (tt.dry_time_hours > 0) ttObj["dry_time_hours"] = tt.dry_time_hours;
-            }
-        } else if (state.kind == TagKind::OpenTag3D) {
-            // OpenTag3D — include parsed data
-            opentag3d_t ot3d;
-            if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
-                JsonObject otObj = doc.createNestedObject("opentag3d");
-                otObj["base_material"] = ot3d.base_material;
-                if (ot3d.material_modifiers[0]) otObj["modifiers"] = ot3d.material_modifiers;
-                otObj["manufacturer"] = ot3d.manufacturer;
-                if (ot3d.color_name[0]) otObj["color_name"] = ot3d.color_name;
-
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
-                otObj["color_hex"] = colorHex;
-
-                otObj["target_weight_g"] = ot3d.target_weight_g;
-                otObj["diameter_mm"] = opentag3d_diameter_mm(&ot3d);
-                if (ot3d.density_ugcm3 > 0) otObj["density"] = opentag3d_density_gcc(&ot3d);
-
-                uint16_t printTemp = (uint16_t)opentag3d_temp_c(ot3d.print_temp_encoded);
-                uint16_t bedTemp = (uint16_t)opentag3d_temp_c(ot3d.bed_temp_encoded);
-                if (printTemp > 0) otObj["print_temp"] = printTemp;
-                if (bedTemp > 0) otObj["bed_temp"] = bedTemp;
-
-                if (ot3d.has_extended) {
-                    if (ot3d.measured_filament_weight_g > 0) otObj["measured_weight_g"] = ot3d.measured_filament_weight_g;
-                    if (ot3d.empty_spool_weight_g > 0) otObj["empty_spool_g"] = ot3d.empty_spool_weight_g;
-                    if (ot3d.serial_number[0]) otObj["serial_number"] = ot3d.serial_number;
-                    uint16_t minPrint = (uint16_t)opentag3d_temp_c(ot3d.min_print_temp_encoded);
-                    uint16_t maxPrint = (uint16_t)opentag3d_temp_c(ot3d.max_print_temp_encoded);
-                    uint16_t minBed = (uint16_t)opentag3d_temp_c(ot3d.min_bed_temp_encoded);
-                    uint16_t maxBed = (uint16_t)opentag3d_temp_c(ot3d.max_bed_temp_encoded);
-                    if (minPrint > 0) otObj["min_print_temp"] = minPrint;
-                    if (maxPrint > 0) otObj["max_print_temp"] = maxPrint;
-                    if (minBed > 0) otObj["min_bed_temp"] = minBed;
-                    if (maxBed > 0) otObj["max_bed_temp"] = maxBed;
-                    uint16_t dryTemp = (uint16_t)opentag3d_temp_c(ot3d.max_dry_temp_encoded);
-                    if (dryTemp > 0) otObj["dry_temp"] = dryTemp;
-                    if (ot3d.dry_time_hours > 0) otObj["dry_time_hours"] = ot3d.dry_time_hours;
-                }
-            }
-        } else if (state.kind == TagKind::OpenSpoolTag) {
-            OpenSpoolData os;
-            if (NFCManager::getInstance().getLastOpenSpoolData(os) && os.valid) {
-                JsonObject osObj = doc.createNestedObject("openspool");
-                osObj["brand"] = os.brand;
-                osObj["material"] = os.material;
-                char osColorHex[8];
-                snprintf(osColorHex, sizeof(osColorHex), "#%s", os.color_hex);
-                osObj["color_hex"] = osColorHex;
-                osObj["version"] = os.version;
-                if (os.min_temp > 0) osObj["min_temp"] = os.min_temp;
-                if (os.max_temp > 0) osObj["max_temp"] = os.max_temp;
-            }
-        } else if (state.kind == TagKind::GenericUidTag) {
-            // Generic UID tag — include resolved Spoolman data if available
-            GenericTagSpoolInfo spoolInfo;
-            NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
-            if (spoolInfo.valid) {
-                doc["material_name"] = spoolInfo.material_type;
-                doc["manufacturer"] = spoolInfo.manufacturer;
-                doc["color"] = spoolInfo.color_hex;
-                doc["remaining_g"] = spoolInfo.remaining_weight_g;
-                doc["spoolman_id"] = spoolInfo.spoolman_id;
-                if (spoolInfo.extruder_temp > 0) doc["extruder_temp"] = spoolInfo.extruder_temp;
-                if (spoolInfo.bed_temp > 0) doc["bed_temp"] = spoolInfo.bed_temp;
-            }
-        } else if (state.tag_data_valid) {
-            // OpenPrintTag — include OPT fields
-            uint8_t mat_type = 0;
-            opt_get_material_type(&state.tag_data, &mat_type);
-            doc["material_type"] = mat_type;
-            doc["material_name"] = materialTypeToString(mat_type);
-
-            uint8_t color[4] = {0};
-            if (opt_get_primary_color(&state.tag_data, color) == OPT_OK) {
-                char colorHex[8];
-                snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                         color[0], color[1], color[2]);
-                doc["color"] = colorHex;
-            } else {
-                doc["color"] = (const char*)nullptr;
-            }
-
-            char manufacturer[33] = {0};
-            opt_get_brand_name(&state.tag_data, manufacturer, sizeof(manufacturer));
-            doc["manufacturer"] = manufacturer;
-
-            float full_weight = 0.0f, consumed = 0.0f;
-            opt_get_actual_full_weight(&state.tag_data, &full_weight);
-            opt_get_consumed_weight(&state.tag_data, &consumed);
-            doc["remaining_g"] = full_weight - consumed;
-            doc["initial_weight_g"] = full_weight;
-
-            int32_t spoolman_id = -1;
-            opt_get_gp_spoolman_id(&state.tag_data, &spoolman_id);
-            doc["spoolman_id"] = spoolman_id;
-
-            float density = 0.0f;
-            if (opt_get_density(&state.tag_data, &density) == OPT_OK && density > 0.0f)
-                doc["density"] = density;
-
-            float diameter = 0.0f;
-            if (opt_get_filament_diameter(&state.tag_data, &diameter) == OPT_OK && diameter > 0.0f)
-                doc["diameter_mm"] = diameter;
-
-            char mat_name_custom[33] = {0};
-            if (opt_get_material_name(&state.tag_data, mat_name_custom, sizeof(mat_name_custom)) == OPT_OK
-                    && mat_name_custom[0] != '\0')
-                doc["material_name"] = mat_name_custom;
-
-            int16_t t = 0;
-            if (opt_get_min_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["min_print_temp"] = t;
-            if (opt_get_max_print_temp(&state.tag_data, &t) == OPT_OK && t != 0) doc["max_print_temp"] = t;
-            if (opt_get_preheat_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["preheat_temp"] = t;
-            if (opt_get_min_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["min_bed_temp"] = t;
-            if (opt_get_max_bed_temp(&state.tag_data, &t) == OPT_OK && t != 0)   doc["max_bed_temp"] = t;
+        switch (state.kind) {
+            case TagKind::TigerTag:     serializeTigerTagStatus(doc); break;
+            case TagKind::OpenTag3D:    serializeOpenTag3DStatus(doc); break;
+            case TagKind::OpenSpoolTag: serializeOpenSpoolStatus(doc); break;
+            case TagKind::GenericUidTag: serializeGenericUidStatus(doc); break;
+            case TagKind::BambuTag:     break;
+            default:                    serializeOpenPrintTagStatus(doc, state); break;
         }
 
-        // Smart tag enrichment — include Spoolman data if available
-        {
-            SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
-            if (enrichment.valid &&
-                (state.kind == TagKind::TigerTag ||
-                 state.kind == TagKind::OpenTag3D ||
-                 state.kind == TagKind::OpenSpoolTag ||
-                 state.kind == TagKind::OpenPrintTag)) {
-                JsonObject sp = doc.createNestedObject("spoolman");
-                sp["spool_id"] = enrichment.spoolman_id;
-                sp["remaining_g"] = enrichment.remaining_g;
-                if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
-                if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
-                if (enrichment.density > 0) sp["density"] = enrichment.density;
-                if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
-            }
-        }
+        serializeEnrichment(doc);
     } else {
         doc["present"] = false;
         doc["tag_data_valid"] = false;
     }
 
-    // Include enrichment even when tag is not present (persists until next scan)
-    {
-        SmartTagEnrichment enrichment = ApplicationManager::getInstance().getSmartTagEnrichment();
-        if (enrichment.valid && !doc.containsKey("spoolman")) {
-            JsonObject sp = doc.createNestedObject("spoolman");
-            sp["spool_id"] = enrichment.spoolman_id;
-            sp["remaining_g"] = enrichment.remaining_g;
-            if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
-            if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
-            if (enrichment.density > 0) sp["density"] = enrichment.density;
-            if (enrichment.diameter_mm > 0) sp["diameter_mm"] = enrichment.diameter_mm;
-        }
-    }
+    serializeEnrichment(doc);
 
     String body;
     serializeJson(doc, body);
@@ -1790,6 +1790,205 @@ void WebServerManager::handleApiSpoolmanFindFilament() {
     _server.send(200, "application/json", "{\"found\":false}");
 }
 
+// ── Enrichment save helpers ─────────────────────────────────
+
+int WebServerManager::enrichFindOrCreateVendor(WiFiClient& client, HTTPClient& http,
+                                                const char* baseUrl, const char* manufacturer, int confirmedId) {
+    if (confirmedId != -1 || manufacturer[0] == '\0') return confirmedId;
+
+    char url[256];
+    String encodedMfg = urlEncode(manufacturer);
+    snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encodedMfg.c_str());
+    http.begin(client, url);
+    http.setTimeout(5000);
+    int code = http.GET();
+    int vendorId = -1;
+    if (code == 200) {
+        String response = http.getString();
+        DynamicJsonDocument vDoc(2048);
+        if (!deserializeJson(vDoc, response)) {
+            for (JsonObject v : vDoc.as<JsonArray>()) {
+                if (strcasecmp(v["name"] | "", manufacturer) == 0) {
+                    vendorId = v["id"] | -1;
+                    break;
+                }
+            }
+        }
+    }
+    http.end();
+
+    if (vendorId >= 0) return vendorId;
+
+    StaticJsonDocument<128> vBody;
+    vBody["name"] = manufacturer;
+    String vJson;
+    serializeJson(vBody, vJson);
+    snprintf(url, sizeof(url), "%s/api/v1/vendor", baseUrl);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    code = http.POST(vJson);
+    if (code == 200 || code == 201) {
+        String response = http.getString();
+        StaticJsonDocument<256> vResp;
+        if (!deserializeJson(vResp, response)) vendorId = vResp["id"] | -1;
+    }
+    http.end();
+    return vendorId;
+}
+
+int WebServerManager::enrichFindOrCreateFilament(WiFiClient& client, HTTPClient& http,
+                                                   const char* baseUrl, const char* material, const char* colorHex,
+                                                   int vendorId, float density, float diameter,
+                                                   int bedTemp, int nozzleTemp, int confirmedId) {
+    if (confirmedId != -1 || material[0] == '\0') return confirmedId;
+
+    char url[256];
+    int filamentId = -1;
+
+    // Search existing filaments by vendor — client-side match (#92)
+    if (vendorId > 0) {
+        snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%d", baseUrl, vendorId);
+        http.begin(client, url);
+        http.setTimeout(5000);
+        int code = http.GET();
+        if (code == 200) {
+            String response = http.getString();
+            DynamicJsonDocument fDoc(8192);
+            if (!deserializeJson(fDoc, response)) {
+                const char* colorCmp = colorHex;
+                if (colorCmp[0] == '#') colorCmp++;
+                for (JsonObject f : fDoc.as<JsonArray>()) {
+                    if (strcasecmp(f["material"] | "", material) != 0) continue;
+                    if (colorHex[0] != '\0') {
+                        const char* fc = f["color_hex"] | "";
+                        if (fc[0] == '#') fc++;
+                        if (strcasecmp(fc, colorCmp) != 0) continue;
+                    }
+                    filamentId = f["id"] | -1;
+                    break;
+                }
+            }
+        }
+        http.end();
+    }
+
+    if (filamentId >= 0) return filamentId;
+
+    // Create new filament
+    StaticJsonDocument<512> fBody;
+    fBody["name"] = material;
+    fBody["material"] = material;
+    if (vendorId > 0) fBody["vendor_id"] = vendorId;
+    if (density > 0) fBody["density"] = density;
+    fBody["diameter"] = diameter;
+    if (colorHex[0] != '\0') {
+        const char* ch = colorHex;
+        if (ch[0] == '#') ch++;
+        fBody["color_hex"] = ch;
+    }
+    if (bedTemp > 0) fBody["settings_bed_temp"] = bedTemp;
+    if (nozzleTemp > 0) fBody["settings_extruder_temp"] = nozzleTemp;
+    String fJson;
+    serializeJson(fBody, fJson);
+    snprintf(url, sizeof(url), "%s/api/v1/filament", baseUrl);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(fJson);
+    if (code == 200 || code == 201) {
+        String response = http.getString();
+        StaticJsonDocument<256> fResp;
+        if (!deserializeJson(fResp, response)) filamentId = fResp["id"] | -1;
+    }
+    http.end();
+    return filamentId;
+}
+
+int WebServerManager::enrichFindSpoolByUid(WiFiClient& client, HTTPClient& http,
+                                            const char* baseUrl, const char* quotedUid, float& outInitialWeight) {
+    char url[256];
+    snprintf(url, sizeof(url), "%s/api/v1/spool?limit=200", baseUrl);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    int code = http.GET();
+    int spoolId = -1;
+    outInitialWeight = 0.0f;
+    if (code == 200) {
+        String response = http.getString();
+        DynamicJsonDocument sDoc(16384);
+        if (!deserializeJson(sDoc, response)) {
+            JsonArray arr = sDoc.as<JsonArray>();
+            for (size_t i = 0; i < arr.size(); i++) {
+                const char* nfcId = arr[i]["extra"]["nfc_id"] | "";
+                if (strcmp(nfcId, quotedUid) != 0) continue;
+                if (arr[i]["archived"] | false) continue;
+                spoolId = arr[i]["id"] | -1;
+                outInitialWeight = arr[i]["initial_weight"] | 0.0f;
+                break;
+            }
+        }
+    }
+    http.end();
+    return spoolId;
+}
+
+bool WebServerManager::enrichUpdateSpool(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                                           int spoolId, int filamentId, float remainingG, float existingInitialWeight) {
+    char url[256];
+    StaticJsonDocument<256> patch;
+    patch["filament_id"] = filamentId;
+    if (remainingG > 0) {
+        float initialW = existingInitialWeight > 0 ? existingInitialWeight : 1000.0f;
+        float usedW = initialW - remainingG;
+        if (usedW < 0) usedW = 0;
+        patch["initial_weight"] = initialW;
+        patch["used_weight"] = usedW;
+    }
+    String pJson;
+    serializeJson(patch, pJson);
+    snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, spoolId);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.PATCH(pJson);
+    http.end();
+    return (code >= 200 && code < 300);
+}
+
+int WebServerManager::enrichCreateSpool(WiFiClient& client, HTTPClient& http, const char* baseUrl,
+                                          int filamentId, float remainingG, const char* quotedUid) {
+    char url[256];
+    StaticJsonDocument<512> sBody;
+    sBody["filament_id"] = filamentId;
+    if (remainingG > 0) {
+        float initialW = 1000.0f;
+        float usedW = initialW - remainingG;
+        if (usedW < 0) usedW = 0;
+        sBody["initial_weight"] = initialW;
+        sBody["used_weight"] = usedW;
+    }
+    JsonObject extra = sBody.createNestedObject("extra");
+    extra["nfc_id"] = quotedUid;
+    String sJson;
+    serializeJson(sBody, sJson);
+    snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
+    http.begin(client, url);
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(sJson);
+    int spoolId = -1;
+    if (code == 200 || code == 201) {
+        String response = http.getString();
+        StaticJsonDocument<256> sResp;
+        if (!deserializeJson(sResp, response)) spoolId = sResp["id"] | -1;
+    }
+    http.end();
+    return spoolId;
+}
+
+// ── /api/spoolman/save-enrichment ───────────────────────────
+
 void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
 
@@ -1798,7 +1997,6 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
         _server.send(400, "application/json", "{\"error\":\"bad JSON\"}");
         return;
     }
-
     if (!SpoolmanManager::getInstance().isConfigured()) {
         _server.send(503, "application/json", "{\"error\":\"Spoolman not configured\"}");
         return;
@@ -1823,7 +2021,6 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
     }
 
     const char* baseUrl = ConfigurationManager::getInstance().getSpoolmanURL();
-
     if (xSemaphoreTake(g_httpMutex, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         sendError(503, "Busy — try again");
         return;
@@ -1831,198 +2028,29 @@ void WebServerManager::handleApiSpoolmanSaveEnrichment() {
 
     WiFiClient client;
     HTTPClient http;
-    char url[256];
-    String response;
-    int code;
 
-    // Step 1: Find or create vendor (-1 = not searched, -2 = user declined match)
-    int vendorId = confirmedVendorId;
-    if (vendorId == -1 && manufacturer[0] != '\0') {
-        String encodedMfg = urlEncode(manufacturer);
-        snprintf(url, sizeof(url), "%s/api/v1/vendor?name=%s", baseUrl, encodedMfg.c_str());
-        http.begin(client, url);
-        http.setTimeout(5000);
-        code = http.GET();
-        if (code == 200) {
-            response = http.getString();
-            DynamicJsonDocument vDoc(2048);
-            if (!deserializeJson(vDoc, response)) {
-                for (JsonObject v : vDoc.as<JsonArray>()) {
-                    if (strcasecmp(v["name"] | "", manufacturer) == 0) {
-                        vendorId = v["id"] | -1;
-                        break;
-                    }
-                }
-            }
-        }
-        http.end();
-
-        if (vendorId < 0) {
-            StaticJsonDocument<128> vBody;
-            vBody["name"] = manufacturer;
-            String vJson;
-            serializeJson(vBody, vJson);
-            snprintf(url, sizeof(url), "%s/api/v1/vendor", baseUrl);
-            http.begin(client, url);
-            http.setTimeout(5000);
-            http.addHeader("Content-Type", "application/json");
-            code = http.POST(vJson);
-            if (code == 200 || code == 201) {
-                response = http.getString();
-                StaticJsonDocument<256> vResp;
-                if (!deserializeJson(vResp, response)) vendorId = vResp["id"] | -1;
-            }
-            http.end();
-        }
-    }
-
-    // Step 2: Find or create filament (-1 = not searched, -2 = user declined match)
-    int filamentId = confirmedFilamentId;
-    if (filamentId == -1 && material[0] != '\0') {
-        if (vendorId > 0) {
-            // Spoolman's ?material= filter is unreliable (#92) — match client-side
-            snprintf(url, sizeof(url), "%s/api/v1/filament?vendor_id=%d", baseUrl, vendorId);
-            http.begin(client, url);
-            http.setTimeout(5000);
-            code = http.GET();
-            if (code == 200) {
-                response = http.getString();
-                DynamicJsonDocument fSearchDoc(8192);
-                if (!deserializeJson(fSearchDoc, response)) {
-                    const char* colorCmp = colorHex;
-                    if (colorCmp[0] == '#') colorCmp++;
-                    for (JsonObject f : fSearchDoc.as<JsonArray>()) {
-                        if (strcasecmp(f["material"] | "", material) != 0) continue;
-                        if (colorHex[0] != '\0') {
-                            const char* fc = f["color_hex"] | "";
-                            if (fc[0] == '#') fc++;
-                            if (strcasecmp(fc, colorCmp) != 0) continue;
-                        }
-                        filamentId = f["id"] | -1;
-                        break;
-                    }
-                }
-            }
-            http.end();
-        }
-
-        // Create if not found
-        if (filamentId < 0) {
-            StaticJsonDocument<512> fBody;
-            fBody["name"] = material;
-            fBody["material"] = material;
-            if (vendorId > 0) fBody["vendor_id"] = vendorId;
-            if (density > 0) fBody["density"] = density;
-            fBody["diameter"] = diameter;
-            if (colorHex[0] != '\0') {
-                const char* ch = colorHex;
-                if (ch[0] == '#') ch++;
-                fBody["color_hex"] = ch;
-            }
-            if (bedTemp > 0) fBody["settings_bed_temp"] = bedTemp;
-            if (nozzleTemp > 0) fBody["settings_extruder_temp"] = nozzleTemp;
-            String fJson;
-            serializeJson(fBody, fJson);
-            snprintf(url, sizeof(url), "%s/api/v1/filament", baseUrl);
-            http.begin(client, url);
-            http.setTimeout(5000);
-            http.addHeader("Content-Type", "application/json");
-            code = http.POST(fJson);
-            if (code == 200 || code == 201) {
-                response = http.getString();
-                StaticJsonDocument<256> fResp;
-                if (!deserializeJson(fResp, response)) filamentId = fResp["id"] | -1;
-            }
-            http.end();
-        }
-    }
-
+    int vendorId = enrichFindOrCreateVendor(client, http, baseUrl, manufacturer, confirmedVendorId);
+    int filamentId = enrichFindOrCreateFilament(client, http, baseUrl, material, colorHex,
+                                                 vendorId, density, diameter, bedTemp, nozzleTemp, confirmedFilamentId);
     if (filamentId < 0) {
         xSemaphoreGive(g_httpMutex);
         _server.send(500, "application/json", "{\"error\":\"filament create failed\"}");
         return;
     }
 
-    // Step 3: Find existing spool by UID
-    // Spoolman's extra_field filter is unreliable — fetch all and match nfc_id client-side
-    int spoolId = -1;
-    float existingInitialWeight = 0.0f;
     char quotedUid[130];
     snprintf(quotedUid, sizeof(quotedUid), "\"%s\"", uid);
-    snprintf(url, sizeof(url), "%s/api/v1/spool?limit=200", baseUrl);
-    http.begin(client, url);
-    http.setTimeout(5000);
-    code = http.GET();
-    if (code == 200) {
-        response = http.getString();
-        DynamicJsonDocument sDoc(16384);
-        if (!deserializeJson(sDoc, response)) {
-            JsonArray arr = sDoc.as<JsonArray>();
-            for (size_t i = 0; i < arr.size(); i++) {
-                const char* nfcId = arr[i]["extra"]["nfc_id"] | "";
-                if (strcmp(nfcId, quotedUid) == 0) {
-                    bool archived = arr[i]["archived"] | false;
-                    if (archived) continue;
-                    spoolId = arr[i]["id"] | -1;
-                    existingInitialWeight = arr[i]["initial_weight"] | 0.0f;
-                    break;
-                }
-            }
-        }
-    }
-    http.end();
+    float existingInitialWeight = 0.0f;
+    int spoolId = enrichFindSpoolByUid(client, http, baseUrl, quotedUid, existingInitialWeight);
 
     if (spoolId > 0) {
-        // Update existing spool — Spoolman uses used_weight, not remaining_weight
-        StaticJsonDocument<256> patch;
-        patch["filament_id"] = filamentId;
-        if (remainingG > 0) {
-            float initialW = existingInitialWeight > 0 ? existingInitialWeight : 1000.0f;
-            float usedW = initialW - remainingG;
-            if (usedW < 0) usedW = 0;
-            patch["initial_weight"] = initialW;
-            patch["used_weight"] = usedW;
-        }
-        String pJson;
-        serializeJson(patch, pJson);
-        snprintf(url, sizeof(url), "%s/api/v1/spool/%d", baseUrl, spoolId);
-        http.begin(client, url);
-        http.setTimeout(5000);
-        http.addHeader("Content-Type", "application/json");
-        int patchCode = http.PATCH(pJson);
-        http.end();
-        if (patchCode < 200 || patchCode >= 300) {
+        if (!enrichUpdateSpool(client, http, baseUrl, spoolId, filamentId, remainingG, existingInitialWeight)) {
             xSemaphoreGive(g_httpMutex);
             _server.send(500, "application/json", "{\"error\":\"spool update failed\"}");
             return;
         }
     } else {
-        // Create new spool — Spoolman uses used_weight, not remaining_weight
-        StaticJsonDocument<512> sBody;
-        sBody["filament_id"] = filamentId;
-        if (remainingG > 0) {
-            float initialW = 1000.0f;
-            float usedW = initialW - remainingG;
-            if (usedW < 0) usedW = 0;
-            sBody["initial_weight"] = initialW;
-            sBody["used_weight"] = usedW;
-        }
-        JsonObject extra = sBody.createNestedObject("extra");
-        // Spoolman extra fields require JSON-encoded string values (double-quoted)
-        extra["nfc_id"] = quotedUid;
-        String sJson;
-        serializeJson(sBody, sJson);
-        snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
-        http.begin(client, url);
-        http.setTimeout(5000);
-        http.addHeader("Content-Type", "application/json");
-        code = http.POST(sJson);
-        if (code == 200 || code == 201) {
-            response = http.getString();
-            StaticJsonDocument<256> sResp;
-            if (!deserializeJson(sResp, response)) spoolId = sResp["id"] | -1;
-        }
-        http.end();
+        spoolId = enrichCreateSpool(client, http, baseUrl, filamentId, remainingG, quotedUid);
     }
 
     StaticJsonDocument<128> result;
