@@ -2,6 +2,7 @@
 #define CONVERSION_UTILS_H
 
 #include <cstdint>
+#include "NFCTypes.h"
 
 /**
  * Shared data format conversion utilities
@@ -39,5 +40,12 @@ bool parseHexColor(const char* hex, uint8_t* rgba);
  *         PLA: 1.24, PETG: 1.27, ABS: 1.04, default: 1.20
  */
 float getDefaultDensity(uint8_t material_type);
+
+/**
+ * Convert TagKind enum to MQTT-friendly tag format string.
+ * Used in the spoolsense/<device_id>/tag/state payload so the middleware
+ * knows whether weight writeback is supported for this tag type.
+ */
+const char* tagKindToMqttFormat(TagKind kind);
 
 #endif // CONVERSION_UTILS_H
