@@ -12,6 +12,7 @@
 #ifndef NATIVE_TEST
   #include <Arduino.h>
   #include <WiFi.h>
+  #include <ArduinoJson.h>
   #include <json.hpp>
 
   #include <esp_heap_caps.h>
@@ -856,31 +857,12 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
             publishCommandResponse(command, false, "missing_uid_in_topic");
             return;
         }
-        float deductG = 0.0f;
-        const_buffer_stream stm((const uint8_t*)payload, strlen(payload));
-        json_reader reader(stm);
-        if (!reader.read() || reader.node_type() != json_node_type::object) {
+        StaticJsonDocument<64> deductDoc;
+        if (deserializeJson(deductDoc, payload)) {
             publishCommandResponse(command, false, "invalid_json");
             return;
         }
-        const unsigned rootDepth = reader.depth();
-        while (reader.read()) {
-            if (reader.node_type() == json_node_type::end_object && reader.depth() == rootDepth) {
-                break;
-            }
-            if (reader.node_type() != json_node_type::field || reader.depth() != rootDepth) {
-                continue;
-            }
-            const char* field = reader.value();
-            if (!reader.read() || reader.node_type() != json_node_type::value) {
-                publishCommandResponse(command, false, "invalid_json");
-                return;
-            }
-            if (strcmp(field, "deduct_g") == 0 &&
-                (reader.value_type() == json_value_type::real || reader.value_type() == json_value_type::integer)) {
-                deductG = static_cast<float>(reader.value_real());
-            }
-        }
+        float deductG = deductDoc["deduct_g"] | 0.0f;
         if (deductG <= 0.0f) {
             publishCommandResponse(command, false, "invalid_deduct_g");
             return;

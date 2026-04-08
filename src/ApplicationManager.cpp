@@ -5,6 +5,7 @@
 #include "ApplicationManager.h"
 #include "UserConfig.h"
 #include "ConversionUtils.h"
+#include "DeductionManager.h"
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"
@@ -405,6 +406,22 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     } else if (display_) {
         Serial.printf("ApplicationManager: Skipping LCD update for already displayed spool %s\n", msg.payload.spoolDetected.spool_id);
     }
+
+    // Apply any pending filament deductions from middleware (stored in NVS).
+    // Must run before MQTT publish so middleware sees post-deduction weight.
+#ifndef NATIVE_TEST
+    {
+        CurrentSpoolState deductState;
+        if (NFCManager::getInstance().getCurrentSpoolState(deductState) && deductState.present) {
+            float deducted = DeductionManager::getInstance().applyIfPending(
+                deductState.spool_id, deductState.kind);
+            if (deducted > 0.0f) {
+                Serial.printf("ApplicationManager: Applied %.1fg pending deduction to %s\n",
+                              deducted, deductState.spool_id);
+            }
+        }
+    }
+#endif
 
     // Publish tag state to HA (always, regardless of mode)
     {
