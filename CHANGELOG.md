@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.13] - 2026-04-07
+
+### Added
+
+- **MQTT `tag_format` field** — `spoolsense/<device_id>/tag/state` payload now includes `tag_format` so the middleware knows whether weight writeback is supported. Values: `openprinttag`, `tigertag`, `opentag3d`, `openspool`, `uid_only`, `unknown`. Unblocks middleware filament usage deduction (#122).
+
+---
+
 ## [1.6.12] - 2026-04-06
 
 ### Changed
