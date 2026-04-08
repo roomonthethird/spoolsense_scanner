@@ -408,7 +408,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
 
     // Apply any pending filament deductions from middleware (stored in NVS).
-    // Must run before MQTT publish so middleware sees post-deduction weight.
+    // Enqueues a tag write — updated weight publishes after write completes and re-scan triggers.
 #ifndef NATIVE_TEST
     {
         CurrentSpoolState deductState;

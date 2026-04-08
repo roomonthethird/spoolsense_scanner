@@ -92,8 +92,12 @@ static float applyOpenPrintTag(const char* uid, float pending) {
     req.data.grams_to_remove = deduction;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
 
-    NFCManager::getInstance().enqueueWrite(req);
+    if (!NFCManager::getInstance().enqueueWrite(req)) {
+        Serial.printf("DeductionManager: Write queue full — deduction kept in NVS for retry\n");
+        return 0.0f;  // don't clear NVS, retry on next scan
+    }
 
+    DeductionManager::getInstance().clearPending(uid);
     Serial.printf("DeductionManager: Applied %.1fg deduction to OpenPrintTag %s (%.1fg remaining)\n",
                   deduction, uid, remaining - deduction);
     return deduction;
@@ -117,12 +121,13 @@ static float applyOpenTag3D(const char* uid, float pending) {
 
     float deduction = (pending > remaining) ? remaining : pending;
 
-    // Subtract from the weight field the tag uses
+    // Subtract from the weight field the tag uses (round to avoid truncation loss)
     if (ot3d.measured_filament_weight_g > 0) {
-        ot3d.measured_filament_weight_g -= (uint16_t)deduction;
+        int newMeasured = (int)lroundf(ot3d.measured_filament_weight_g - deduction);
+        ot3d.measured_filament_weight_g = (newMeasured > 0) ? (uint16_t)newMeasured : 0;
     } else {
-        int newWeight = (int)ot3d.target_weight_g - (int)deduction;
-        ot3d.target_weight_g = (newWeight > 0) ? (uint16_t)newWeight : 0;
+        int newTarget = (int)lroundf(ot3d.target_weight_g - deduction);
+        ot3d.target_weight_g = (newTarget > 0) ? (uint16_t)newTarget : 0;
     }
 
     NFCWriteRequest req;
@@ -131,8 +136,12 @@ static float applyOpenTag3D(const char* uid, float pending) {
     req.type = NFCWriteType::WRITE_OPENTAG3D;
     strncpy(req.expected_spool_id, uid, sizeof(req.expected_spool_id) - 1);
 
-    NFCManager::getInstance().enqueueRawWrite(req, (const uint8_t*)&ot3d, sizeof(ot3d));
+    if (!NFCManager::getInstance().enqueueRawWrite(req, (const uint8_t*)&ot3d, sizeof(ot3d))) {
+        Serial.printf("DeductionManager: Write queue full — deduction kept in NVS for retry\n");
+        return 0.0f;
+    }
 
+    DeductionManager::getInstance().clearPending(uid);
     Serial.printf("DeductionManager: Applied %.1fg deduction to OpenTag3D %s (%.1fg remaining)\n",
                   deduction, uid, remaining - deduction);
     return deduction;
@@ -154,11 +163,14 @@ float DeductionManager::applyIfPending(const char* uid, TagKind kind) {
             deducted = applyOpenTag3D(uid, pending);
             break;
         default:
-            // Tag can't accept weight writes — clear stale deduction
+            // Tag can't accept weight writes — clear stale deduction so it doesn't accumulate forever
             Serial.printf("DeductionManager: Tag type %d does not support weight writes — clearing\n", (int)kind);
+            clearPending(uid);
             break;
     }
 
-    clearPending(uid);
+    // Clear only happens inside apply functions after successful enqueue,
+    // or above for non-writable tags. Don't clear here — if enqueue failed,
+    // deduction stays in NVS for next scan attempt.
     return deducted;
 }

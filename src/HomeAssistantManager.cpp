@@ -871,10 +871,11 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         DeductionManager::getInstance().storePending(uidFromTopic, deductG);
 
         // If tag is currently on scanner, apply immediately instead of waiting for next scan
+        // Use case-insensitive compare — MQTT topic UID may differ in case from scanner's uppercase
         CurrentSpoolState deductSpool;
         if (NFCManager::getInstance().getCurrentSpoolState(deductSpool) &&
-            deductSpool.present && strcmp(deductSpool.spool_id, uidFromTopic) == 0) {
-            DeductionManager::getInstance().applyIfPending(uidFromTopic, deductSpool.kind);
+            deductSpool.present && strcasecmp(deductSpool.spool_id, uidFromTopic) == 0) {
+            DeductionManager::getInstance().applyIfPending(deductSpool.spool_id, deductSpool.kind);
         }
 
         publishCommandResponse(command, true, nullptr);
