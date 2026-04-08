@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.14] - 2026-04-08
+
+### Added
+
+- **Filament deduction storage** — middleware sends usage deductions via MQTT (`cmd/deduct/<uid>`) after prints. Scanner stores them in NVS and applies to writable tags on the next scan. Deductions persist across reboots, accumulate between prints, and clamp to zero on apply. (#123)
+- **DeductionManager** — new singleton handling NVS storage + tag write-back for OpenPrintTag (aux region partial write) and OpenTag3D (NDEF rebuild)
+- **Immediate apply** — if the tag is on the scanner when the deduction arrives, it writes immediately instead of waiting for the next scan
+
+### Fixed
+
+- **NVS clear after enqueue** — pending deduction is only cleared after the NFC write is successfully queued, not before (prevents data loss if write queue is full)
+- **Case-insensitive UID match** — MQTT deduct handler uses `strcasecmp` for UID comparison to handle mixed-case UIDs from middleware
+- **OpenTag3D weight precision** — uses `lroundf()` instead of truncating cast when converting deduction to uint16_t
+
+---
+
 ## [1.6.13] - 2026-04-07
 
 ### Added
