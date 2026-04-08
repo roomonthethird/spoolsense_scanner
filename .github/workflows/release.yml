@@ -85,14 +85,13 @@ jobs:
       - name: Notify Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.body }}
+          RELEASE_TAG: ${{ steps.changelog.outputs.tag }}
         run: |
-          TAG="${{ steps.changelog.outputs.tag }}"
-          BODY="${{ steps.changelog.outputs.body }}"
-          # Discord embed description limit is 4096 chars
-          BODY="${BODY:0:4000}"
+          # Use env vars + jq to avoid shell interpretation of backticks in changelog
           PAYLOAD=$(jq -n \
-            --arg title "SpoolSense Scanner $TAG Released" \
-            --arg url "https://github.com/SpoolSense/spoolsense_scanner/releases/tag/$TAG" \
-            --arg desc "$BODY" \
+            --arg title "SpoolSense Scanner $RELEASE_TAG Released" \
+            --arg url "https://github.com/SpoolSense/spoolsense_scanner/releases/tag/$RELEASE_TAG" \
+            --arg desc "${CHANGELOG_BODY:0:4000}" \
             '{embeds: [{title: $title, url: $url, description: $desc, color: 3447003}]}')
           curl -s -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK"
