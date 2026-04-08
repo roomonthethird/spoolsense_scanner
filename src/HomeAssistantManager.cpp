@@ -6,11 +6,13 @@
 #include "ApplicationManager.h"
 #include "ConfigurationManager.h"
 #include "ConversionUtils.h"
+#include "DeductionManager.h"
 #include "LEDManager.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
   #include <WiFi.h>
+  #include <ArduinoJson.h>
   #include <json.hpp>
 
   #include <esp_heap_caps.h>
@@ -846,6 +848,37 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
                 ledManager.showFilamentColor(r, g, b);
             }
         }
+        return;
+    }
+
+    // deduct: store filament usage deduction — tag may not be on scanner
+    if (strcmp(command, "deduct") == 0) {
+        if (strlen(uidFromTopic) == 0) {
+            publishCommandResponse(command, false, "missing_uid_in_topic");
+            return;
+        }
+        StaticJsonDocument<64> deductDoc;
+        if (deserializeJson(deductDoc, payload)) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+        float deductG = deductDoc["deduct_g"] | 0.0f;
+        if (deductG <= 0.0f) {
+            publishCommandResponse(command, false, "invalid_deduct_g");
+            return;
+        }
+
+        DeductionManager::getInstance().storePending(uidFromTopic, deductG);
+
+        // If tag is currently on scanner, apply immediately instead of waiting for next scan
+        // Use case-insensitive compare — MQTT topic UID may differ in case from scanner's uppercase
+        CurrentSpoolState deductSpool;
+        if (NFCManager::getInstance().getCurrentSpoolState(deductSpool) &&
+            deductSpool.present && strcasecmp(deductSpool.spool_id, uidFromTopic) == 0) {
+            DeductionManager::getInstance().applyIfPending(deductSpool.spool_id, deductSpool.kind);
+        }
+
+        publishCommandResponse(command, true, nullptr);
         return;
     }
 
