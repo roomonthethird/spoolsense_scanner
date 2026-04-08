@@ -6,6 +6,7 @@
 #include "ApplicationManager.h"
 #include "ConfigurationManager.h"
 #include "ConversionUtils.h"
+#include "DeductionManager.h"
 #include "LEDManager.h"
 
 #ifndef NATIVE_TEST
@@ -846,6 +847,55 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
                 ledManager.showFilamentColor(r, g, b);
             }
         }
+        return;
+    }
+
+    // deduct: store filament usage deduction — tag may not be on scanner
+    if (strcmp(command, "deduct") == 0) {
+        if (strlen(uidFromTopic) == 0) {
+            publishCommandResponse(command, false, "missing_uid_in_topic");
+            return;
+        }
+        float deductG = 0.0f;
+        const_buffer_stream stm((const uint8_t*)payload, strlen(payload));
+        json_reader reader(stm);
+        if (!reader.read() || reader.node_type() != json_node_type::object) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+        const unsigned rootDepth = reader.depth();
+        while (reader.read()) {
+            if (reader.node_type() == json_node_type::end_object && reader.depth() == rootDepth) {
+                break;
+            }
+            if (reader.node_type() != json_node_type::field || reader.depth() != rootDepth) {
+                continue;
+            }
+            const char* field = reader.value();
+            if (!reader.read() || reader.node_type() != json_node_type::value) {
+                publishCommandResponse(command, false, "invalid_json");
+                return;
+            }
+            if (strcmp(field, "deduct_g") == 0 &&
+                (reader.value_type() == json_value_type::real || reader.value_type() == json_value_type::integer)) {
+                deductG = static_cast<float>(reader.value_real());
+            }
+        }
+        if (deductG <= 0.0f) {
+            publishCommandResponse(command, false, "invalid_deduct_g");
+            return;
+        }
+
+        DeductionManager::getInstance().storePending(uidFromTopic, deductG);
+
+        // If tag is currently on scanner, apply immediately instead of waiting for next scan
+        CurrentSpoolState deductSpool;
+        if (NFCManager::getInstance().getCurrentSpoolState(deductSpool) &&
+            deductSpool.present && strcmp(deductSpool.spool_id, uidFromTopic) == 0) {
+            DeductionManager::getInstance().applyIfPending(uidFromTopic, deductSpool.kind);
+        }
+
+        publishCommandResponse(command, true, nullptr);
         return;
     }
 
