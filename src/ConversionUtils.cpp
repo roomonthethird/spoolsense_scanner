@@ -67,3 +67,17 @@ float getDefaultDensity(uint8_t material_type) {
             return 1.20f;  // generic fallback, close to common materials
     }
 }
+
+// Maps tag type to MQTT format string — middleware uses this to decide
+// whether weight writeback is supported (only openprinttag and opentag3d)
+const char* tagKindToMqttFormat(TagKind kind) {
+    switch (kind) {
+        case TagKind::OpenPrintTag: return "openprinttag";
+        case TagKind::TigerTag:     return "tigertag";
+        case TagKind::OpenTag3D:    return "opentag3d";
+        case TagKind::OpenSpoolTag: return "openspool";
+        case TagKind::GenericUidTag: return "uid_only";
+        case TagKind::BambuTag:     return "uid_only";
+        default:                    return "unknown";
+    }
+}

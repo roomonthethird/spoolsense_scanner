@@ -4,6 +4,7 @@
 
 #include "ApplicationManager.h"
 #include "UserConfig.h"
+#include "ConversionUtils.h"
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
   #include "NFCManager.h"
@@ -412,14 +413,23 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         char colorHex[8];
         snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
                  s.primary_color[0], s.primary_color[1], s.primary_color[2]);
+        // Resolve tag_format for MQTT — middleware needs this to decide weight writeback
+        const char* mqttFormat = "unknown";
+#ifndef NATIVE_TEST
+        CurrentSpoolState spoolState;
+        if (NFCManager::getInstance().getCurrentSpoolState(spoolState)) {
+            mqttFormat = tagKindToMqttFormat(spoolState.kind);
+        }
+#endif
+
         char json[512];
         int len = snprintf(json, sizeof(json),
                  "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":true,"
-                 "\"material_type\":\"%s\","
+                 "\"tag_format\":\"%s\",\"material_type\":\"%s\","
                  "\"material_name\":\"%s\",\"color\":\"%s\",\"manufacturer\":\"%s\","
                  "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
                  "\"blank\":false",
-                 s.spool_id, s.material_name, s.material_name, colorHex,
+                 s.spool_id, mqttFormat, s.material_name, s.material_name, colorHex,
                  s.manufacturer, s.kg_remaining * 1000.0f, s.initial_weight_g,
                  s.spoolman_id);
         // Defensive bounds: snprintf can return ≥ sizeof(json) on truncation; must check before appending
@@ -626,7 +636,7 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
         char json[256];
         snprintf(json, sizeof(json),
                  "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
-                 "\"material_type\":\"\","
+                 "\"tag_format\":\"unknown\",\"material_type\":\"\","
                  "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
                  "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
                  "\"blank\":true}",
@@ -665,9 +675,9 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         char json[256];
         snprintf(json, sizeof(json),
                  "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
-                 "\"material_type\":\"\",\"material_name\":\"\",\"color\":\"\","
-                 "\"manufacturer\":\"\",\"remaining_g\":0.0,\"initial_weight_g\":0.0,"
-                 "\"spoolman_id\":-1,\"blank\":false}",
+                 "\"tag_format\":\"uid_only\",\"material_type\":\"\",\"material_name\":\"\","
+                 "\"color\":\"\",\"manufacturer\":\"\",\"remaining_g\":0.0,"
+                 "\"initial_weight_g\":0.0,\"spoolman_id\":-1,\"blank\":false}",
                  msg.payload.genericTag.spool_id);
         publishToHA("tag/state", json, true);
         strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
@@ -905,7 +915,7 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
         // Fallback: no prior state cached, publish blank removal
         publishToHA("tag/state",
                     "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
-                    "\"material_type\":\"\","
+                    "\"tag_format\":\"unknown\",\"material_type\":\"\","
                     "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
                     "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
                     "\"blank\":false}",

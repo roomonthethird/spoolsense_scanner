@@ -692,10 +692,10 @@ void HomeAssistantManager::publishCurrentTagState() {
     snprintf(attrsTopic, sizeof(attrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
 
     if (!got || !spool.present) {
-        // Empty state: signal to HA that no spool is loaded (UI should show "no spool" message)
+        // Empty state: signal to HA that no spool is loaded
         const char* emptyState =
-            "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,\"material_type\":\"\","
-            "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
+            "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,\"tag_format\":\"unknown\","
+            "\"material_type\":\"\",\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
             "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
             "\"blank\":false}";
         mqttClient.publish(stateTopic, emptyState, true);
@@ -774,14 +774,17 @@ void HomeAssistantManager::publishCurrentTagState() {
     }
     // BambuTag / GenericUidTag: UID-only, no tag metadata (tagDataValid stays false)
 
-    char json[384];
+    const char* tagFormat = tagKindToMqttFormat(spool.kind);
+
+    char json[512];
     snprintf(json, sizeof(json),
-             "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":%s,\"material_type\":\"%s\","
-             "\"material_name\":\"%s\",\"color\":\"%s\",\"manufacturer\":\"%s\","
-             "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
-             "\"blank\":%s}",
+             "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":%s,\"tag_format\":\"%s\","
+             "\"material_type\":\"%s\",\"material_name\":\"%s\",\"color\":\"%s\","
+             "\"manufacturer\":\"%s\",\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,"
+             "\"spoolman_id\":%d,\"blank\":%s}",
              spool.spool_id,
              tagDataValid ? "true" : "false",
+             tagFormat,
              materialType, materialName, colorHex,
              manufacturer, remaining, fullWeight, spoolmanId,
              spool.blank_tag_present ? "true" : "false");
