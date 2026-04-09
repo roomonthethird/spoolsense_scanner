@@ -1211,6 +1211,10 @@ void WebServerManager::handleApiStatus() {
         doc["uid"] = state.spool_id;
         doc["tag_data_valid"] = state.tag_data_valid;
         doc["tag_kind"] = tagKindToString(state.kind);
+        if (state.variant != NtagVariant::Unknown) {
+            doc["ntag_variant"] = ntagVariantName(state.variant);
+            doc["ntag_pages"] = ntagUsablePages(state.variant);
+        }
 
         switch (state.kind) {
             case TagKind::TigerTag:     serializeTigerTagStatus(doc); break;

@@ -350,6 +350,7 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
         currentSpool.uid_length = uidLength;
         currentSpool.present = true;
         currentSpool.blank_tag_present = false;
+        currentSpool.variant = scan.variant;
         memcpy(lastSeenUid, uid, uidLength);
         lastSeenUidLength = uidLength;
         lastSeenValid = true;
@@ -470,6 +471,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
             currentSpool.present = true;
             currentSpool.blank_tag_present = false;
             currentSpool.kind = TagKind::BambuTag;
+            currentSpool.variant = NtagVariant::Unknown;
             currentSpool.tag_data_valid = false;
             lastTigerTagValid_ = false;
             memcpy(lastSeenUid, uid, uidLength);  // dedup: don't re-read same tag next cycle
@@ -1181,26 +1183,41 @@ void NFCManager::sendOpenSpoolMessage(const char* uid, const OpenSpoolData& os) 
     ApplicationManager::getInstance().sendMessage(msg);
 }
 
+// Map GET_VERSION response byte 6 to NTAG variant
+static NtagVariant mapStorageByte(uint8_t storage) {
+    switch (storage) {
+        case 0x0F: return NtagVariant::NTAG213;
+        case 0x11: return NtagVariant::NTAG215;
+        case 0x13: return NtagVariant::NTAG216;
+        case 0x06: return NtagVariant::UltralightEV1_48;
+        case 0x09: return NtagVariant::UltralightEV1_128;
+        default:   return NtagVariant::Unknown;
+    }
+}
+
 TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
     TagScanResult result;
     result.present = true;
     result.tag_data_valid = false;
-    // Protocol inferred from UID length: ISO15693 always 8 bytes, ISO14443A always 4 or 7.
+    result.variant = NtagVariant::Unknown;
     if (uid_length == 8) {
         result.protocol = TagProtocol::ISO15693;
-        // Default to BlankTag; readAndParseTag() upgrades to OpenPrintTag on success.
         result.kind = TagKind::BlankTag;
     } else {
         result.protocol = TagProtocol::ISO14443A;
-        // Check SAK to distinguish NTAG/Ultralight from MIFARE Classic
         uint8_t sak = connection_->getLastSAK();
         if (sak == 0x08 || sak == 0x18) {
-            // SAK 0x08 = MIFARE Classic 1K, 0x18 = MIFARE Classic 4K
-            // Likely a Bambu Lab spool tag
             result.kind = TagKind::BambuTag;
             Serial.printf("NFCManager: MIFARE Classic detected (SAK=0x%02X) — treating as Bambu tag\n", sak);
         } else {
             result.kind = TagKind::GenericUidTag;
+            // GET_VERSION identifies exact NTAG model — used for write capacity checks
+            uint8_t version[8];
+            if (connection_->ntagGetVersion(version)) {
+                result.variant = mapStorageByte(version[6]);
+                Serial.printf("NFCManager: %s detected (%d pages)\n",
+                    ntagVariantName(result.variant), ntagUsablePages(result.variant));
+            }
         }
     }
     uint8_t len = uid_length < 8 ? uid_length : 8;
@@ -1630,8 +1647,21 @@ void NFCManager::forceRescan() {
 
 // ── Per-format write functions ──────────────────────────────
 
+// Reject writes that exceed the tag's page capacity (requires prior GET_VERSION)
+bool NFCManager::checkWriteCapacity(uint8_t startPage, uint8_t pageCount, const char* writeType) {
+    uint16_t maxPages = ntagUsablePages(currentSpool.variant);
+    if (maxPages == 0) return true;  // unknown variant — skip check
+    if (startPage + pageCount > maxPages) {
+        Serial.printf("NFCManager: %s rejected — needs %d pages (start=%d), tag has %d (%s)\n",
+            writeType, pageCount, startPage, maxPages, ntagVariantName(currentSpool.variant));
+        return false;
+    }
+    return true;
+}
+
 bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
     if (!validateWriteUid(request.expected_spool_id, "WRITE_TIGERTAG")) return false;
+    if (!checkWriteCapacity(4, 10, "WRITE_TIGERTAG")) return false;
 
     bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
     if (ok) {
@@ -1672,6 +1702,7 @@ bool NFCManager::executeOpenTag3DWrite(const NFCWriteRequest& request) {
 
     uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
     Serial.printf("NFCManager: WRITE_OPENTAG3D - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    if (!checkWriteCapacity(4, pagesNeeded, "WRITE_OPENTAG3D")) return false;
     bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
     if (ok) {
         Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
@@ -1703,6 +1734,7 @@ bool NFCManager::executeOpenSpoolWrite(const NFCWriteRequest& request) {
 
     uint8_t pagesNeeded = (uint8_t)(ndefLen / 4);
     Serial.printf("NFCManager: WRITE_OPENSPOOL - writing %u bytes (%u pages)\n", ndefLen, pagesNeeded);
+    if (!checkWriteCapacity(4, pagesNeeded, "WRITE_OPENSPOOL")) return false;
     bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
     if (ok) {
         Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
