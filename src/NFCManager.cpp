@@ -295,7 +295,7 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
     memset(&ot3dData, 0, sizeof(ot3dData));
 
     uint8_t pageData[40] = {0};
-    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData));
+    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, pageData, sizeof(pageData), true);
 
     // Try TigerTag first (binary magic at offset 0)
     if (bytesRead >= 14 && tigerTagCheckMagic(pageData, bytesRead)) {
@@ -342,6 +342,9 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
             }
         }
     }
+
+    // All reads done — halt tag if session is still active
+    connection_->endTagSession();
 
     // Update shared state under mutex
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {

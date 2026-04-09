@@ -299,8 +299,15 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
     return false;
 }
 
+void HardwareNFCConnection::endTagSession() {
+    if (tagSessionActive_ && iso14443a_) {
+        iso14443a_->mifareHalt();
+        tagSessionActive_ = false;
+    }
+}
+
 uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pageCount,
-                                                    uint8_t* buffer, uint16_t bufferSize) {
+                                                    uint8_t* buffer, uint16_t bufferSize, bool keepSession) {
     if (!iso14443a_ || pageCount == 0 || buffer == nullptr) return 0;
 
     uint16_t totalBytes = pageCount * 4;
@@ -348,8 +355,10 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
     }
 
     unsigned long rT3 = millis();
-    iso14443a_->mifareHalt();
-    tagSessionActive_ = false;  // tag halted after read — next read must re-activate
+    if (!keepSession) {
+        iso14443a_->mifareHalt();
+        tagSessionActive_ = false;
+    }
     Serial.printf("TIMING readPages: setupRF=%lums activate=%lums read=%lums total=%lums (%d bytes)\n",
                   rT1-rT0, rT2-rT1, rT3-rT2, rT3-rT0, bytesRead);
     return bytesRead;

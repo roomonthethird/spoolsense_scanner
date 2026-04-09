@@ -37,8 +37,12 @@ public:
     virtual opt_nfc_hal_t* getHal() = 0;
 
     // Read ISO14443A tag pages (NTAG213/215/216). Reactivates tag if needed.
+    // When keepSession=true, tag stays active after read for a follow-up read.
     // Returns number of bytes read, or 0 on failure.
-    virtual uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) = 0;
+    virtual uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize, bool keepSession = false) = 0;
+
+    // End an active tag session (halt tag). No-op if no session is active.
+    virtual void endTagSession() {}
 
     // Write ISO14443A tag pages (NTAG213/215/216). Writes 4 bytes per page.
     // Returns true if all pages written successfully.

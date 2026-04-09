@@ -137,7 +137,7 @@ bool HardwareNFCConnectionPN532::reactivateTag() {
 }
 
 uint16_t HardwareNFCConnectionPN532::readISO14443Pages(
-    uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) {
+    uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize, bool /*keepSession*/) {
     if (!pn532_ || !ready_) return 0;
 
     uint16_t totalBytes = (uint16_t)pageCount * 4;
