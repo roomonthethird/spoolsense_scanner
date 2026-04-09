@@ -5,6 +5,7 @@
 #include "ApplicationManager.h"
 #include "UserConfig.h"
 #include "ConversionUtils.h"
+#include "TagStateJson.h"
 #include "DeductionManager.h"
 #ifndef NATIVE_TEST
   #include "NFCTypes.h"
@@ -423,46 +424,36 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
 #endif
 
-    // Publish tag state to HA (always, regardless of mode)
+    // Publish tag state to HA via shared builder — single source of truth for JSON format
     {
         const auto& s = msg.payload.spoolDetected;
-        // Home Assistant MQTT: publish full spool state (material, temps, density, etc.)
-        char colorHex[8];
-        snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
-                 s.primary_color[0], s.primary_color[1], s.primary_color[2]);
-        // Resolve tag_format for MQTT — middleware needs this to decide weight writeback
-        const char* mqttFormat = "unknown";
+        TagStateFields f = {};
+        strncpy(f.uid, s.spool_id, sizeof(f.uid) - 1);
+        f.present = true;
+        f.tag_data_valid = true;
+        f.tag_format = "unknown";
 #ifndef NATIVE_TEST
         CurrentSpoolState spoolState;
-        if (NFCManager::getInstance().getCurrentSpoolState(spoolState)) {
-            mqttFormat = tagKindToMqttFormat(spoolState.kind);
-        }
+        if (NFCManager::getInstance().getCurrentSpoolState(spoolState))
+            f.tag_format = tagKindToMqttFormat(spoolState.kind);
 #endif
+        strncpy(f.material_type, s.material_name, sizeof(f.material_type) - 1);
+        strncpy(f.material_name, s.material_name, sizeof(f.material_name) - 1);
+        snprintf(f.color, sizeof(f.color), "#%02X%02X%02X",
+                 s.primary_color[0], s.primary_color[1], s.primary_color[2]);
+        strncpy(f.manufacturer, s.manufacturer, sizeof(f.manufacturer) - 1);
+        f.remaining_g = s.kg_remaining * 1000.0f;
+        f.initial_weight_g = s.initial_weight_g;
+        f.spoolman_id = s.spoolman_id;
+        f.min_print_temp = s.min_print_temp;
+        f.max_print_temp = s.max_print_temp;
+        f.min_bed_temp = s.min_bed_temp;
+        f.max_bed_temp = s.max_bed_temp;
+        f.density = s.density;
+        f.diameter_mm = s.diameter;
 
         char json[512];
-        int len = snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":true,"
-                 "\"tag_format\":\"%s\",\"material_type\":\"%s\","
-                 "\"material_name\":\"%s\",\"color\":\"%s\",\"manufacturer\":\"%s\","
-                 "\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,\"spoolman_id\":%d,"
-                 "\"blank\":false",
-                 s.spool_id, mqttFormat, s.material_name, s.material_name, colorHex,
-                 s.manufacturer, s.kg_remaining * 1000.0f, s.initial_weight_g,
-                 s.spoolman_id);
-        // Defensive bounds: snprintf can return ≥ sizeof(json) on truncation; must check before appending
-        if (len < 0) len = 0;
-        if (static_cast<size_t>(len) >= sizeof(json)) len = sizeof(json) - 1;
-        // Optionally append temps/density if non-zero (smart tags may not have all fields)
-        if (s.min_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_print_temp\":%d", s.min_print_temp);
-        if (s.max_print_temp != 0 && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_print_temp\":%d", s.max_print_temp);
-        if (s.min_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"min_bed_temp\":%d", s.min_bed_temp);
-        if (s.max_bed_temp != 0   && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"max_bed_temp\":%d", s.max_bed_temp);
-        if (s.density > 0.0f      && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"density\":%.2f", s.density);
-        if (s.diameter > 0.0f     && static_cast<size_t>(len) < sizeof(json) - 1) len += snprintf(json + len, sizeof(json) - len, ",\"diameter_mm\":%.2f", s.diameter);
-        // Re-clamp: appends can exceed buffer, so re-check before closing brace
-        if (static_cast<size_t>(len) >= sizeof(json) - 1) len = sizeof(json) - 2;
-        json[len++] = '}';
-        json[len] = '\0';
+        buildTagStateJson(json, sizeof(json), f);
         publishToHA("tag/state", json, true);
         strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
         lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
@@ -648,16 +639,17 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
         display_->showText4("**** Spool ****", "*** Scanned ***", "Unknown Tag", "Use app to setup");
     }
 
-    // HA MQTT: publish blank tag detected (no tag data present)
+    // HA MQTT: publish blank tag detected
     {
-        char json[256];
-        snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
-                 "\"tag_format\":\"unknown\",\"material_type\":\"\","
-                 "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
-                 "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
-                 "\"blank\":true}",
-                 msg.payload.blankTag.spool_id);
+        TagStateFields f = {};
+        strncpy(f.uid, msg.payload.blankTag.spool_id, sizeof(f.uid) - 1);
+        f.present = true;
+        f.tag_format = "unknown";
+        f.spoolman_id = -1;
+        f.blank = true;
+
+        char json[512];
+        buildTagStateJson(json, sizeof(json), f);
         publishToHA("tag/state", json, true);
         strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
         lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
@@ -687,15 +679,16 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         display_->showText4("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
     }
 
-    // HA MQTT: publish generic tag state (UID only, no material data yet; awaiting Spoolman lookup)
+    // HA MQTT: publish generic tag (UID only, awaiting Spoolman lookup)
     {
-        char json[256];
-        snprintf(json, sizeof(json),
-                 "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":false,"
-                 "\"tag_format\":\"uid_only\",\"material_type\":\"\",\"material_name\":\"\","
-                 "\"color\":\"\",\"manufacturer\":\"\",\"remaining_g\":0.0,"
-                 "\"initial_weight_g\":0.0,\"spoolman_id\":-1,\"blank\":false}",
-                 msg.payload.genericTag.spool_id);
+        TagStateFields f = {};
+        strncpy(f.uid, msg.payload.genericTag.spool_id, sizeof(f.uid) - 1);
+        f.present = true;
+        f.tag_format = "uid_only";
+        f.spoolman_id = -1;
+
+        char json[512];
+        buildTagStateJson(json, sizeof(json), f);
         publishToHA("tag/state", json, true);
         strncpy(lastHAStateJson_, json, sizeof(lastHAStateJson_) - 1);
         lastHAStateJson_[sizeof(lastHAStateJson_) - 1] = '\0';
@@ -929,14 +922,10 @@ void ApplicationManager::handleTagRemoved(const AppMessage& msg) {
             publishToHA("tag/state", lastHAStateJson_, true);
         }
     } else {
-        // Fallback: no prior state cached, publish blank removal
-        publishToHA("tag/state",
-                    "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,"
-                    "\"tag_format\":\"unknown\",\"material_type\":\"\","
-                    "\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
-                    "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
-                    "\"blank\":false}",
-                    true);
+        // Fallback: no prior state cached
+        char emptyJson[256];
+        buildEmptyTagStateJson(emptyJson, sizeof(emptyJson));
+        publishToHA("tag/state", emptyJson, true);
     }
 }
 

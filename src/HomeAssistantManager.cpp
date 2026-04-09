@@ -7,6 +7,7 @@
 #include "ConfigurationManager.h"
 #include "ConversionUtils.h"
 #include "DeductionManager.h"
+#include "TagStateJson.h"
 #include "LEDManager.h"
 
 #ifndef NATIVE_TEST
@@ -686,7 +687,6 @@ void HomeAssistantManager::publishDiscovery() {
 void HomeAssistantManager::publishCurrentTagState() {
     CurrentSpoolState& spool = spoolScratch_;
 
-    // Snapshot current spool state from NFC manager
     bool got = NFCManager::getInstance().getCurrentSpoolState(spool);
     char stateTopic[64];
     char attrsTopic[64];
@@ -694,103 +694,77 @@ void HomeAssistantManager::publishCurrentTagState() {
     snprintf(attrsTopic, sizeof(attrsTopic), "spoolsense/%s/tag/attributes", deviceId_);
 
     if (!got || !spool.present) {
-        // Empty state: signal to HA that no spool is loaded
-        const char* emptyState =
-            "{\"uid\":\"\",\"present\":false,\"tag_data_valid\":false,\"tag_format\":\"unknown\","
-            "\"material_type\":\"\",\"material_name\":\"\",\"color\":\"\",\"manufacturer\":\"\","
-            "\"remaining_g\":0.0,\"initial_weight_g\":0.0,\"spoolman_id\":-1,"
-            "\"blank\":false}";
-        mqttClient.publish(stateTopic, emptyState, true);
-        mqttClient.publish(attrsTopic, emptyState, true);
+        char json[256];
+        buildEmptyTagStateJson(json, sizeof(json));
+        mqttClient.publish(stateTopic, json, true);
+        mqttClient.publish(attrsTopic, json, true);
         Serial.println("HomeAssistantManager: Published tag state (not present)");
         return;
     }
 
-    // Extract tag-specific fields (OpenPrintTag, TigerTag, OpenTag3D, or UID-only)
-    const char* materialType = "";
-    const char* materialName = "";
-    char manufacturer[64] = {0};
-    char colorHex[8] = "#FFFFFF";
-    float fullWeight = 0.0f;
-    float remaining = 0.0f;
-    int32_t spoolmanId = -1;
-    bool tagDataValid = false;
+    // Extract tag-specific fields into shared struct
+    TagStateFields f = {};
+    strncpy(f.uid, spool.spool_id, sizeof(f.uid) - 1);
+    f.present = true;
+    f.tag_format = tagKindToMqttFormat(spool.kind);
+    f.blank = spool.blank_tag_present;
+    f.spoolman_id = -1;
 
     if (spool.kind == TagKind::TigerTag) {
-        // TigerTag: brand, material, color, weight from tag (no consumption tracking)
         TigerTagData tt;
         if (NFCManager::getInstance().getLastTigerTagData(tt) && tt.valid) {
-            tagDataValid = true;
-            materialType = tt.material_name;
-            materialName = tt.material_name;
-            strncpy(manufacturer, tt.brand_name, sizeof(manufacturer) - 1);
-            snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
-            fullWeight = tt.weight_g;
-            remaining = tt.weight_g;
+            f.tag_data_valid = true;
+            strncpy(f.material_type, tt.material_name, sizeof(f.material_type) - 1);
+            strncpy(f.material_name, tt.material_name, sizeof(f.material_name) - 1);
+            strncpy(f.manufacturer, tt.brand_name, sizeof(f.manufacturer) - 1);
+            snprintf(f.color, sizeof(f.color), "#%02X%02X%02X", tt.color_r, tt.color_g, tt.color_b);
+            f.initial_weight_g = tt.weight_g;
+            f.remaining_g = tt.weight_g;
         }
     } else if (spool.kind == TagKind::OpenTag3D) {
-        // OpenTag3D: material, color, weight (no consumption tracking)
         opentag3d_t ot3d;
         if (NFCManager::getInstance().getLastOpenTag3DData(ot3d)) {
-            tagDataValid = true;
-            static char matBuf[6];
-            strncpy(matBuf, ot3d.base_material, sizeof(matBuf) - 1);
-            materialType = matBuf;
-            materialName = matBuf;
-            strncpy(manufacturer, ot3d.manufacturer, sizeof(manufacturer) - 1);
-            snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X",
+            f.tag_data_valid = true;
+            strncpy(f.material_type, ot3d.base_material, sizeof(f.material_type) - 1);
+            strncpy(f.material_name, ot3d.base_material, sizeof(f.material_name) - 1);
+            strncpy(f.manufacturer, ot3d.manufacturer, sizeof(f.manufacturer) - 1);
+            snprintf(f.color, sizeof(f.color), "#%02X%02X%02X",
                      ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2]);
-            fullWeight = (ot3d.has_extended && ot3d.measured_filament_weight_g > 0)
-                         ? ot3d.measured_filament_weight_g : ot3d.target_weight_g;
-            remaining = fullWeight;
+            float weight = (ot3d.has_extended && ot3d.measured_filament_weight_g > 0)
+                           ? ot3d.measured_filament_weight_g : ot3d.target_weight_g;
+            f.initial_weight_g = weight;
+            f.remaining_g = weight;
         }
     } else if (spool.tag_data_valid) {
-        // OpenPrintTag: material, brand, color, weight, consumed, spoolman ID (full enrichment)
-        tagDataValid = true;
+        // OpenPrintTag
+        f.tag_data_valid = true;
         uint8_t matType = 0;
         opt_get_material_type(&spool.tag_data, &matType);
-        materialType = materialTypeToString(matType);
+        strncpy(f.material_type, materialTypeToString(matType), sizeof(f.material_type) - 1);
 
         char customName[33] = {0};
         if (opt_get_material_name(&spool.tag_data, customName, sizeof(customName)) == OPT_OK
                 && customName[0] != '\0') {
-            // Custom name is static to avoid stack pollution from temporary string
-            static char nameBuf[33];
-            strncpy(nameBuf, customName, sizeof(nameBuf) - 1);
-            materialName = nameBuf;
+            strncpy(f.material_name, customName, sizeof(f.material_name) - 1);
         } else {
-            materialName = materialType;
+            strncpy(f.material_name, f.material_type, sizeof(f.material_name) - 1);
         }
 
         uint8_t color[4] = {0};
         opt_get_primary_color(&spool.tag_data, color);
-        snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", color[0], color[1], color[2]);
+        snprintf(f.color, sizeof(f.color), "#%02X%02X%02X", color[0], color[1], color[2]);
 
-        opt_get_brand_name(&spool.tag_data, manufacturer, sizeof(manufacturer));
-        opt_get_actual_full_weight(&spool.tag_data, &fullWeight);
+        opt_get_brand_name(&spool.tag_data, f.manufacturer, sizeof(f.manufacturer));
+        opt_get_actual_full_weight(&spool.tag_data, &f.initial_weight_g);
         float consumed = 0.0f;
         opt_get_consumed_weight(&spool.tag_data, &consumed);
-        remaining = fullWeight - consumed;
-        if (remaining < 0) remaining = 0;  // consumed can exceed initial if tag was re-wound
-        opt_get_gp_spoolman_id(&spool.tag_data, &spoolmanId);
+        f.remaining_g = f.initial_weight_g - consumed;
+        if (f.remaining_g < 0) f.remaining_g = 0;
+        opt_get_gp_spoolman_id(&spool.tag_data, &f.spoolman_id);
     }
-    // BambuTag / GenericUidTag: UID-only, no tag metadata (tagDataValid stays false)
-
-    const char* tagFormat = tagKindToMqttFormat(spool.kind);
 
     char json[512];
-    snprintf(json, sizeof(json),
-             "{\"uid\":\"%s\",\"present\":true,\"tag_data_valid\":%s,\"tag_format\":\"%s\","
-             "\"material_type\":\"%s\",\"material_name\":\"%s\",\"color\":\"%s\","
-             "\"manufacturer\":\"%s\",\"remaining_g\":%.1f,\"initial_weight_g\":%.1f,"
-             "\"spoolman_id\":%d,\"blank\":%s}",
-             spool.spool_id,
-             tagDataValid ? "true" : "false",
-             tagFormat,
-             materialType, materialName, colorHex,
-             manufacturer, remaining, fullWeight, spoolmanId,
-             spool.blank_tag_present ? "true" : "false");
-
+    buildTagStateJson(json, sizeof(json), f);
     mqttClient.publish(stateTopic, json, true);
     mqttClient.publish(attrsTopic, json, true);
     Serial.printf("HomeAssistantManager: Published current tag state uid=%s kind=%d\n",
