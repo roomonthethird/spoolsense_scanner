@@ -23,4 +23,6 @@ test-preview/
 build/
 .worktrees/
 .cocoindex_code/
+lancedb/
 .mex/
+.ragcode/
