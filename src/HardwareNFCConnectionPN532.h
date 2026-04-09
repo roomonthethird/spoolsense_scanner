@@ -21,7 +21,10 @@ public:
     bool ntagGetVersion(uint8_t* versionOut) override;
     void setCurrentUid(const uint8_t* uid, uint8_t length) override;
     opt_nfc_hal_t* getHal() override;
-    uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize) override;
+    // keepSession is ignored: PN532 manages tag activation per-page via reactivateTag()
+    uint16_t readISO14443Pages(uint8_t startPage, uint8_t pageCount, uint8_t* buffer, uint16_t bufferSize, bool keepSession = false) override;
+    // No-op: PN532 has no explicit session state to end
+    void endTagSession() override {}
     bool writeISO14443Pages(uint8_t startPage, uint8_t pageCount, const uint8_t* data, uint16_t dataLen) override;
     void getReaderInfo(char* buf, size_t len) const override;
     void logDiagnostics() override;
