@@ -296,37 +296,31 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
     return false;
   }
 
-#ifdef DEBUG
-  PN5180DEBUG(F("Send data (len="));
-  PN5180DEBUG(len);
-  PN5180DEBUG(F("):"));
-  for (int i=0; i<len; i++) {
-    PN5180DEBUG(" ");
-    PN5180DEBUG(formatHex(data[i]));
-  }
-  PN5180DEBUG("\n");
-#endif
-
   uint8_t buffer[len+2];
   buffer[0] = PN5180_SEND_DATA;
-  buffer[1] = validBits; // number of valid bits of last byte are transmitted (0 = all bits are transmitted)
+  buffer[1] = validBits;
   for (int i=0; i<len; i++) {
     buffer[2+i] = data[i];
   }
 
-  writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
-  writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);   // Transceive Command
-  /*
-   * Transceive command; initiates a transceive cycle.
-   * Note: Depending on the value of the Initiator bit, a
-   * transmission is started or the receiver is enabled
-   * Note: The transceive command does not finish
-   * automatically. It stays in the transceive cycle until
-   * stopped via the IDLE/StopCom command
-   */
+  // Idle → Transceive: state machine needs a moment to transition to WaitTransmit
+  writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);
+  writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);
 
-  PN5180TransceiveStat transceiveState = getTransceiveState();
-  if (PN5180_TS_WaitTransmit != transceiveState) {
+  // Stale IRQs from prior commands can cause false failures on the next transaction
+  clearIRQStatus(0xffffffff);
+
+  // Poll for WaitTransmit — transition takes microseconds but isn't instant.
+  // Old code checked once and failed; this matches the NXP reference implementation.
+  unsigned long deadline = millis() + 10;
+  PN5180TransceiveStat transceiveState;
+  do {
+    transceiveState = getTransceiveState();
+    if (transceiveState == PN5180_TS_WaitTransmit) break;
+    delayMicroseconds(50);
+  } while (millis() < deadline);
+
+  if (transceiveState != PN5180_TS_WaitTransmit) {
     Serial.printf("PN5180: sendData FAILED - transceiver state=%d (expected %d=WaitTransmit)\n",
                   (int)transceiveState, (int)PN5180_TS_WaitTransmit);
     return false;
