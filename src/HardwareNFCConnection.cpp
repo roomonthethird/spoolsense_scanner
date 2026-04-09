@@ -457,3 +457,27 @@ void HardwareNFCConnection::logDiagnostics() {
         Serial.println("HardwareNFC DIAG: --- end test ---");
     #endif
 }
+
+bool HardwareNFCConnection::ntagGetVersion(uint8_t* versionOut) {
+    if (!iso14443a_ || !versionOut) return false;
+
+    // Reset transceiver to Idle then re-arm for transmit — activateTypeA leaves it in
+    // WaitReceive (state 4), but sendData needs WaitTransmit (state 1)
+    iso14443a_->writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle
+    iso14443a_->writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);   // Transceive
+
+    uint8_t cmd = 0x60;  // NTAG GET_VERSION command
+    if (!iso14443a_->sendData(&cmd, 1, 0x00)) return false;
+
+    uint32_t rxStatus;
+    uint16_t rxLen = 0;
+    for (int i = 0; i < 15; i++) {
+        delay(1);
+        iso14443a_->readRegister(RX_STATUS, &rxStatus);
+        rxLen = rxStatus & 0x000001ff;
+        if (rxLen >= 8) break;
+    }
+    if (rxLen < 8) return false;
+
+    return iso14443a_->readData(8, versionOut) != nullptr;
+}
