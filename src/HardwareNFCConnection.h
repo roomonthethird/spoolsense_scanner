@@ -48,6 +48,14 @@ private:
     uint8_t lastSAK_ = 0;
     uint16_t lastATQA_ = 0;
 
+    // NTAG version (populated by detectTag while tag is active)
+    uint8_t lastVersion_[8] = {0};
+    bool lastVersionValid_ = false;
+
+    // Tag session: true after activateTypeA succeeds in detectTag, cleared after halt
+    // Allows readISO14443Pages to skip redundant setupRF + re-activation
+    bool tagSessionActive_ = false;
+
     // PN5180 firmware version (populated during begin())
     uint8_t fw_[2] = {0, 0};
     bool pn5180Ready_ = false;

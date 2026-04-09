@@ -422,9 +422,11 @@ bool NFCManager::prepareRF() {
     }
 
     // Full hardware reset only when no tag present — reset cuts RF, de-powering passive tags
+    unsigned long pT0 = millis();
     if (!lastSeenValid) {
         connection_->reset();
     }
+    unsigned long pT1 = millis();
     if (!connection_->setupRF()) {
         consecutiveFailures_++;
         Serial.printf("NFCManager: setupRF() failed (consecutive=%lu, lastSeenValid=%d)\n",
@@ -436,10 +438,14 @@ bool NFCManager::prepareRF() {
         return false;
     }
 
+    unsigned long pT2 = millis();
     // Give tag time to power up after RF field reset
     if (!lastSeenValid) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    unsigned long pT3 = millis();
+    Serial.printf("TIMING prepareRF: reset=%lums setupRF=%lums settle=%lums total=%lums\n",
+                  pT1-pT0, pT2-pT1, pT3-pT2, pT3-pT0);
     consecutiveFailures_ = 0;
     return true;
 }

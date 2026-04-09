@@ -215,6 +215,7 @@ bool HardwareNFCConnection::setupRF() {
 }
 
 bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
+    tagSessionActive_ = false;  // clear on every detect cycle
     if (!nfc_) {
         Serial.println("HardwareNFC: detectTag() called but nfc_ is null!");
         return false;
@@ -236,10 +237,13 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
     // Fallback to ISO14443A for 4-byte and 7-byte tags (NTAG, MIFARE, etc.)
     // Dual-protocol scanner allows PN5180 (ISO15693) + PN532 (ISO14443A only) to coexist
     if (iso14443a_) {
+        unsigned long t0 = millis();
         iso14443a_->setupRF();
+        unsigned long t1 = millis();
         // activateTypeA populates response: [0..1]=ATQA, [2]=SAK, [3..9]=UID (4, 7, or 10 bytes)
         uint8_t response[10] = {0};
         uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
+        unsigned long t2 = millis();
         if (uidLen >= 4) {
             // Reject spurious activations: ATQA/SAK all 0xFF or UID all 0x00 or 0xFF (transceiver noise)
             if ((response[0] == 0xFF && response[1] == 0xFF) ||
@@ -252,7 +256,34 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
                 lastSAK_ = response[2];
                 memcpy(uid, response + 3, uidLen);
                 *uidLength = uidLen;
-                iso14443a_->mifareHalt();
+
+                // Capture GET_VERSION while tag is active (before halt kills the session).
+                // SAK 0x00 = NTAG/Ultralight family; MIFARE Classic doesn't support GET_VERSION.
+                lastVersionValid_ = false;
+                if (lastSAK_ == 0x00) {
+                    uint8_t cmd = 0x60;
+                    if (iso14443a_->sendData(&cmd, 1, 0x00)) {
+                        uint32_t rxStatus;
+                        uint16_t rxLen = 0;
+                        for (int i = 0; i < 10; i++) {
+                            delay(1);
+                            iso14443a_->readRegister(RX_STATUS, &rxStatus);
+                            rxLen = rxStatus & 0x000001ff;
+                            if (rxLen >= 8) break;
+                        }
+                        if (rxLen >= 8 && iso14443a_->readData(8, lastVersion_)) {
+                            lastVersionValid_ = true;
+                        }
+                    }
+                }
+
+                unsigned long t3 = millis();
+                // Don't halt — keep tag active for subsequent page reads.
+                // readISO14443Pages will skip re-activation when tagSessionActive_ is set.
+                tagSessionActive_ = true;
+                unsigned long t4 = millis();
+                Serial.printf("TIMING detectTag: setupRF=%lums activate=%lums getVer=%lums total=%lums\n",
+                              t1-t0, t2-t1, t3-t2, t4-t0);
                 return true;
             }
         }
@@ -275,14 +306,23 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
     uint16_t totalBytes = pageCount * 4;
     if (totalBytes > bufferSize) return 0;
 
-    // Reactivate tag before each read: prior tag operations may have halted it; setupRF + activateTypeA
-    // allows re-selection without losing state. activateTypeA is preferred over readCardSerial (which halts).
-    iso14443a_->setupRF();
-    uint8_t response[10] = {0};
-    uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
-    if (uidLen < 4) {
-        Serial.println("HardwareNFC: readISO14443Pages - tag reactivation failed");
-        return 0;
+    unsigned long rT0 = millis();
+    unsigned long rT1 = rT0, rT2 = rT0;
+
+    if (tagSessionActive_) {
+        // Tag already active from detectTag — skip redundant setupRF + activateTypeA
+    } else {
+        // Tag was halted or this is a standalone read — must re-activate
+        iso14443a_->setupRF();
+        rT1 = millis();
+        uint8_t response[10] = {0};
+        uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
+        rT2 = millis();
+        if (uidLen < 4) {
+            Serial.printf("HardwareNFC: readISO14443Pages - tag reactivation failed (setupRF=%lums activate=%lums)\n",
+                          rT1-rT0, rT2-rT1);
+            return 0;
+        }
     }
 
     // mifareBlockRead reads 16 bytes (4 pages) per call; read in 4-page chunks starting from startPage
@@ -292,6 +332,7 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
         if (!iso14443a_->mifareBlockRead(page, block)) {
             Serial.printf("HardwareNFC: readISO14443Pages - read failed at page %d\n", page);
             iso14443a_->mifareHalt();
+            tagSessionActive_ = false;
             return bytesRead;  // partial read acceptable; caller can retry
         }
 
@@ -306,7 +347,11 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
         bytesRead += copyBytes;
     }
 
+    unsigned long rT3 = millis();
     iso14443a_->mifareHalt();
+    tagSessionActive_ = false;  // tag halted after read — next read must re-activate
+    Serial.printf("TIMING readPages: setupRF=%lums activate=%lums read=%lums total=%lums (%d bytes)\n",
+                  rT1-rT0, rT2-rT1, rT3-rT2, rT3-rT0, bytesRead);
     return bytesRead;
 }
 
@@ -459,25 +504,10 @@ void HardwareNFCConnection::logDiagnostics() {
 }
 
 bool HardwareNFCConnection::ntagGetVersion(uint8_t* versionOut) {
-    if (!iso14443a_ || !versionOut) return false;
-
-    // Reset transceiver to Idle then re-arm for transmit — activateTypeA leaves it in
-    // WaitReceive (state 4), but sendData needs WaitTransmit (state 1)
-    iso14443a_->writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle
-    iso14443a_->writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);   // Transceive
-
-    uint8_t cmd = 0x60;  // NTAG GET_VERSION command
-    if (!iso14443a_->sendData(&cmd, 1, 0x00)) return false;
-
-    uint32_t rxStatus;
-    uint16_t rxLen = 0;
-    for (int i = 0; i < 15; i++) {
-        delay(1);
-        iso14443a_->readRegister(RX_STATUS, &rxStatus);
-        rxLen = rxStatus & 0x000001ff;
-        if (rxLen >= 8) break;
-    }
-    if (rxLen < 8) return false;
-
-    return iso14443a_->readData(8, versionOut) != nullptr;
+    // Returns cached version from detectTag() — GET_VERSION must be sent while the tag
+    // is in ACTIVE state (after SELECT, before HALT). Can't send it here because the
+    // tag is already halted by the time classifyTag() runs.
+    if (!versionOut || !lastVersionValid_) return false;
+    memcpy(versionOut, lastVersion_, 8);
+    return true;
 }
