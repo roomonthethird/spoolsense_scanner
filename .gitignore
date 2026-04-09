@@ -22,3 +22,5 @@ test-preview/
 .gstack/
 build/
 .worktrees/
+.cocoindex_code/
+.mex/
