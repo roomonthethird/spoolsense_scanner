@@ -363,84 +363,64 @@ void WebServerManager::handleApiRegisterUid() {
         http.end();
     }
 
-    // --- Step 2: Create filament ---
-    StaticJsonDocument<512> filBody;
-    filBody["name"] = strlen(materialName) > 0 ? materialName : material;
-    filBody["material"] = material;
-    if (vendorId > 0) filBody["vendor_id"] = vendorId;
-    filBody["density"] = density > 0 ? density : 1.24f;
-    filBody["diameter"] = diameter > 0 ? diameter : 1.75f;
-    if (strlen(color) > 0) filBody["color_hex"] = color;
-    if (extruderTemp > 0) filBody["settings_extruder_temp"] = extruderTemp;
-    if (bedTemp > 0) filBody["settings_bed_temp"] = bedTemp;
-
-    String filJson;
-    serializeJson(filBody, filJson);
-    Serial.printf("register-uid: filament payload: %s\n", filJson.c_str());
-
-    snprintf(url, sizeof(url), "%s/api/v1/filament", baseUrl);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    code = http.POST(filJson);
-    if (code != 200 && code != 201) {
-        response = http.getString();
-        http.end();
-        char errMsg[128];
-        snprintf(errMsg, sizeof(errMsg), "Failed to create filament (HTTP %d)", code);
-        xSemaphoreGive(g_httpMutex);
-        sendError(500, errMsg);
-        return;
-    }
-    response = http.getString();
-    http.end();
-
-    int filamentId = -1;
-    {
-        StaticJsonDocument<1024> filDoc;
-        if (!deserializeJson(filDoc, response)) {
-            filamentId = filDoc["id"] | -1;
-        }
-    }
+    // --- Step 2: Find or create filament (#134) ---
+    int filamentId = enrichFindOrCreateFilament(client, http, baseUrl, material, color,
+                                                 vendorId, density > 0 ? density : 1.24f,
+                                                 diameter > 0 ? diameter : 1.75f,
+                                                 bedTemp, extruderTemp, -1);
     if (filamentId < 0) {
         xSemaphoreGive(g_httpMutex);
-        sendError(500, "Failed to parse filament ID from Spoolman response");
+        sendError(500, "Failed to find or create filament");
         return;
     }
+    Serial.printf("register-uid: filament id=%d\n", filamentId);
 
-    // --- Step 3: Create spool with nfc_id ---
-    StaticJsonDocument<512> spoolBody;
-    spoolBody["filament_id"] = filamentId;
-    if (initialWeight > 0) spoolBody["initial_weight"] = initialWeight;
-    if (remainingWeight > 0) spoolBody["remaining_weight"] = remainingWeight;
-
-    JsonObject extra = spoolBody.createNestedObject("extra");
-    // Spoolman extra fields require JSON-encoded string values (double-quoted)
+    // --- Step 3: Find existing spool or create new (#135) ---
     char quotedUid[128];
     snprintf(quotedUid, sizeof(quotedUid), "\"%s\"", uid);
-    extra["nfc_id"] = quotedUid;
 
-    String spoolJson;
-    serializeJson(spoolBody, spoolJson);
-    Serial.printf("register-uid: spool payload: %s\n", spoolJson.c_str());
+    float existingInitialWeight = 0.0f;
+    int spoolId = enrichFindSpoolByUid(client, http, baseUrl, quotedUid, existingInitialWeight);
 
-    snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    code = http.POST(spoolJson);
-    if (code != 200 && code != 201) {
+    if (spoolId > 0) {
+        // Spool exists — update it instead of creating a duplicate
+        Serial.printf("register-uid: found existing spool %d, updating\n", spoolId);
+        float effInitial = initialWeight > 0 ? initialWeight : existingInitialWeight;
+        if (!enrichUpdateSpool(client, http, baseUrl, spoolId, filamentId, remainingWeight, effInitial)) {
+            xSemaphoreGive(g_httpMutex);
+            sendError(500, "Failed to update existing spool");
+            return;
+        }
+    } else {
+        // No existing spool — create new
+        StaticJsonDocument<512> spoolBody;
+        spoolBody["filament_id"] = filamentId;
+        if (initialWeight > 0) spoolBody["initial_weight"] = initialWeight;
+        if (remainingWeight > 0) spoolBody["remaining_weight"] = remainingWeight;
+
+        JsonObject extra = spoolBody.createNestedObject("extra");
+        extra["nfc_id"] = quotedUid;
+
+        String spoolJson;
+        serializeJson(spoolBody, spoolJson);
+        Serial.printf("register-uid: creating spool: %s\n", spoolJson.c_str());
+
+        snprintf(url, sizeof(url), "%s/api/v1/spool", baseUrl);
+        http.begin(client, url);
+        http.addHeader("Content-Type", "application/json");
+        code = http.POST(spoolJson);
+        if (code != 200 && code != 201) {
+            response = http.getString();
+            http.end();
+            Serial.printf("register-uid: spool creation failed HTTP %d: %s\n", code, response.c_str());
+            String errMsg = "Failed to create spool (HTTP " + String(code) + "): " + response;
+            xSemaphoreGive(g_httpMutex);
+            _server.send(500, "application/json", "{\"error\":\"" + errMsg + "\"}");
+            return;
+        }
         response = http.getString();
         http.end();
-        Serial.printf("register-uid: spool creation failed HTTP %d: %s\n", code, response.c_str());
-        String errMsg = "Failed to create spool (HTTP " + String(code) + "): " + response;
-        xSemaphoreGive(g_httpMutex);
-        _server.send(500, "application/json", "{\"error\":\"" + errMsg + "\"}");
-        return;
-    }
-    response = http.getString();
-    http.end();
 
-    int spoolId = -1;
-    {
         StaticJsonDocument<1024> spoolDoc;
         if (!deserializeJson(spoolDoc, response)) {
             spoolId = spoolDoc["id"] | -1;
