@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.15] - 2026-04-09
+
+### Added
+
+- **NTAG variant detection** — sends GET_VERSION (0x60) during tag detection to identify exact NTAG model (213/215/216, Ultralight EV1). Write paths validate tag page capacity before writing. Variant exposed in `/api/status` as `ntag_variant` and `ntag_pages`. (#22)
+
+### Changed
+
+- **PN5180 tag session optimization** — tag stays active between detection and first page read, eliminating redundant setupRF + activateTypeA. First page read: 741ms → 96ms (87% faster). Total detect-to-data: ~2000ms → ~1340ms. (#111)
+- **Consolidated MQTT tag/state JSON** — replaced 6 duplicate snprintf JSON builders across ApplicationManager and HomeAssistantManager with shared `TagStateJson.h` using ArduinoJson. One struct, one builder — any field change happens in one place. (#125)
+
+---
+
 ## [1.6.14] - 2026-04-08
 
 ### Added
