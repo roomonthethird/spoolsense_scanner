@@ -217,3 +217,17 @@ void HardwareNFCConnectionPN532::logDiagnostics() {
         Serial.println("PN532: No response during diagnostics — SPI bus may be hung");
     }
 }
+
+bool HardwareNFCConnectionPN532::ntagGetVersion(uint8_t* versionOut) {
+    if (!pn532_ || !ready_ || !versionOut) return false;
+
+    uint8_t cmd = 0x60;  // NTAG GET_VERSION command
+    uint8_t response[8];
+    uint8_t responseLength = sizeof(response);
+
+    if (!pn532_->inDataExchange(&cmd, 1, response, &responseLength)) return false;
+    if (responseLength < 8) return false;
+
+    memcpy(versionOut, response, 8);
+    return true;
+}

@@ -138,6 +138,7 @@ private:
     void processWriteQueue();
     bool executeWrite(const NFCWriteRequest& request);
     bool validateWriteUid(const char* expectedUid, const char* writeType);
+    bool checkWriteCapacity(uint8_t startPage, uint8_t pageCount, const char* writeType);
     bool executeTigerTagWrite(const NFCWriteRequest& request);
     bool executeOpenTag3DWrite(const NFCWriteRequest& request);
     bool executeOpenSpoolWrite(const NFCWriteRequest& request);
