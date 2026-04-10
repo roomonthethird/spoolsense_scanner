@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "TrayDashboardTypes.h"
 
 // Spool data passed to the display — enough for both LCD text and TFT graphics.
 struct DisplaySpoolData {
@@ -31,6 +32,9 @@ public:
 
     // Write result — LCD shows text, TFT shows checkmark/X graphic
     virtual void showWriteResult(bool success, const char* format) = 0;
+
+    // Bambu AMS tray dashboard
+    virtual void showTrayDashboard(const TrayDashboardState& state) {}
 
     // Screen timeout
     virtual void setScreenTimeoutMs(uint32_t timeoutMs) = 0;
