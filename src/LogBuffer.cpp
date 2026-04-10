@@ -1,10 +1,10 @@
 #include "LogBuffer.h"
-#include <stdarg.h>
+#include <cstdarg>
 #include <cstring>
 
-LogBuffer::LogBuffer() {
-    mutex_ = xSemaphoreCreateMutex();
+LogBuffer::LogBuffer() : mutex_(xSemaphoreCreateMutex()) {
     memset(buffer_, 0, BUFFER_SIZE);
+    if (!mutex_) Serial.println("LogBuffer: CRITICAL — mutex creation failed");
 }
 
 LogBuffer& LogBuffer::getInstance() {

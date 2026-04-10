@@ -29,6 +29,8 @@ private:
     SemaphoreHandle_t mutex_;
 
     LogBuffer();
+    LogBuffer(const LogBuffer&) = delete;
+    LogBuffer& operator=(const LogBuffer&) = delete;
     void append(const char* data, size_t len);
 };
 
