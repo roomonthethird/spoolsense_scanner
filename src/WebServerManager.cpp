@@ -721,6 +721,7 @@ void WebServerManager::handleApiGetConfig() {
     doc["prusalink_key_set"] = (cfg.prusalink_api_key[0] != '\0');
     doc["nfc_reader"] = cfg.nfc_reader;
     doc["hostname"] = cfg.hostname;
+    doc["low_spool_threshold_g"] = cfg.low_spool_threshold_g;
     doc["tft_enabled"] = cfg.tft_enabled;
     doc["tft_driver"] = cfg.tft_driver;
     doc["ap_mode"] = _apMode;
@@ -777,6 +778,7 @@ void WebServerManager::handleApiPostConfig() {
     strncpy(update.hostname, doc["hostname"] | "spoolsense", sizeof(update.hostname) - 1);
     update.hostname[sizeof(update.hostname) - 1] = '\0';
     sanitizeHostname(update.hostname, sizeof(update.hostname));
+    update.low_spool_threshold_g = doc["low_spool_threshold_g"] | (uint16_t)100;
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");
