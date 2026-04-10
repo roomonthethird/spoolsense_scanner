@@ -18,6 +18,7 @@
   #include <Arduino.h>
   #include <WiFi.h>
   #include <HTTPClient.h>
+  #include <Preferences.h>
   extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
@@ -60,6 +61,30 @@ bool ApplicationManager::begin(DisplayI* display) {
     }
 
     Serial.println("ApplicationManager: Message queue created");
+
+#ifndef NATIVE_TEST
+    // Load cached tray dashboard from NVS
+    bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
+    if (dashEnabled) {
+        Preferences prefs;
+        prefs.begin("spoolsense", true);
+        size_t len = prefs.getBytesLength("tray_dash");
+        if (len == sizeof(TrayDashboardState)) {
+            prefs.getBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+            if (trayDashboardState_.has_data && display_) {
+                display_->showTrayDashboard(trayDashboardState_);
+                Serial.printf("ApplicationManager: Loaded cached tray dashboard, %d trays\n",
+                              trayDashboardState_.tray_count);
+            } else if (display_) {
+                display_->showText("SpoolSense", "AMS Ready");
+            }
+        } else if (display_) {
+            display_->showText("SpoolSense", "AMS Ready");
+        }
+        prefs.end();
+    }
+#endif
+
     return true;
 }
 
@@ -130,6 +155,22 @@ void ApplicationManager::processMessages() {
 
             Serial.printf("ApplicationManager: Displayed delayed Type/Remain - Type: %s, Remain: %.0fg\n",
                          delayedDisplayMaterialName, delayedDisplayKgRemaining * 1000.0f);
+        }
+    }
+
+    // Bambu dashboard revert: after scan interruption, return to dashboard
+    if (dashboardRevertAt_ != 0) {
+        uint32_t elapsedMs = static_cast<uint32_t>(millis() - dashboardRevertAt_);
+        if (elapsedMs >= DASHBOARD_REVERT_DELAY_MS) {
+            dashboardRevertAt_ = 0;
+#ifndef NATIVE_TEST
+            bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
+#else
+            bool dashEnabled = false;
+#endif
+            if (dashEnabled && trayDashboardState_.has_data && display_) {
+                display_->showTrayDashboard(trayDashboardState_);
+            }
         }
     }
 
@@ -253,6 +294,10 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
 
         case AppMessageType::KEYPAD_CANCEL:
             handleKeypadCancel();
+            break;
+
+        case AppMessageType::TRAY_UPDATE:
+            handleTrayUpdate();
             break;
     }
 }
@@ -404,6 +449,12 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         else if (strcmp(s.tag_format, "OpenSpool") == 0) spool.tagType = 6;
         else spool.tagType = 0;
         display_->showSpool(spool);
+
+#ifndef NATIVE_TEST
+        if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
+            dashboardRevertAt_ = millis();
+        }
+#endif
     } else if (display_) {
         Serial.printf("ApplicationManager: Skipping LCD update for already displayed spool %s\n", msg.payload.spoolDetected.spool_id);
     }
@@ -640,6 +691,12 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
         lastDisplayedSpoolId[0] = '\0';  // Clear smart tag display — allow re-display if tag swapped
 
         display_->showText4("**** Spool ****", "*** Scanned ***", "Unknown Tag", "Use app to setup");
+
+#ifndef NATIVE_TEST
+        if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
+            dashboardRevertAt_ = millis();
+        }
+#endif
     }
 
     // HA MQTT: publish blank tag detected
@@ -680,6 +737,12 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
         lastDisplayedSpoolId[0] = '\0';  // Clear smart tag display — allow re-display if tag swapped
 
         display_->showText4("**** Spool ****", "*** Scanned ***", "Generic Tag", "Checking Spoolman");
+
+#ifndef NATIVE_TEST
+        if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
+            dashboardRevertAt_ = millis();
+        }
+#endif
     }
 
     // HA MQTT: publish generic tag (UID only, awaiting Spoolman lookup)
@@ -1203,6 +1266,38 @@ void ApplicationManager::handleKeypadCancel() {
 
     if (display_) {
         display_->showText("Tool entry", "Cleared");
+    }
+}
+
+// ── Tray Dashboard ──────────────────────────────────────────────────────────
+
+void ApplicationManager::updateTrayDashboard(const TrayDashboardState& state) {
+    trayDashboardState_ = state;
+}
+
+const TrayDashboardState& ApplicationManager::getTrayDashboardState() const {
+    return trayDashboardState_;
+}
+
+void ApplicationManager::handleTrayUpdate() {
+#ifndef NATIVE_TEST
+    // Persist to NVS
+    Preferences prefs;
+    prefs.begin("spoolsense", false);
+    prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+    prefs.end();
+#endif
+
+    Serial.printf("ApplicationManager: Tray dashboard updated, %d trays\n",
+                  trayDashboardState_.tray_count);
+
+#ifndef NATIVE_TEST
+    bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
+#else
+    bool dashEnabled = false;
+#endif
+    if (dashEnabled && display_) {
+        display_->showTrayDashboard(trayDashboardState_);
     }
 }
 

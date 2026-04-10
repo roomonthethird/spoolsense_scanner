@@ -12,6 +12,9 @@
 #ifndef ENABLE_KEYPAD
 #define ENABLE_KEYPAD 0
 #endif
+#ifndef ENABLE_BAMBU_DASHBOARD
+#define ENABLE_BAMBU_DASHBOARD 0
+#endif
 
 static const DeviceConfig kDeviceConfig = {
     .device_name = DEVICE_NAME,
@@ -46,6 +49,7 @@ static const DeviceConfig kDeviceConfig = {
         .lcd_enabled = ENABLE_LCD,
         .status_led_enabled = ENABLE_STATUS_LED,
         .keypad_enabled = ENABLE_KEYPAD,
+        .bambu_dashboard = ENABLE_BAMBU_DASHBOARD,
     },
 
     .automation_mode = AUTOMATION_MODE,

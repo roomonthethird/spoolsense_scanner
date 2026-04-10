@@ -275,6 +275,9 @@ void TFTManager::processQueue() {
             case TFTState::Error:
                 renderStatus("Error", msg.statusText);
                 break;
+            case TFTState::TrayDashboard:
+                _dashboard.render(&_sprite, msg.dashboardState);
+                break;
         }
     }
 
@@ -654,6 +657,16 @@ void TFTManager::showText4(const char* line1, const char* line2,
 
 void TFTManager::showKeypad(const char* digits) {
     showKeypadEntry(digits && digits[0] ? digits : "_");
+}
+
+void TFTManager::showTrayDashboard(const TrayDashboardState& state) {
+    if (!_messageQueue) return;
+    TFTMessage msg = {};
+    msg.state = TFTState::TrayDashboard;
+    msg.dashboardState = state;
+    if (xQueueSend(_messageQueue, &msg, 0) != pdTRUE) {
+        Serial.println("TFTManager: Queue full, dropping tray dashboard");
+    }
 }
 
 void TFTManager::showSpool(const DisplaySpoolData& spool) {

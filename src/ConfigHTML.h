@@ -219,6 +219,16 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                   <option value="gc9a01">GC9A01 (round)</option>
                 </select>
               </div>
+            </div>
+            <h3>Bambu</h3>
+            <div class="field-group">
+              <span class="toggle-label">AMS Tray Dashboard (TFT only)</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="bambu_dashboard" />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div style="display:grid;gap:10px">
               <div class="toggle-row">
                 <span class="toggle-label">NFC Reader</span>
                 <select id="nfc_reader" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
@@ -274,6 +284,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('tft_driver_row').style.display = this.checked ? '' : 'none';
       });
       if (cfg.nfc_reader) document.getElementById('nfc_reader').value = cfg.nfc_reader;
+      document.getElementById('bambu_dashboard').checked = !!cfg.bambu_dashboard;
       maybeSetValue('moonraker_url', cfg.moonraker_url);
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
@@ -331,7 +342,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         moonraker_url: document.getElementById('moonraker_url').value.trim(),
         prusalink_on: document.getElementById('prusalink_on').checked ? 1 : 0,
         prusalink_url: document.getElementById('prusalink_url').value.trim(),
-        prusalink_api_key: document.getElementById('prusalink_api_key').value
+        prusalink_api_key: document.getElementById('prusalink_api_key').value,
+        bambu_dashboard: document.getElementById('bambu_dashboard').checked ? 1 : 0
       };
 
       fetch('/api/config', {

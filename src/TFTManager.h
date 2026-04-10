@@ -5,6 +5,8 @@
 #include "BoardPins.h"
 #include "TFTConfig.h"
 #include "DisplayI.h"
+#include "TrayDashboardTypes.h"
+#include "TFTDashboard.h"
 
 // Tag type constants — one icon per type
 #define TAG_TYPE_UNKNOWN      0
@@ -26,7 +28,8 @@ enum class TFTState {
     Writing,
     WriteResult,
     KeypadEntry,
-    Error
+    Error,
+    TrayDashboard
 };
 
 // ---------------------------------------------------------------------------
@@ -38,6 +41,7 @@ struct TFTMessage {
     char statusText[48];   // used for Boot/Ready/Error/Writing/KeypadEntry
     char statusText2[48];  // second line for generic status display
     bool writeSuccess;     // used for WriteResult
+    TrayDashboardState dashboardState; // valid when state == TrayDashboard
 };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +78,7 @@ public:
                    const char* line3, const char* line4) override;
     void showSpool(const DisplaySpoolData& spool) override;
     void showKeypad(const char* digits) override;
+    void showTrayDashboard(const TrayDashboardState& state) override;
 
 private:
     static void taskFunc(void* param);
@@ -98,6 +103,7 @@ private:
     LGFX _tft;
     LGFX_Sprite _sprite;
     TFTDriver _driver;
+    TFTDashboard _dashboard;
 
     QueueHandle_t _messageQueue;
     TaskHandle_t _taskHandle;

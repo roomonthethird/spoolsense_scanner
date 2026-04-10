@@ -34,6 +34,7 @@ static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
 static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 static const char* NVS_KEY_HOSTNAME      = "hostname";
 static const char* NVS_KEY_LOW_SPOOL     = "low_spool_g";
+static const char* NVS_KEY_BAMBU_DASH    = "bambu_dash";
 
 // Sanitize hostname: enforce mDNS naming constraints (lowercase alphanum + hyphens,
 // no leading/trailing hyphens) and reject empty strings to avoid boot-time errors.
@@ -248,6 +249,10 @@ bool ConfigurationManager::loadFromNVS() {
         _lowSpoolThreshold = prefs.getUShort(NVS_KEY_LOW_SPOOL, 100);
         anyOverride = true;
     }
+    if (prefs.isKey(NVS_KEY_BAMBU_DASH)) {
+        _bambuDashboard = prefs.getBool(NVS_KEY_BAMBU_DASH, false);
+        anyOverride = true;
+    }
 
     prefs.end();
     return anyOverride;
@@ -350,6 +355,10 @@ uint16_t ConfigurationManager::getLowSpoolThreshold() const {
     return _lowSpoolThreshold;
 }
 
+bool ConfigurationManager::isBambuDashboardEnabled() const {
+    return _bambuDashboard;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -373,6 +382,7 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     strncpy(out.nfc_reader, _nfcReader, sizeof(out.nfc_reader) - 1);
     strncpy(out.hostname, _hostname, sizeof(out.hostname) - 1);
     out.low_spool_threshold_g = _lowSpoolThreshold;
+    out.bambu_dashboard = _bambuDashboard ? 1 : 0;
 }
 
 #ifndef NATIVE_TEST
@@ -416,6 +426,7 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));  // enforce mDNS constraints before NVS write
     prefs.putString(NVS_KEY_HOSTNAME, sanitizedHostname);
     prefs.putUShort(NVS_KEY_LOW_SPOOL, update.low_spool_threshold_g);
+    prefs.putBool(NVS_KEY_BAMBU_DASH, update.bambu_dashboard != 0);
 
     // Invalidate Spoolman enrichment cache on config change to force re-fetch
     // (config change could invalidate cached spool lookups)
