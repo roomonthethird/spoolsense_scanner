@@ -969,6 +969,33 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             }
         }
     }
+
+    // Update dashboard tray weight if this UID matches a tray
+    if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup) {
+        for (uint8_t i = 0; i < trayDashboardState_.tray_count; i++) {
+            if (strlen(trayDashboardState_.trays[i].uid) > 0 &&
+                strcasecmp(trayDashboardState_.trays[i].uid, msg.payload.spoolmanSynced.spool_id) == 0) {
+                uint16_t weightG = static_cast<uint16_t>(msg.payload.spoolmanSynced.kg_remaining * 1000.0f);
+                if (weightG != trayDashboardState_.trays[i].weight_g) {
+                    trayDashboardState_.trays[i].weight_g = weightG;
+                    Serial.printf("ApplicationManager: Dashboard tray %d weight updated to %dg\n",
+                                  trayDashboardState_.trays[i].tray_index, weightG);
+#ifndef NATIVE_TEST
+                    Preferences prefs;
+                    prefs.begin("spoolsense", false);
+                    prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+                    prefs.end();
+
+                    bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
+                    if (dashEnabled && display_) {
+                        display_->showTrayDashboard(trayDashboardState_);
+                    }
+#endif
+                }
+                break;
+            }
+        }
+    }
 #endif
 }
 
