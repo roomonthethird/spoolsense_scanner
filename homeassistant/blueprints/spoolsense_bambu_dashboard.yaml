@@ -1,0 +1,61 @@
+blueprint:
+  name: "SpoolSense → Bambu AMS Dashboard"
+  description: >
+    Keeps the SpoolSense TFT tray dashboard in sync with your Bambu AMS.
+    When any AMS tray changes (spool loaded, removed, or filament info updated),
+    the blueprint publishes the current tray state to the scanner via MQTT.
+    Requires the Bambu AMS Dashboard toggle enabled on the scanner config page.
+  domain: automation
+  input:
+    spoolsense_device_id:
+      name: SpoolSense Scanner Device ID
+      description: >
+        The scanner's device ID (e.g., 4d9620). Found on the scanner's landing page
+        or in the MQTT topic prefix.
+      selector:
+        text: {}
+    ams_tray_entities:
+      name: AMS Tray Sensors
+      description: >
+        Select all AMS tray sensor entities to monitor. Order matters — the first
+        entity is tray index 0, second is index 1, etc. For a single AMS, select
+        all 4 trays in order. For multiple AMS units, select all trays across units.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: sensor
+
+mode: queued
+max_exceeded: silent
+max: 3
+
+triggers:
+  - trigger: state
+    entity_id: !input ams_tray_entities
+
+actions:
+  - variables:
+      scanner_id: !input spoolsense_device_id
+      tray_entities: !input ams_tray_entities
+
+  - variables:
+      tray_json: >
+        {% set ns = namespace(trays=[]) %}
+        {% for entity in tray_entities %}
+          {% set a = state_attr(entity, 'type') | default('') %}
+          {% set empty = state_attr(entity, 'empty') | default(true) %}
+          {% if not empty and a != '' and a != 'Empty' %}
+            {% set color_raw = state_attr(entity, 'color') | default('#000000FF') %}
+            {% set color = color_raw | replace('#', '') %}
+            {% set color = color[:6] if color | length >= 8 else color[:6] %}
+            {% set tray = '{"tray_index":' ~ loop.index0 ~ ',"ams_id":' ~ (loop.index0 // 4) ~ ',"material":"' ~ a ~ '","color":"' ~ color ~ '"}' %}
+            {% set ns.trays = ns.trays + [tray] %}
+          {% endif %}
+        {% endfor %}
+        [{{ ns.trays | join(',') }}]
+
+  - action: mqtt.publish
+    data:
+      topic: "spoolsense/{{ scanner_id }}/cmd/tray_update"
+      payload: "{{ tray_json }}"
