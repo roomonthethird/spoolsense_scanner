@@ -856,6 +856,22 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     }
 
 #ifndef NATIVE_TEST
+    // Re-evaluate LED state using Spoolman weight — catches tags without weight data
+    // (OpenSpool, GenericUID, TigerTag) where Spoolman knows the remaining weight
+    if (msg.payload.spoolmanSynced.success && kgRemaining > 0.0f &&
+        ConfigurationManager::getInstance().isLedEnabled()) {
+        const char* colorSrc = msg.payload.spoolmanSynced.color_hex;
+        if (colorSrc[0] == '#') colorSrc++;
+        unsigned int r = 0, g = 0, b = 0;
+        sscanf(colorSrc, "%02x%02x%02x", &r, &g, &b);
+        float remaining_g = kgRemaining * 1000.0f;
+        if (remaining_g > 0.0f && remaining_g <= 100.0f) {
+            ledManager.breatheFilamentColor(r, g, b);
+        } else {
+            ledManager.showFilamentColor(r, g, b);
+        }
+    }
+
     // Cache sync result in NFCManager (used by web UI to mark "synced" on reader page)
     if (msg.payload.spoolmanSynced.success && !msg.payload.spoolmanSynced.is_uid_lookup) {
         NFCManager::getInstance().updateRecentSpoolSyncStatus(
