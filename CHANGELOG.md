@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.17] - 2026-04-10
+
+### Added
+
+- **Web serial log viewer** — live scanner output at spoolsense.local/logs with auto-scroll, copy button, and clear. Captures tag detection, Spoolman sync, MQTT status, write outcomes, and errors. Linked from landing page and troubleshooting page. (#139)
+
+### Fixed
+
+- **Low-spool LED breathing for non-writable tags** — tags without weight data (OpenSpool, GenericUID, TigerTag) were not triggering low-spool LED breathing. Now evaluates Spoolman-provided remaining weight after sync and triggers breathing when below threshold. (#137)
+- **Default initial_weight to 1000g** — spools created without an initial weight now default to 1000g instead of omitting it, preventing Spoolman from showing 0g remaining. (#128)
+- **Removed debug timing instrumentation** — TIMING printf lines from PN5180 reliability work removed from production builds.
+
+### Changed
+
+- **Web flasher auto-update** — release workflow now automatically updates spoolsense.org firmware binaries and manifests via GitHub Actions dispatch.
+
+---
+
 ## [1.6.16] - 2026-04-09
 
 ### Fixed
