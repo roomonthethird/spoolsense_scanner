@@ -73,6 +73,11 @@ private:
     void handleApiSpoolmanFindFilament();
     void handleApiSpoolmanSaveEnrichment();
 
+    // Log viewer
+    void handleLogViewer();
+    void handleApiLogs();
+    void handleApiLogsClear();
+
     // OTA download state
     static void otaDownloadTask(void* param);
     enum class OtaState : uint8_t { IDLE, DOWNLOADING, FLASHING, SUCCESS, FAILED };

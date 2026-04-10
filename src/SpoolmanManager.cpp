@@ -12,6 +12,7 @@
 #endif
 #include <cmath>
 #include "openprinttag_lib.h"
+#include "LogBuffer.h"
 
 static constexpr size_t JSON_SMALL_CAPACITY = 256;
 static constexpr size_t JSON_MEDIUM_CAPACITY = 768;
@@ -734,6 +735,7 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
         int id = -1;
         if (parseIdFromObject(response.c_str(), id)) {
             Serial.printf("SpoolmanManager: Created spool for %s, id=%d\n", req.spool_id, id);
+            LogBuffer::getInstance().logPrintf("Spoolman: Created spool %d for %s\n", id, req.spool_id);
             return id;
         }
         Serial.printf("SpoolmanManager: Created spool but failed to parse response\n");
@@ -741,6 +743,7 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     }
 
     Serial.printf("SpoolmanManager: Failed to create spool, code=%d\n", code);
+    LogBuffer::getInstance().logPrintf("ERROR: Failed to create spool, HTTP %d\n", code);
     Serial.printf("  Request:  %s\n", body.c_str());
     Serial.printf("  Response: %s\n", response.c_str());
     return -1;
@@ -793,6 +796,7 @@ static bool archiveSpool(int spoolId) {
     int code = httpPatch(path, body.c_str(), response);
     if (code == 200) {
         Serial.printf("SpoolmanManager: Archived spool id=%d\n", spoolId);
+        LogBuffer::getInstance().logPrintf("Spoolman: Archived spool %d\n", spoolId);
         return true;
     }
 
@@ -823,6 +827,7 @@ static bool shouldArchiveAndReplace(int existingSpoolId, int newFilamentId,
     if (oldFilamentId >= 0 && newFilamentId >= 0 && oldFilamentId != newFilamentId) {
         Serial.printf("SpoolmanManager: Filament changed (%d -> %d), will archive spool %d\n",
                       oldFilamentId, newFilamentId, existingSpoolId);
+        LogBuffer::getInstance().logPrintf("Spoolman: Filament changed, archiving spool %d\n", existingSpoolId);
         return true;
     }
 
@@ -861,10 +866,12 @@ static bool updateSpool(int spoolId, int filamentId, float remainingWeight) {
     int code = httpPatch(path, body.c_str(), response);
     if (code == 200) {
         Serial.printf("SpoolmanManager: Updated spool id=%d, remaining=%.1fg\n", spoolId, remainingWeight);
+        LogBuffer::getInstance().logPrintf("Spoolman: Spool %d, %.1fg remaining\n", spoolId, remainingWeight);
         return true;
     }
 
     Serial.printf("SpoolmanManager: Failed to update spool, code=%d\n", code);
+    LogBuffer::getInstance().logPrintf("ERROR: Failed to update spool, HTTP %d\n", code);
     return false;
 }
 
@@ -1336,6 +1343,7 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     int vendorId = findOrCreateVendor(req.manufacturer);
     if (vendorId < 0) {
         Serial.println("SpoolmanManager: Failed to find/create vendor");
+        LogBuffer::getInstance().logPrintf("ERROR: Failed to find/create vendor\n");
         xSemaphoreGive(httpMutex_);
         return false;
     }
@@ -1343,6 +1351,7 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
     int filamentId = findOrCreateFilament(vendorId, req);
     if (filamentId < 0) {
         Serial.println("SpoolmanManager: Failed to find/create filament");
+        LogBuffer::getInstance().logPrintf("ERROR: Failed to find/create filament\n");
         xSemaphoreGive(httpMutex_);
         return false;
     }

@@ -25,6 +25,8 @@
 #include "OpenSpoolLogo.h"
 #include "OpenSpoolWriterHTML.h"
 #include "UpdateHTML.h"
+#include "LogViewerHTML.h"
+#include "LogBuffer.h"
 #include "ConfigurationManager.h"
 #include "NFCManager.h"
 #include "NFCTypes.h"
@@ -137,6 +139,11 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/api/spoolman/find-vendor",     HTTP_GET,  [this]() { handleApiSpoolmanFindVendor(); });
     _server.on("/api/spoolman/find-filament",   HTTP_GET,  [this]() { handleApiSpoolmanFindFilament(); });
     _server.on("/api/spoolman/save-enrichment", HTTP_POST, [this]() { handleApiSpoolmanSaveEnrichment(); });
+
+    // Log viewer
+    _server.on("/logs",           HTTP_GET,  [this]() { handleLogViewer(); });
+    _server.on("/api/logs",       HTTP_GET,  [this]() { handleApiLogs(); });
+    _server.on("/api/logs/clear", HTTP_POST, [this]() { handleApiLogsClear(); });
 
     // Captive portal detection endpoints (AP mode)
     if (apMode) {
@@ -270,6 +277,29 @@ void WebServerManager::handleTroubleshootingPage() {
 void WebServerManager::handleUIDRegistrationPage() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send_P(200, "text/html", UID_REGISTRATION_HTML);
+}
+
+void WebServerManager::handleLogViewer() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send_P(200, "text/html", LOG_VIEWER_HTML);
+}
+
+void WebServerManager::handleApiLogs() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    char* buf = (char*)malloc(4097);
+    if (!buf) {
+        _server.send(500, "text/plain", "out of memory");
+        return;
+    }
+    LogBuffer::getInstance().getLog(buf, 4097);
+    _server.send(200, "text/plain", buf);
+    free(buf);
+}
+
+void WebServerManager::handleApiLogsClear() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    LogBuffer::getInstance().clear();
+    _server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WebServerManager::handleApiRegisterUid() {

@@ -96,6 +96,12 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
         <div class="tool-desc">Verify scanner connectivity, MQTT, Spoolman, and NFC reader status.</div>
       </a>
 
+      <a href="/logs" class="tool-card">
+        <div class="tool-icon">&#128220;</div>
+        <div class="tool-name">Serial Log</div>
+        <div class="tool-desc">View live scanner serial output for debugging.</div>
+      </a>
+
       <a href="/config" class="tool-card">
         <div class="tool-icon">&#9881;</div>
         <div class="tool-name">Configuration</div>

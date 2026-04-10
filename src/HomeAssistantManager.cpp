@@ -9,6 +9,7 @@
 #include "DeductionManager.h"
 #include "TagStateJson.h"
 #include "LEDManager.h"
+#include "LogBuffer.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
@@ -381,6 +382,7 @@ void HomeAssistantManager::taskLoop() {
                     publishAvailability("online");
                     publishCurrentTagState();
                     Serial.println("HomeAssistantManager: Connected to MQTT broker");
+                    LogBuffer::getInstance().logPrintf("MQTT connected\n");
                 } else {
                     connected_ = false;
                     // Exponential backoff: 1s → 2s → 4s → ... up to MAX (avoid broker hammering)
@@ -389,6 +391,7 @@ void HomeAssistantManager::taskLoop() {
                     lastMqttState_ = mqttClient.state();
                     Serial.printf("HomeAssistantManager: MQTT connect failed, retry in %lums\n",
                                   reconnectDelay_);
+                    LogBuffer::getInstance().logPrintf("MQTT connect failed, retry in %lums\n", reconnectDelay_);
                 }
             }
         }
