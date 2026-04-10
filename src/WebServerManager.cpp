@@ -425,7 +425,7 @@ void WebServerManager::handleApiRegisterUid() {
         // No existing spool — create new
         StaticJsonDocument<512> spoolBody;
         spoolBody["filament_id"] = filamentId;
-        if (initialWeight > 0) spoolBody["initial_weight"] = initialWeight;
+        spoolBody["initial_weight"] = initialWeight > 0 ? initialWeight : 1000.0f;
         if (remainingWeight > 0) spoolBody["remaining_weight"] = remainingWeight;
 
         JsonObject extra = spoolBody.createNestedObject("extra");
@@ -1981,11 +1981,11 @@ int WebServerManager::enrichCreateSpool(WiFiClient& client, HTTPClient& http, co
     char url[256];
     StaticJsonDocument<512> sBody;
     sBody["filament_id"] = filamentId;
+    float initialW = 1000.0f;
+    sBody["initial_weight"] = initialW;
     if (remainingG > 0) {
-        float initialW = 1000.0f;
         float usedW = initialW - remainingG;
         if (usedW < 0) usedW = 0;
-        sBody["initial_weight"] = initialW;
         sBody["used_weight"] = usedW;
     }
     JsonObject extra = sBody.createNestedObject("extra");

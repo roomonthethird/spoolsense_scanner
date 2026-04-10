@@ -713,7 +713,8 @@ static int createSpool(int filamentId, const SpoolmanSyncRequest& req) {
     doc["filament_id"] = filamentId;
     // Spoolman 0.23.x rejects weight fields with value 0 — omit when not set
     if (req.remaining_weight_g > 0) doc["remaining_weight"] = req.remaining_weight_g;
-    if (req.initial_weight_g > 0) doc["initial_weight"] = req.initial_weight_g;
+    float initialWeight = req.initial_weight_g > 0 ? req.initial_weight_g : 1000.0f;
+    doc["initial_weight"] = initialWeight;
 
     // Spoolman expects extra field values to be valid JSON — wrap the string in quotes
     char nfcIdJson[34];
