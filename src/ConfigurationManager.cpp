@@ -33,6 +33,7 @@ static const char* NVS_KEY_PRUSALINK_URL  = "prusalink_url";
 static const char* NVS_KEY_PRUSALINK_KEY  = "prusalink_key";
 static const char* NVS_KEY_NFC_READER    = "nfc_reader";
 static const char* NVS_KEY_HOSTNAME      = "hostname";
+static const char* NVS_KEY_LOW_SPOOL     = "low_spool_g";
 
 // Sanitize hostname: enforce mDNS naming constraints (lowercase alphanum + hyphens,
 // no leading/trailing hyphens) and reject empty strings to avoid boot-time errors.
@@ -243,6 +244,10 @@ bool ConfigurationManager::loadFromNVS() {
         sanitizeHostname(_hostname, sizeof(_hostname));
         anyOverride = true;
     }
+    if (prefs.isKey(NVS_KEY_LOW_SPOOL)) {
+        _lowSpoolThreshold = prefs.getUShort(NVS_KEY_LOW_SPOOL, 100);
+        anyOverride = true;
+    }
 
     prefs.end();
     return anyOverride;
@@ -341,6 +346,10 @@ const char* ConfigurationManager::getHostname() const {
     return _hostname;
 }
 
+uint16_t ConfigurationManager::getLowSpoolThreshold() const {
+    return _lowSpoolThreshold;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -363,6 +372,7 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     strncpy(out.moonraker_url, _moonrakerUrl, sizeof(out.moonraker_url) - 1);
     strncpy(out.nfc_reader, _nfcReader, sizeof(out.nfc_reader) - 1);
     strncpy(out.hostname, _hostname, sizeof(out.hostname) - 1);
+    out.low_spool_threshold_g = _lowSpoolThreshold;
 }
 
 #ifndef NATIVE_TEST
@@ -405,6 +415,7 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     strncpy(sanitizedHostname, update.hostname, sizeof(sanitizedHostname) - 1);
     sanitizeHostname(sanitizedHostname, sizeof(sanitizedHostname));  // enforce mDNS constraints before NVS write
     prefs.putString(NVS_KEY_HOSTNAME, sanitizedHostname);
+    prefs.putUShort(NVS_KEY_LOW_SPOOL, update.low_spool_threshold_g);
 
     // Invalidate Spoolman enrichment cache on config change to force re-fetch
     // (config change could invalidate cached spool lookups)

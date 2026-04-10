@@ -77,6 +77,11 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                      pattern="[a-z0-9](?:[a-z0-9\-]{0,30}[a-z0-9])?" title="Lowercase letters, numbers, hyphens (1-32 chars, no leading/trailing hyphens)" />
               <div style="font-size:11px;color:#71717A;margin-top:4px">mDNS hostname (e.g. spoolsense-lane1). Access at http://&lt;hostname&gt;.local</div>
             </div>
+            <div class="field">
+              <label for="low_spool_g">Low Spool Threshold (g)</label>
+              <input id="low_spool_g" type="number" min="0" max="5000" value="100" />
+              <div style="font-size:11px;color:#71717A;margin-top:4px">LED breathes when remaining weight is at or below this value</div>
+            </div>
             <h3 style="font-size:13px;color:#A1A1AA;margin:16px 0 8px;font-weight:600">WiFi</h3>
             <div class="grid-2">
               <div class="field">
@@ -247,6 +252,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
     // Load current config
     api('/api/config').then(function(cfg) {
       maybeSetValue('hostname', cfg.hostname);
+      if (cfg.low_spool_threshold_g !== undefined) document.getElementById('low_spool_g').value = cfg.low_spool_threshold_g;
       maybeSetValue('wifi_ssid', cfg.wifi_ssid);
       maybeSetValue('mqtt_host', cfg.mqtt_host);
       maybeSetValue('mqtt_port', cfg.mqtt_port);
@@ -306,6 +312,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 
       var body = {
         hostname: normalizedHostname,
+        low_spool_threshold_g: parseInt(document.getElementById('low_spool_g').value) || 100,
         wifi_ssid: document.getElementById('wifi_ssid').value.trim(),
         wifi_pass: document.getElementById('wifi_pass').value,
         mqtt_host: document.getElementById('mqtt_host').value.trim(),

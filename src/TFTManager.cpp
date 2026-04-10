@@ -1,4 +1,5 @@
 #include "TFTManager.h"
+#include "ConfigurationManager.h"
 #include <Arduino.h>
 
 // TFT display controller for 240x240 ST7789 or GC9A01 (round). Manages sprite rendering to PSRAM
@@ -254,7 +255,7 @@ void TFTManager::processQueue() {
             case TFTState::SpoolScanned:
                 // Breathing animation for low-weight spools (< 100g): visual cue for respool
                 _isBreathing = (msg.spool.remainingWeight > 0 &&
-                                msg.spool.remainingWeight <= 100.0f);
+                                msg.spool.remainingWeight <= (float)ConfigurationManager::getInstance().getLowSpoolThreshold());
                 if (_isBreathing) {
                     _breathColor = hexToRgb(msg.spool.colorHex);
                     _breathBrightness = 255;

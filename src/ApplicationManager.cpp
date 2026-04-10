@@ -351,7 +351,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
             uint8_t r = msg.payload.spoolDetected.primary_color[0];
             uint8_t g = msg.payload.spoolDetected.primary_color[1];
             uint8_t b = msg.payload.spoolDetected.primary_color[2];
-            if (remaining_g > 0.0f && remaining_g <= 100.0f) {
+            if (remaining_g > 0.0f && remaining_g <= (float)ConfigurationManager::getInstance().getLowSpoolThreshold()) {
                 ledManager.breatheFilamentColor(r, g, b);
             } else {
                 ledManager.showFilamentColor(r, g, b);
@@ -866,7 +866,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
         unsigned int r = 0, g = 0, b = 0;
         if (sscanf(colorSrc, "%02x%02x%02x", &r, &g, &b) != 3) { r = g = b = 0; }
         float remaining_g = kgRemaining * 1000.0f;
-        if (remaining_g > 0.0f && remaining_g <= 100.0f) {
+        if (remaining_g > 0.0f && remaining_g <= (float)ConfigurationManager::getInstance().getLowSpoolThreshold()) {
             ledManager.breatheFilamentColor(r, g, b);
         } else {
             ledManager.showFilamentColor(r, g, b);

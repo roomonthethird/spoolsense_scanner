@@ -38,6 +38,7 @@ struct ConfigUpdate {
     char nfc_reader[8];  // "pn5180" or "pn532"
     // mDNS / WiFi hostname
     char hostname[33];   // max 32 chars + null
+    uint16_t low_spool_threshold_g;  // grams below which LED breathes (default 100)
 };
 
 class ConfigurationManager {
@@ -81,6 +82,9 @@ public:
     bool isKeypadEnabled() const;
     bool isTftEnabled() const;
     const char* getTftDriver() const;
+
+    // Low-spool threshold (grams) — LED breathes when remaining weight is at or below this
+    uint16_t getLowSpoolThreshold() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -130,6 +134,7 @@ private:
     bool _keypadEnabled = false;
     bool _tftEnabled = false;
     char _tftDriver[8] = "st7789";
+    uint16_t _lowSpoolThreshold = 100;  // grams
 
     bool _initialized = false;
 };
