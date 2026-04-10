@@ -581,7 +581,7 @@ async function sharedWriteFlow(config) {
 
     setStepState('step-write', 'active');
     setBanner('statusBanner', 'Writing ' + config.formatName + ' data\u2026');
-    setResult('resultBox', 'Sending ' + config.formatName + ' payload to scanner.', '');
+    setResult('resultBox', 'Keep the tag on the scanner \u2014 writing and verifying takes a few seconds.', '');
     await api(config.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -591,7 +591,7 @@ async function sharedWriteFlow(config) {
 
     setStepState('step-verify', 'active');
     setBanner('statusBanner', 'Verifying write\u2026');
-    setResult('resultBox', 'Reading tag back to confirm data matches.', '');
+    setResult('resultBox', 'Reading tag back to confirm \u2014 keep the tag on the scanner.', '');
 
     var verifyDeadline = Date.now() + 15000;
     while (Date.now() < verifyDeadline) {

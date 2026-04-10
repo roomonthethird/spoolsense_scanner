@@ -371,13 +371,17 @@ bool HardwareNFCConnection::writeISO14443Pages(uint8_t startPage, uint8_t pageCo
     uint16_t totalBytes = pageCount * 4;
     if (dataLen < totalBytes) return false;
 
-    // Reactivate tag before write sequence
-    iso14443a_->setupRF();
     uint8_t response[10] = {0};
-    uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
-    if (uidLen < 4) {
-        Serial.println("HardwareNFC: writeISO14443Pages - tag reactivation failed");
-        return false;
+    uint8_t uidLen = 0;
+
+    if (!tagSessionActive_) {
+        // Tag was halted — must reactivate before writing
+        iso14443a_->setupRF();
+        uidLen = iso14443a_->activateTypeA(response, 1);
+        if (uidLen < 4) {
+            Serial.println("HardwareNFC: writeISO14443Pages - tag reactivation failed");
+            return false;
+        }
     }
 
     // Write per-page with retry: ISO14443A tags lose activation after errors; retry with re-activate
