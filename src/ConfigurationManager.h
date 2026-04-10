@@ -39,6 +39,7 @@ struct ConfigUpdate {
     // mDNS / WiFi hostname
     char hostname[33];   // max 32 chars + null
     uint16_t low_spool_threshold_g;  // grams below which LED breathes (default 100)
+    uint8_t bambu_dashboard;
 };
 
 class ConfigurationManager {
@@ -85,6 +86,8 @@ public:
 
     // Low-spool threshold (grams) — LED breathes when remaining weight is at or below this
     uint16_t getLowSpoolThreshold() const;
+
+    bool isBambuDashboardEnabled() const;
 
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
@@ -135,6 +138,7 @@ private:
     bool _tftEnabled = false;
     char _tftDriver[8] = "st7789";
     uint16_t _lowSpoolThreshold = 100;  // grams
+    bool _bambuDashboard = false;
 
     bool _initialized = false;
 };

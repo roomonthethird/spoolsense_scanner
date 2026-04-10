@@ -29,6 +29,7 @@ struct PeripheralConfig {
     bool lcd_enabled;
     bool status_led_enabled;
     bool keypad_enabled;
+    bool bambu_dashboard;
 };
 
 struct DeviceConfig {
