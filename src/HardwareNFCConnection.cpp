@@ -237,13 +237,10 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
     // Fallback to ISO14443A for 4-byte and 7-byte tags (NTAG, MIFARE, etc.)
     // Dual-protocol scanner allows PN5180 (ISO15693) + PN532 (ISO14443A only) to coexist
     if (iso14443a_) {
-        unsigned long t0 = millis();
         iso14443a_->setupRF();
-        unsigned long t1 = millis();
         // activateTypeA populates response: [0..1]=ATQA, [2]=SAK, [3..9]=UID (4, 7, or 10 bytes)
         uint8_t response[10] = {0};
         uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
-        unsigned long t2 = millis();
         if (uidLen >= 4) {
             // Reject spurious activations: ATQA/SAK all 0xFF or UID all 0x00 or 0xFF (transceiver noise)
             if ((response[0] == 0xFF && response[1] == 0xFF) ||
@@ -277,13 +274,9 @@ bool HardwareNFCConnection::detectTag(uint8_t* uid, uint8_t* uidLength) {
                     }
                 }
 
-                unsigned long t3 = millis();
                 // Don't halt — keep tag active for subsequent page reads.
                 // readISO14443Pages will skip re-activation when tagSessionActive_ is set.
                 tagSessionActive_ = true;
-                unsigned long t4 = millis();
-                Serial.printf("TIMING detectTag: setupRF=%lums activate=%lums getVer=%lums total=%lums\n",
-                              t1-t0, t2-t1, t3-t2, t4-t0);
                 return true;
             }
         }
@@ -313,21 +306,15 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
     uint16_t totalBytes = pageCount * 4;
     if (totalBytes > bufferSize) return 0;
 
-    unsigned long rT0 = millis();
-    unsigned long rT1 = rT0, rT2 = rT0;
-
     if (tagSessionActive_) {
         // Tag already active from detectTag — skip redundant setupRF + activateTypeA
     } else {
         // Tag was halted or this is a standalone read — must re-activate
         iso14443a_->setupRF();
-        rT1 = millis();
         uint8_t response[10] = {0};
         uint8_t uidLen = iso14443a_->activateTypeA(response, 1);
-        rT2 = millis();
         if (uidLen < 4) {
-            Serial.printf("HardwareNFC: readISO14443Pages - tag reactivation failed (setupRF=%lums activate=%lums)\n",
-                          rT1-rT0, rT2-rT1);
+            Serial.println("HardwareNFC: readISO14443Pages - tag reactivation failed");
             return 0;
         }
     }
@@ -354,13 +341,10 @@ uint16_t HardwareNFCConnection::readISO14443Pages(uint8_t startPage, uint8_t pag
         bytesRead += copyBytes;
     }
 
-    unsigned long rT3 = millis();
     if (!keepSession) {
         iso14443a_->mifareHalt();
         tagSessionActive_ = false;
     }
-    Serial.printf("TIMING readPages: setupRF=%lums activate=%lums read=%lums total=%lums (%d bytes)\n",
-                  rT1-rT0, rT2-rT1, rT3-rT2, rT3-rT0, bytesRead);
     return bytesRead;
 }
 
