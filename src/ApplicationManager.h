@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include "IPrinterStrategy.h"  // for MAX_TOOLS constant
+#include "TrayDashboardTypes.h"
 
 #ifdef NATIVE_TEST
   #include "platform/NativePlatform.h"
@@ -30,6 +31,7 @@ enum class AppMessageType {
     KEYPAD_DIGIT,
     KEYPAD_CONFIRM,
     KEYPAD_CANCEL,
+    TRAY_UPDATE,
 };
 
 enum class AutomationMode : uint8_t {
@@ -180,6 +182,8 @@ public:
     AutomationMode getAutomationMode() const { return automationMode; }
     void setAutomationMode(AutomationMode mode) { automationMode = mode; }
     SmartTagEnrichment getSmartTagEnrichment() const { return smartTagEnrichment_; }
+    void updateTrayDashboard(const TrayDashboardState& state);
+    const TrayDashboardState& getTrayDashboardState() const;
 #ifdef NATIVE_TEST
     void resetForTest() {
         if (messageQueue) { vQueueDelete(messageQueue); messageQueue = nullptr; }
@@ -247,6 +251,11 @@ private:
     // Enrichment data from Spoolman UID lookup for the current smart tag
     SmartTagEnrichment smartTagEnrichment_;
 
+    // Bambu AMS tray dashboard state
+    TrayDashboardState trayDashboardState_ = {};
+    uint32_t dashboardRevertAt_ = 0;
+    static constexpr uint32_t DASHBOARD_REVERT_DELAY_MS = 5000;
+
     // Handlers
     void handlePrintStarted(const AppMessage& msg);
     void handlePrintEnded(const AppMessage& msg);
@@ -262,6 +271,7 @@ private:
     void handleKeypadDigit(const AppMessage& msg);
     void handleKeypadConfirm();
     void handleKeypadCancel();
+    void handleTrayUpdate();
     bool sendAssignSpool(const char* toolNumber);
     void finishPrint(float gramsUsed, bool canceled);
     void enqueueSpoolmanSync(const SpoolDetectedPayload& spool);
