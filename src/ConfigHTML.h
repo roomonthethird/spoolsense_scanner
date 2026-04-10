@@ -220,15 +220,14 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                 </select>
               </div>
             </div>
-            <h3>Bambu</h3>
-            <div class="field-group">
-              <span class="toggle-label">AMS Tray Dashboard (TFT only)</span>
-              <label class="toggle-switch">
-                <input type="checkbox" id="bambu_dashboard" />
-                <span class="toggle-track"></span>
-              </label>
-            </div>
             <div style="display:grid;gap:10px">
+              <div class="toggle-row">
+                <span class="toggle-label">Bambu AMS Dashboard (TFT)</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="bambu_dashboard" />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
               <div class="toggle-row">
                 <span class="toggle-label">NFC Reader</span>
                 <select id="nfc_reader" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">

@@ -96,7 +96,7 @@ void initWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(config.getWiFiSSID());
 
-  if (config.isTftEnabled() && tftManagerPtr) {
+  if (config.isTftEnabled() && tftManagerPtr && !config.isBambuDashboardEnabled()) {
     tftManagerPtr->showWifiConnecting();
   } else if (config.isLcdEnabled()) {
     lcdManager.updateScreen("Connecting WiFi", "");
@@ -117,7 +117,7 @@ void initWiFi() {
     Serial.print("WiFi connected! IP: ");
     Serial.println(WiFi.localIP());
 
-    if (config.isTftEnabled() && tftManagerPtr) {
+    if (config.isTftEnabled() && tftManagerPtr && !config.isBambuDashboardEnabled()) {
       tftManagerPtr->showWifiConnected(WiFi.localIP().toString().c_str());
     } else if (config.isLcdEnabled()) {
       lcdManager.updateScreen("WiFi OK", WiFi.localIP().toString().c_str());
@@ -367,7 +367,7 @@ void setup() {
   }
 
   if (config.isTftEnabled()) {
-    if (tftManagerPtr) tftManagerPtr->showReady();
+    if (tftManagerPtr && !config.isBambuDashboardEnabled()) tftManagerPtr->showReady();
   } else if (config.isLcdEnabled()) {
     ApplicationManager::getInstance().showStatusScreen();
   }
