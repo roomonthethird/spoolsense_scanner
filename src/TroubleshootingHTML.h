@@ -126,6 +126,10 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <button class="run-btn" id="runBtn" onclick="runChecks()">Run Checks</button>
+
+    <p style="margin-top:20px;font-size:13px;color:var(--muted)">
+      Need more detail? <a href="/logs" style="color:var(--blue);font-weight:600">View Serial Log</a> for live scanner output.
+    </p>
   </div>
 
   <script>

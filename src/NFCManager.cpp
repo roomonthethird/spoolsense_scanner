@@ -6,6 +6,7 @@
   #include "ApplicationManager.h"
   #include "HardwareNFCConnection.h"
   #include "SpoolmanManager.h"
+  #include "LogBuffer.h"
   #include <Arduino.h>
 #else
   #include "platform/NativePlatform.h"
@@ -367,6 +368,8 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
             lastOpenTag3DValid_ = false;
             Serial.printf("NFCManager: TigerTag detected — %s %s %s\n",
                           tigerData.brand_name, tigerData.material_name, tigerData.aspect1_name);
+            LogBuffer::getInstance().logPrintf("TigerTag: %s %s %s\n",
+                          tigerData.brand_name, tigerData.material_name, tigerData.aspect1_name);
         } else if (isOpenTag3D) {
             currentSpool.kind = TagKind::OpenTag3D;
             currentSpool.tag_data_valid = false;
@@ -377,6 +380,9 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
             Serial.printf("NFCManager: OpenTag3D detected — %s %s %.2fmm %ug\n",
                           ot3dData.manufacturer, ot3dData.base_material,
                           opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
+            LogBuffer::getInstance().logPrintf("OpenTag3D: %s %s %.2fmm %ug\n",
+                          ot3dData.manufacturer, ot3dData.base_material,
+                          opentag3d_diameter_mm(&ot3dData), ot3dData.target_weight_g);
         } else if (isOpenSpool) {
             currentSpool.kind = TagKind::OpenSpoolTag;
             currentSpool.tag_data_valid = false;
@@ -385,6 +391,8 @@ void NFCManager::readAndProcessISO14443Tag(const uint8_t* uid, uint8_t uidLength
             lastTigerTagValid_ = false;
             lastOpenTag3DValid_ = false;
             Serial.printf("NFCManager: OpenSpool detected — %s %s #%s\n",
+                          openSpoolData.brand, openSpoolData.material, openSpoolData.color_hex);
+            LogBuffer::getInstance().logPrintf("OpenSpool: %s %s #%s\n",
                           openSpoolData.brand, openSpoolData.material, openSpoolData.color_hex);
         } else {
             currentSpool.kind = TagKind::GenericUidTag;
@@ -490,6 +498,7 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
             xSemaphoreGive(tagMutex);
         }
         Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
+        LogBuffer::getInstance().logPrintf("Bambu Lab tag: %s (encrypted)\n", scan.uid_hex);
         sendGenericTagMessage();
         return;
     }
@@ -545,6 +554,7 @@ void NFCManager::handleTagAbsent() {
 
     if (lastSeenValid) {  // only send removal if we had a tag
         Serial.println("NFCManager: Tag removed");
+        LogBuffer::getInstance().logPrintf("Tag removed: %s\n", currentSpool.spool_id);
         sendTagRemovedMessage();
     }
     currentSpool.present = false;
@@ -585,9 +595,10 @@ void NFCManager::scanLoop() {
 
         if (connection_->detectTag(uid, &uidLength)) {
             if (!lastSeenValid || memcmp(uid, lastSeenUid, uidLength) != 0) {
-                Serial.printf("NFCManager: Tag detected! UID=");
-                for (uint8_t i = 0; i < uidLength; i++) Serial.printf("%02X", uid[i]);
-                Serial.println("");
+                char uidHex[17]; uidHex[0] = '\0';
+                for (uint8_t i = 0; i < uidLength; i++) snprintf(uidHex + i*2, 3, "%02X", uid[i]);
+                Serial.printf("NFCManager: Tag detected! UID=%s\n", uidHex);
+                LogBuffer::getInstance().logPrintf("Tag detected: UID=%s\n", uidHex);
             }
             connection_->setCurrentUid(uid, uidLength);
 
@@ -932,6 +943,10 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
         Serial.printf("  spoolman_id:  %d  suppress_sync=%d\n",
                       s.spoolman_id, s.suppress_spoolman_sync);
         Serial.println("-----------------------------");
+        LogBuffer::getInstance().logPrintf("OpenPrintTag: %s %s #%02X%02X%02X %.0fg\n",
+            s.manufacturer, s.material_name,
+            s.primary_color[0], s.primary_color[1], s.primary_color[2],
+            s.kg_remaining * 1000.0f);
     }
 
     ApplicationManager::getInstance().sendMessage(msg);
@@ -1033,6 +1048,8 @@ void NFCManager::sendTigerTagMessage(const TigerTagData& tt) {
     Serial.printf("  bed:          %d-%d°C\n", tt.bed_temp_min, tt.bed_temp_max);
     Serial.printf("  dry:          %d°C / %dh\n", tt.dry_temp, tt.dry_time_hours);
     Serial.println("--------------------------------------");
+    LogBuffer::getInstance().logPrintf("  %s %s #%02X%02X%02X %dg\n",
+        s.manufacturer, s.material_name, tt.color_r, tt.color_g, tt.color_b, tt.weight_g);
 
     ApplicationManager::getInstance().sendMessage(msg);
 }
@@ -1138,6 +1155,9 @@ void NFCManager::sendOpenTag3DMessage(const opentag3d_t& ot3d) {
         Serial.printf("  dry:          %d°C / %dh\n", s.dry_temp, s.dry_time_hours);
     }
     Serial.println("---------------------------------------");
+    LogBuffer::getInstance().logPrintf("  %s %s #%02X%02X%02X %.0fg\n",
+        s.manufacturer, s.material_name,
+        ot3d.color_rgba[0][0], ot3d.color_rgba[0][1], ot3d.color_rgba[0][2], s.initial_weight_g);
 
     ApplicationManager::getInstance().sendMessage(msg);
 }
@@ -1188,6 +1208,7 @@ void NFCManager::sendOpenSpoolMessage(const char* uid, const OpenSpoolData& os) 
     Serial.printf("  nozzle:       %d-%d°C\n", s.min_print_temp, s.max_print_temp);
     Serial.printf("  version:      %s\n", os.version);
     Serial.println("---------------------------------------");
+    LogBuffer::getInstance().logPrintf("  %s %s #%s\n", s.manufacturer, s.material_name, os.color_hex);
 
     ApplicationManager::getInstance().sendMessage(msg);
 }
@@ -1225,6 +1246,8 @@ TagScanResult NFCManager::classifyTag(const uint8_t* uid, uint8_t uid_length) {
             if (connection_->ntagGetVersion(version)) {
                 result.variant = mapStorageByte(version[6]);
                 Serial.printf("NFCManager: %s detected (%d pages)\n",
+                    ntagVariantName(result.variant), ntagUsablePages(result.variant));
+                LogBuffer::getInstance().logPrintf("%s (%d pages)\n",
                     ntagVariantName(result.variant), ntagUsablePages(result.variant));
             }
         }
@@ -1675,9 +1698,11 @@ bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
     bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
     if (ok) {
         Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
+        LogBuffer::getInstance().logPrintf("Write TigerTag: OK\n");
         forceRescan();
     } else {
         Serial.println("NFCManager: WRITE_TIGERTAG failed");
+        LogBuffer::getInstance().logPrintf("Write TigerTag: FAILED\n");
     }
     return ok;
 }
@@ -1715,9 +1740,11 @@ bool NFCManager::executeOpenTag3DWrite(const NFCWriteRequest& request) {
     bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
     if (ok) {
         Serial.printf("NFCManager: WRITE_OPENTAG3D succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        LogBuffer::getInstance().logPrintf("Write OpenTag3D: OK (%u bytes)\n", ndefLen);
         forceRescan();
     } else {
         Serial.println("NFCManager: WRITE_OPENTAG3D failed");
+        LogBuffer::getInstance().logPrintf("Write OpenTag3D: FAILED\n");
     }
     return ok;
 }
@@ -1747,9 +1774,11 @@ bool NFCManager::executeOpenSpoolWrite(const NFCWriteRequest& request) {
     bool ok = connection_->writeISO14443Pages(4, pagesNeeded, ndefBuf, ndefLen);
     if (ok) {
         Serial.printf("NFCManager: WRITE_OPENSPOOL succeeded (%u bytes, %u pages)\n", ndefLen, pagesNeeded);
+        LogBuffer::getInstance().logPrintf("Write OpenSpool: OK (%u bytes)\n", ndefLen);
         forceRescan();
     } else {
         Serial.println("NFCManager: WRITE_OPENSPOOL failed");
+        LogBuffer::getInstance().logPrintf("Write OpenSpool: FAILED\n");
     }
     return ok;
 }
