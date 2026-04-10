@@ -937,6 +937,32 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // tray_assign: loading blueprint assigns a scanned UID to a specific AMS tray
+    if (strcmp(command, "tray_assign") == 0) {
+        StaticJsonDocument<128> assignDoc;
+        if (deserializeJson(assignDoc, payload)) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+
+        uint8_t trayIndex = assignDoc["tray_index"] | 0;
+        const char* uid = assignDoc["uid"] | "";
+        int32_t spoolmanId = assignDoc["spoolman_id"] | -1;
+
+        ApplicationManager& app = ApplicationManager::getInstance();
+        app.pendingAssignTrayIndex_ = trayIndex;
+        strncpy(app.pendingAssignUid_, uid, sizeof(app.pendingAssignUid_) - 1);
+        app.pendingAssignUid_[sizeof(app.pendingAssignUid_) - 1] = '\0';
+        app.pendingAssignSpoolmanId_ = spoolmanId;
+
+        AppMessage msg = {};
+        msg.type = AppMessageType::TRAY_ASSIGN;
+        app.sendMessage(msg);
+
+        publishCommandResponse(command, true, nullptr);
+        return;
+    }
+
     // Parse command payload (JSON with optional uid, filament_type, color, etc.)
     ParsedHACommandPayload cmdPayload;
     if (!parseHACommandPayload(payload, cmdPayload)) {

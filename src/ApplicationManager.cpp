@@ -299,6 +299,10 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
         case AppMessageType::TRAY_UPDATE:
             handleTrayUpdate();
             break;
+
+        case AppMessageType::TRAY_ASSIGN:
+            handleTrayAssign();
+            break;
     }
 }
 
@@ -1299,6 +1303,42 @@ void ApplicationManager::handleTrayUpdate() {
     if (dashEnabled && display_) {
         display_->showTrayDashboard(trayDashboardState_);
     }
+}
+
+void ApplicationManager::handleTrayAssign() {
+    uint8_t idx = pendingAssignTrayIndex_;
+    if (idx >= MAX_TRAYS) {
+        Serial.printf("ApplicationManager: tray_assign rejected — index %d out of range\n", idx);
+        return;
+    }
+
+    for (uint8_t i = 0; i < trayDashboardState_.tray_count; i++) {
+        if (trayDashboardState_.trays[i].tray_index == idx) {
+            strncpy(trayDashboardState_.trays[i].uid, pendingAssignUid_, sizeof(trayDashboardState_.trays[i].uid) - 1);
+            trayDashboardState_.trays[i].uid[sizeof(trayDashboardState_.trays[i].uid) - 1] = '\0';
+            trayDashboardState_.trays[i].spoolman_id = pendingAssignSpoolmanId_;
+
+            Serial.printf("ApplicationManager: Tray %d assigned UID=%s spoolman_id=%d\n",
+                          idx, pendingAssignUid_, pendingAssignSpoolmanId_);
+
+#ifndef NATIVE_TEST
+            Preferences prefs;
+            prefs.begin("spoolsense", false);
+            prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+            prefs.end();
+
+            if (strlen(pendingAssignUid_) > 0 && SpoolmanManager::getInstance().isConfigured()) {
+                SpoolmanSyncRequest req = {};
+                strncpy(req.spool_id, pendingAssignUid_, sizeof(req.spool_id) - 1);
+                req.lookup_only = true;
+                SpoolmanManager::getInstance().enqueueSync(req);
+            }
+#endif
+            return;
+        }
+    }
+
+    Serial.printf("ApplicationManager: tray_assign — index %d not in current dashboard, caching\n", idx);
 }
 
 bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
