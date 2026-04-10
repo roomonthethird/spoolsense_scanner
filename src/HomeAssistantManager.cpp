@@ -353,7 +353,7 @@ void HomeAssistantManager::taskLoop() {
     // One-time MQTT client config (buffer size, callback for incoming commands)
     mqttClient.setClient(wifiClient);
     mqttClient.setServer(config.getHAMqttHost(), config.getHAMqttPort());
-    mqttClient.setBufferSize(1024);
+    mqttClient.setBufferSize(2048);
     mqttClient.setCallback(mqttCallback);
 
     Serial.printf("HomeAssistantManager: Connecting to MQTT broker %s:%d\n",
@@ -780,7 +780,7 @@ void HomeAssistantManager::publishCurrentTagState() {
 // Static context — routes to instance's handleCommand for processing
 void HomeAssistantManager::mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
     // Null-terminate payload buffer (MQTT payload is not null-terminated)
-    char buf[384];
+    char buf[1536];
     size_t copyLen = (length < sizeof(buf) - 1) ? length : sizeof(buf) - 1;
     memcpy(buf, payload, copyLen);
     buf[copyLen] = '\0';
@@ -887,7 +887,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
 
     // tray_update: HA sends full AMS tray state for dashboard display
     if (strcmp(command, "tray_update") == 0) {
-        StaticJsonDocument<768> trayDoc;
+        StaticJsonDocument<2048> trayDoc;
         if (deserializeJson(trayDoc, payload)) {
             publishCommandResponse(command, false, "invalid_json");
             return;

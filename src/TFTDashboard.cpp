@@ -30,7 +30,7 @@ void TFTDashboard::renderCell(LGFX_Sprite* sprite, int x, int y, int w, int h,
     sprite->setTextColor(textColor);
     sprite->setTextDatum(MC_DATUM);
 
-    char label[4];
+    char label[6];
     snprintf(label, sizeof(label), "T%d", tray.tray_index + 1);
 
     char weight[8];

@@ -160,8 +160,8 @@ void ApplicationManager::processMessages() {
 
     // Bambu dashboard revert: after scan interruption, return to dashboard
     if (dashboardRevertAt_ != 0) {
-        uint32_t now = millis();
-        if (now >= dashboardRevertAt_) {
+        uint32_t elapsedMs = static_cast<uint32_t>(millis() - dashboardRevertAt_);
+        if (elapsedMs >= DASHBOARD_REVERT_DELAY_MS) {
             dashboardRevertAt_ = 0;
 #ifndef NATIVE_TEST
             bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
@@ -452,7 +452,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
 
 #ifndef NATIVE_TEST
         if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
-            dashboardRevertAt_ = millis() + DASHBOARD_REVERT_DELAY_MS;
+            dashboardRevertAt_ = millis();
         }
 #endif
     } else if (display_) {
@@ -694,7 +694,7 @@ void ApplicationManager::handleBlankTagDetected(const AppMessage& msg) {
 
 #ifndef NATIVE_TEST
         if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
-            dashboardRevertAt_ = millis() + DASHBOARD_REVERT_DELAY_MS;
+            dashboardRevertAt_ = millis();
         }
 #endif
     }
@@ -740,7 +740,7 @@ void ApplicationManager::handleGenericTagDetected(const AppMessage& msg) {
 
 #ifndef NATIVE_TEST
         if (ConfigurationManager::getInstance().isBambuDashboardEnabled() && trayDashboardState_.has_data) {
-            dashboardRevertAt_ = millis() + DASHBOARD_REVERT_DELAY_MS;
+            dashboardRevertAt_ = millis();
         }
 #endif
     }
@@ -1280,11 +1280,13 @@ const TrayDashboardState& ApplicationManager::getTrayDashboardState() const {
 }
 
 void ApplicationManager::handleTrayUpdate() {
+#ifndef NATIVE_TEST
     // Persist to NVS
     Preferences prefs;
     prefs.begin("spoolsense", false);
     prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
     prefs.end();
+#endif
 
     Serial.printf("ApplicationManager: Tray dashboard updated, %d trays\n",
                   trayDashboardState_.tray_count);
