@@ -858,7 +858,7 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
 #ifndef NATIVE_TEST
     // Re-evaluate LED state using Spoolman weight — catches tags without weight data
     // (OpenSpool, GenericUID, TigerTag) where Spoolman knows the remaining weight
-    if (msg.payload.spoolmanSynced.success && kgRemaining > 0.0f &&
+    if (msg.payload.spoolmanSynced.success &&
         ConfigurationManager::getInstance().isLedEnabled() &&
         msg.payload.spoolmanSynced.color_hex[0] != '\0') {
         const char* colorSrc = msg.payload.spoolmanSynced.color_hex;
