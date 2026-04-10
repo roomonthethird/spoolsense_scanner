@@ -34,6 +34,13 @@ blueprint:
           min: 30
           max: 600
           unit_of_measurement: seconds
+    scanner_device_id:
+      name: SpoolSense Scanner Device ID
+      description: >
+        The scanner's device ID (e.g., 4d9620). Found on the scanner's landing page.
+        Used to send tray assignment to the correct scanner.
+      selector:
+        text: {}
 
 mode: restart
 max_exceeded: silent
@@ -87,6 +94,8 @@ actions:
       spool_color_rgba: "{{ spool_color_raw.replace('#', '') ~ 'FF' }}"
       spool_nozzle_min: "{{ trigger.to_state.attributes.min_print_temp | default(0) | int }}"
       spool_nozzle_max: "{{ trigger.to_state.attributes.max_print_temp | default(0) | int }}"
+      scanner_id: !input scanner_device_id
+      tray_entities: !input ams_tray_entities
 
   - wait_for_trigger:
       - trigger: state
@@ -113,14 +122,10 @@ actions:
       nozzle_temp_min: "{{ spool_nozzle_min }}"
       nozzle_temp_max: "{{ spool_nozzle_max }}"
 
-  - action: input_text.set_value
-    target:
-      entity_id: "input_text.spoolsense_{{ loaded_tray | replace('sensor.', '') }}_uid"
+  - action: mqtt.publish
     data:
-      value: "{{ trigger.to_state.attributes.uid }}"
-
-  - action: input_text.set_value
-    target:
-      entity_id: "input_text.spoolsense_{{ loaded_tray | replace('sensor.', '') }}_spoolman_id"
-    data:
-      value: "{{ trigger.to_state.attributes.spoolman_id | default(-1) }}"
+      topic: "spoolsense/{{ scanner_id }}/cmd/tray_assign"
+      payload: >
+        {"tray_index": {{ tray_entities.index(loaded_tray) }},
+         "uid": "{{ trigger.to_state.attributes.uid | default('') }}",
+         "spoolman_id": {{ trigger.to_state.attributes.spoolman_id | default(-1) }}}
