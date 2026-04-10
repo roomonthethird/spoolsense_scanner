@@ -5,54 +5,13 @@
 
 const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serial Log</title>
+    <title>Serial Log &mdash; SpoolSense</title>
+    <link rel="stylesheet" href="/css/shared.css" />
     <style>
-        :root {
-            --bg: #0b0b0d;
-            --panel: #141519;
-            --panel-2: #1a1c21;
-            --border: #2a2e36;
-            --text: #f4f4f5;
-            --muted: #a1a1aa;
-            --blue: #3b82f6;
-            --radius: 16px;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        .wrap {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px 16px;
-        }
-        nav {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px 14px;
-            margin-bottom: 24px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        nav a {
-            color: var(--muted);
-            text-decoration: none;
-        }
-        nav a:hover, nav a.active {
-            color: var(--text);
-        }
-        .nav-brand {
-            color: var(--blue);
-            font-weight: 800;
-            margin-right: 8px;
-        }
-        h2 { font-size: 1.3em; margin-bottom: 6px; }
         .subtitle {
             color: var(--muted);
             font-size: 14px;
@@ -67,17 +26,16 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
             color: var(--muted);
         }
         .controls label { cursor: pointer; }
-        .btn {
-            background: var(--blue);
-            color: #fff;
-            border: none;
-            padding: 6px 16px;
+        .log-btn {
+            font-size: 11px;
+            padding: 4px 10px;
+            background: rgba(99,102,241,.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99,102,241,.4);
+            border-radius: 6px;
             cursor: pointer;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
         }
-        .btn:hover { opacity: 0.88; }
+        .log-btn:hover { background: rgba(99,102,241,.35); }
         pre {
             background: var(--panel);
             padding: 14px;
@@ -111,13 +69,13 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
             <a href="/config">Config</a>
         </nav>
 
-        <h2>Serial Log</h2>
+        <h2 style="margin-bottom:6px">Serial Log</h2>
         <p class="subtitle">Live scanner output for debugging. Auto-refreshes every 2 seconds.</p>
 
         <div class="controls">
             <label><input type="checkbox" id="autoscroll" checked> Auto-scroll</label>
-            <button class="btn" onclick="copyLogs()">Copy</button>
-            <button class="btn" onclick="clearLogs()">Clear</button>
+            <button class="log-btn" onclick="copyLogs()">Copy</button>
+            <button class="log-btn" onclick="clearLogs()">Clear</button>
         </div>
         <pre id="logOutput">(empty)</pre>
     </div>
@@ -137,9 +95,9 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
             var text = logEl.textContent;
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(text).then(function() {
-                    var btn = document.querySelector('.btn');
-                    btn.textContent = 'Copied!';
-                    setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+                    var btns = document.querySelectorAll('.log-btn');
+                    btns[0].textContent = 'Copied!';
+                    setTimeout(function() { btns[0].textContent = 'Copy'; }, 1500);
                 });
             } else {
                 var ta = document.createElement('textarea');
