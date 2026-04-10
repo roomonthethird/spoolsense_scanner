@@ -11,6 +11,7 @@
 #include "LEDManager.h"
 #include "LogBuffer.h"
 #include "SpoolmanManager.h"
+#include "TrayDashboardTypes.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
@@ -879,6 +880,57 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
                 DeductionManager::getInstance().clearPending(uidFromTopic);
             }
         }
+
+        publishCommandResponse(command, true, nullptr);
+        return;
+    }
+
+    // tray_update: HA sends full AMS tray state for dashboard display
+    if (strcmp(command, "tray_update") == 0) {
+        StaticJsonDocument<768> trayDoc;
+        if (deserializeJson(trayDoc, payload)) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+
+        JsonArray arr = trayDoc.as<JsonArray>();
+        if (arr.isNull()) {
+            publishCommandResponse(command, false, "expected_array");
+            return;
+        }
+
+        TrayDashboardState state = {};
+        state.has_data = true;
+        uint8_t count = 0;
+
+        for (JsonObject obj : arr) {
+            if (count >= MAX_TRAYS) break;
+
+            TrayData& tray = state.trays[count];
+            tray.tray_index = obj["tray_index"] | 0;
+            tray.ams_id = obj["ams_id"] | 0;
+            tray.weight_g = obj["weight_g"] | 0;
+            tray.populated = true;
+
+            const char* mat = obj["material"] | "";
+            strncpy(tray.material, mat, sizeof(tray.material) - 1);
+
+            const char* colorHex = obj["color"] | "333333";
+            if (strlen(colorHex) == 6) {
+                uint32_t c = strtoul(colorHex, nullptr, 16);
+                tray.color[0] = (c >> 16) & 0xFF;
+                tray.color[1] = (c >> 8) & 0xFF;
+                tray.color[2] = c & 0xFF;
+            }
+
+            count++;
+        }
+        state.tray_count = count;
+
+        ApplicationManager::getInstance().updateTrayDashboard(state);
+        AppMessage msg = {};
+        msg.type = AppMessageType::TRAY_UPDATE;
+        ApplicationManager::getInstance().sendMessage(msg);
 
         publishCommandResponse(command, true, nullptr);
         return;
