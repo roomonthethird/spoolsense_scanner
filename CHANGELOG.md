@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.16] - 2026-04-09
+
+### Fixed
+
+- **Tag write failures on PN5180** — write path now uses the active tag session from detectTag instead of resetting the RF field and failing to reactivate. Fixes "tag reactivation failed" errors when writing via web UI.
+- **Spool duplication via web UI** — register-uid endpoint now checks for existing filaments and spools before creating. Previously every tag write created duplicates in Spoolman. (#134, #135, #130)
+- **PN5180 sendData reliability** — poll for WaitTransmit state with 10ms timeout instead of single check. Eliminates transceiver state errors on fast tag transitions. (#111)
+
+### Changed
+
+- **Tag session kept alive between reads** — first page read preserves the active session for follow-up NDEF reads. Extended read time reduced from 1080ms to 420ms. Quick-tap OpenTag3D now reliable. (#126)
+- **Writer page UX** — status messages now remind users to keep the tag on the scanner during write and verification.
+
+---
+
 ## [1.6.15] - 2026-04-09
 
 ### Added
