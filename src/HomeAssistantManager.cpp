@@ -914,6 +914,7 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
 
             const char* mat = obj["material"] | "";
             strncpy(tray.material, mat, sizeof(tray.material) - 1);
+            tray.material[sizeof(tray.material) - 1] = '\0';
 
             const char* colorHex = obj["color"] | "333333";
             if (strlen(colorHex) == 6) {
