@@ -1244,6 +1244,63 @@ bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails
     return ok;
 }
 
+float SpoolmanManager::deductFromSpoolman(const char* uid, float grams) {
+    if (!isConfigured()) return 0.0f;
+    if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
+        Serial.println("SpoolmanManager: deductFromSpoolman — mutex timeout");
+        return 0.0f;
+    }
+
+    int spoolId = findSpoolByUuidGlobal(uid);
+    if (spoolId < 0) {
+        Serial.printf("SpoolmanManager: deductFromSpoolman — spool not found for %s\n", uid);
+        xSemaphoreGive(httpMutex_);
+        return 0.0f;
+    }
+
+    // Get current remaining weight
+    char path[64];
+    snprintf(path, sizeof(path), "/api/v1/spool/%d", spoolId);
+    String response;
+    int code = httpGet(path, response);
+    if (code != 200) {
+        Serial.printf("SpoolmanManager: deductFromSpoolman — GET spool %d failed (HTTP %d)\n", spoolId, code);
+        xSemaphoreGive(httpMutex_);
+        return 0.0f;
+    }
+
+    StaticJsonDocument<JSON_SMALL_CAPACITY> doc;
+    if (deserializeJson(doc, response)) {
+        xSemaphoreGive(httpMutex_);
+        return 0.0f;
+    }
+
+    float currentRemaining = doc["remaining_weight"] | 0.0f;
+    float deduction = (grams > currentRemaining) ? currentRemaining : grams;
+    float newRemaining = currentRemaining - deduction;
+    if (newRemaining < 0.0f) newRemaining = 0.0f;
+
+    // PATCH with new remaining weight
+    StaticJsonDocument<JSON_SMALL_CAPACITY> patchDoc;
+    patchDoc["remaining_weight"] = newRemaining;
+    String body;
+    serializeJson(patchDoc, body);
+
+    code = httpPatch(path, body.c_str(), response);
+    xSemaphoreGive(httpMutex_);
+
+    if (code == 200) {
+        Serial.printf("SpoolmanManager: Deducted %.1fg from spool %d (%.1fg -> %.1fg)\n",
+                      deduction, spoolId, currentRemaining, newRemaining);
+        LogBuffer::getInstance().logPrintf("Spoolman: Deducted %.1fg from spool %d\n", deduction, spoolId);
+        return deduction;
+    }
+
+    Serial.printf("SpoolmanManager: deductFromSpoolman — PATCH failed (HTTP %d)\n", code);
+    LogBuffer::getInstance().logPrintf("ERROR: Spoolman deduction failed, HTTP %d\n", code);
+    return 0.0f;
+}
+
 bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpoolmanId) {
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
         Serial.println("SpoolmanManager: Could not acquire HTTP mutex");

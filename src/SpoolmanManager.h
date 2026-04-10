@@ -54,6 +54,10 @@ public:
     bool getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetails);
     void invalidateCachedSpoolmanId(const char* spoolId);
 
+    // Deduct weight directly in Spoolman for non-writable tags.
+    // Returns grams deducted, or 0 on failure (caller should retry later).
+    float deductFromSpoolman(const char* uid, float grams);
+
 private:
     struct SpoolIdCacheEntry {
         char spool_id[17];
