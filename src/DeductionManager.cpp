@@ -8,6 +8,8 @@
   #include <Preferences.h>
   #include <Arduino.h>
   #include "NFCManager.h"
+  #include "SpoolmanManager.h"
+  #include "LogBuffer.h"
   #include "opentag3d_lib.h"
 #endif
 
@@ -163,9 +165,18 @@ float DeductionManager::applyIfPending(const char* uid, TagKind kind) {
             deducted = applyOpenTag3D(uid, pending);
             break;
         default:
-            // Tag can't accept weight writes — clear stale deduction so it doesn't accumulate forever
-            Serial.printf("DeductionManager: Tag type %d does not support weight writes — clearing\n", (int)kind);
-            clearPending(uid);
+            // Tag can't accept weight writes — try Spoolman direct if configured
+            if (SpoolmanManager::getInstance().isConfigured()) {
+                float spDeducted = SpoolmanManager::getInstance().deductFromSpoolman(uid, pending);
+                if (spDeducted > 0.0f) {
+                    clearPending(uid);
+                    deducted = spDeducted;
+                }
+                // If deductFromSpoolman returned 0, keep in NVS for retry on next scan
+            } else {
+                Serial.printf("DeductionManager: Tag type %d has no weight writes and Spoolman not configured — clearing\n", (int)kind);
+                clearPending(uid);
+            }
             break;
     }
 

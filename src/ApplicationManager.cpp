@@ -537,8 +537,11 @@ void ApplicationManager::handleSpoolUpdated(const AppMessage& msg) {
     if (display_) {
         if (msg.payload.spoolUpdated.success) {
             char line1[17];
-            snprintf(line1, sizeof(line1), "Updated: %.0fg",
-                     kgRemaining * 1000.0f);
+            if (kgRemaining > 0.0f) {
+                snprintf(line1, sizeof(line1), "Updated: %.0fg", kgRemaining * 1000.0f);
+            } else {
+                strncpy(line1, "Tag Updated!", sizeof(line1) - 1);
+            }
             if (spoolmanConfigured) {
                 // Show "syncing" — SPOOLMAN_SYNCED event will show final display + schedule Type/Remain
                 display_->showText(line1, "Syncing Spoolman");

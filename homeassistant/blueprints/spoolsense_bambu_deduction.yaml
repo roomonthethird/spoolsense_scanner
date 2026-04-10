@@ -1,9 +1,10 @@
 blueprint:
-  name: "SpoolSense → Spoolman Deduction"
+  name: "SpoolSense → Bambu Deduction"
   description: >
-    Automatically deduct filament weight from Spoolman after a Bambu Lab print
-    completes or is canceled. Requires the SpoolSense → Bambu AMS blueprint
-    (which stores spool UIDs per tray) and the spoolman-homeassistant integration.
+    Automatically deduct filament weight after a Bambu Lab print completes or is
+    canceled. Sends deductions to the SpoolSense scanner via MQTT, which updates
+    Spoolman and writes to NFC tags. No spoolman-homeassistant integration needed.
+    Requires the SpoolSense → Bambu AMS blueprint (which stores spool UIDs per tray).
   domain: automation
   input:
     bambu_device:
@@ -31,6 +32,13 @@ blueprint:
           multiple: true
           filter:
             - domain: sensor
+    scanner_device_id:
+      name: SpoolSense Scanner Device ID
+      description: >
+        The scanner's device ID (e.g., 4d9620). Found on the scanner's landing page
+        or in the MQTT topic prefix.
+      selector:
+        text: {}
 
 mode: single
 max_exceeded: silent
@@ -52,7 +60,7 @@ actions:
   - variables:
       weight_sensor: !input print_weight_sensor
       tray_entities: !input ams_tray_entities
-      # Per-tray weights are attributes on the print_weight sensor (e.g., "AMS 1 Tray 1": 12.5)
+      scanner_id: !input scanner_device_id
 
   - repeat:
       for_each: "{{ tray_entities }}"
@@ -69,9 +77,7 @@ actions:
               {% endif %}
             tray_weight_used: "{{ state_attr(weight_sensor, tray_name_key | trim) | float(0) }}"
             helper_uid: "input_text.spoolsense_{{ tray_entity | replace('sensor.', '') }}_uid"
-            helper_spoolman_id: "input_text.spoolsense_{{ tray_entity | replace('sensor.', '') }}_spoolman_id"
             stored_uid: "{{ states(helper_uid) | default('') }}"
-            stored_spoolman_id: "{{ states(helper_spoolman_id) | default('-1') }}"
 
         - condition: template
           value_template: "{{ tray_weight_used | float(0) > 0 }}"
@@ -79,24 +85,7 @@ actions:
         - condition: template
           value_template: "{{ stored_uid != '' and stored_uid != 'unknown' }}"
 
-        - variables:
-            spoolman_id: >
-              {% if stored_spoolman_id | int(-1) > 0 %}
-                {{ stored_spoolman_id }}
-              {% else %}
-                {% set ns = namespace(found='') %}
-                {% for entity in integration_entities('spoolman') %}
-                  {% if state_attr(entity, 'extra_nfc_id') == stored_uid and ns.found == '' %}
-                    {% set ns.found = state_attr(entity, 'id') | string %}
-                  {% endif %}
-                {% endfor %}
-                {{ ns.found }}
-              {% endif %}
-
-        - condition: template
-          value_template: "{{ spoolman_id | trim | int(-1) > 0 }}"
-
-        - action: spoolman.use_spool_filament
+        - action: mqtt.publish
           data:
-            id: "{{ spoolman_id | trim }}"
-            use_weight: "{{ tray_weight_used | float }}"
+            topic: "spoolsense/{{ scanner_id }}/cmd/deduct/{{ stored_uid }}"
+            payload: '{"deduct_g": {{ tray_weight_used | float }}}'

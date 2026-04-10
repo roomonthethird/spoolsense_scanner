@@ -10,6 +10,7 @@
 #include "TagStateJson.h"
 #include "LEDManager.h"
 #include "LogBuffer.h"
+#include "SpoolmanManager.h"
 
 #ifndef NATIVE_TEST
   #include <Arduino.h>
@@ -847,12 +848,17 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
 
         DeductionManager::getInstance().storePending(uidFromTopic, deductG);
 
-        // If tag is currently on scanner, apply immediately instead of waiting for next scan
-        // Use case-insensitive compare — MQTT topic UID may differ in case from scanner's uppercase
+        // If tag is currently on scanner, apply immediately (write to tag or Spoolman)
         CurrentSpoolState deductSpool;
         if (NFCManager::getInstance().getCurrentSpoolState(deductSpool) &&
             deductSpool.present && strcasecmp(deductSpool.spool_id, uidFromTopic) == 0) {
             DeductionManager::getInstance().applyIfPending(deductSpool.spool_id, deductSpool.kind);
+        } else if (SpoolmanManager::getInstance().isConfigured()) {
+            // Tag not on scanner — try Spoolman direct (Bambu AMS use case)
+            float spDeducted = SpoolmanManager::getInstance().deductFromSpoolman(uidFromTopic, deductG);
+            if (spDeducted > 0.0f) {
+                DeductionManager::getInstance().clearPending(uidFromTopic);
+            }
         }
 
         publishCommandResponse(command, true, nullptr);
