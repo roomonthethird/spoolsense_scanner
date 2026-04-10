@@ -870,8 +870,13 @@ static bool updateSpool(int spoolId, int filamentId, float remainingWeight) {
     String response;
     int code = httpPatch(path, body.c_str(), response);
     if (code == 200) {
-        Serial.printf("SpoolmanManager: Updated spool id=%d, remaining=%.1fg\n", spoolId, remainingWeight);
-        LogBuffer::getInstance().logPrintf("Spoolman: Spool %d, %.1fg remaining\n", spoolId, remainingWeight);
+        if (remainingWeight > 0.0f) {
+            Serial.printf("SpoolmanManager: Updated spool id=%d, remaining=%.1fg\n", spoolId, remainingWeight);
+            LogBuffer::getInstance().logPrintf("Spoolman: Spool %d, %.1fg remaining\n", spoolId, remainingWeight);
+        } else {
+            Serial.printf("SpoolmanManager: Updated spool id=%d (weight unchanged)\n", spoolId);
+            LogBuffer::getInstance().logPrintf("Spoolman: Spool %d synced\n", spoolId);
+        }
         return true;
     }
 

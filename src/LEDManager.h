@@ -37,6 +37,7 @@ public:
     void flashWarning();        // 3× yellow 150ms on/off
 
     void setFilamentColorFromHex(const char* hex);
+    void getTargetColor(uint8_t& r, uint8_t& g, uint8_t& b) const;
 
 private:
     bool _initialized = false;
