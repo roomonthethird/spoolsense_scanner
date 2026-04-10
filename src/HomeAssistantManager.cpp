@@ -828,6 +828,25 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // low_spool: middleware/HA sends true/false to trigger LED breathing mid-print
+    if (strcmp(command, "low_spool") == 0) {
+        extern LEDManager ledManager;
+        bool enable = (strcmp(payload, "true") == 0);
+        // Use current LED target color (persists after tag removal)
+        uint8_t r = 0, g = 0, b = 0;
+        ledManager.getTargetColor(r, g, b);
+        if (r == 0 && g == 0 && b == 0) { r = g = b = 0x33; }  // fallback dim white
+        if (enable) {
+            ledManager.breatheFilamentColor(r, g, b);
+            LogBuffer::getInstance().logPrintf("Low spool: breathing enabled\n");
+        } else {
+            ledManager.showFilamentColor(r, g, b);
+            LogBuffer::getInstance().logPrintf("Low spool: breathing disabled\n");
+        }
+        publishCommandResponse(command, true, nullptr);
+        return;
+    }
+
     // deduct: store filament usage deduction — tag may not be on scanner
     if (strcmp(command, "deduct") == 0) {
         if (strlen(uidFromTopic) == 0) {

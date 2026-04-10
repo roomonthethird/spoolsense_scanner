@@ -160,6 +160,10 @@ void LEDManager::setFilamentColorFromHex(const char* hex) {
     showFilamentColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
 }
 
+void LEDManager::getTargetColor(uint8_t& r, uint8_t& g, uint8_t& b) const {
+    r = _target.r; g = _target.g; b = _target.b;
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
