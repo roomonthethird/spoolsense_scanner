@@ -852,7 +852,11 @@ static bool shouldArchiveAndReplace(int existingSpoolId, int newFilamentId,
 
 static bool updateSpool(int spoolId, int filamentId, float remainingWeight) {
     StaticJsonDocument<JSON_SMALL_CAPACITY> doc;
-    doc["remaining_weight"] = remainingWeight;
+    // Only send remaining_weight when the tag actually has weight data.
+    // Sending 0 would overwrite Spoolman's tracked weight for non-writable tags.
+    if (remainingWeight > 0.0f) {
+        doc["remaining_weight"] = remainingWeight;
+    }
     if (filamentId >= 0) {
         doc["filament_id"] = filamentId;
     }
