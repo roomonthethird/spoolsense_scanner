@@ -116,6 +116,7 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
 
         <div class="controls">
             <label><input type="checkbox" id="autoscroll" checked> Auto-scroll</label>
+            <button class="btn" onclick="copyLogs()">Copy</button>
             <button class="btn" onclick="clearLogs()">Clear</button>
         </div>
         <pre id="logOutput">(empty)</pre>
@@ -131,6 +132,23 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
                     if (autoEl.checked) logEl.scrollTop = logEl.scrollHeight;
                 })
                 .catch(function(e) { logEl.textContent = 'Error: ' + e.message; });
+        }
+        function copyLogs() {
+            var text = logEl.textContent;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    var btn = document.querySelector('.btn');
+                    btn.textContent = 'Copied!';
+                    setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+                });
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
         }
         function clearLogs() {
             fetch('/api/logs/clear', { method: 'POST' })
