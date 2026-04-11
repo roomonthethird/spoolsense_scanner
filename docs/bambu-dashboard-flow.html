@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Bambu AMS Dashboard — Data Flow</title>
+    <style>
+        body {
+            background: #1a1a2e;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 30px;
+            color: #e0e0e0;
+        }
+        .diagram { width: 720px; }
+        h1 { text-align: center; color: #fff; font-size: 18px; margin-bottom: 30px; }
+        .row { display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+        .box {
+            border-radius: 10px; padding: 14px 20px; text-align: center;
+            font-size: 13px; min-width: 200px; position: relative;
+        }
+        .box .label { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+        .box .detail { font-size: 11px; opacity: 0.85; }
+        .scanner { background: #2d6a4f; border: 2px solid #52b788; }
+        .nfc { background: #3a5a40; border: 2px solid #95d5b2; }
+        .printer { background: #5a189a; border: 2px solid #9d4edd; }
+        .ha { background: #1565c0; border: 2px solid #42a5f5; }
+        .blueprint { background: #0d47a1; border: 2px solid #1e88e5; }
+        .spoolman { background: #00695c; border: 2px solid #26a69a; }
+        .tft { background: #bf360c; border: 2px solid #ff7043; }
+        .arrow {
+            display: flex; flex-direction: column; align-items: center;
+            margin: 4px 0; color: #aaa; font-size: 11px;
+        }
+        .arrow .line { width: 2px; height: 18px; background: #555; }
+        .arrow .head {
+            width: 0; height: 0;
+            border-left: 6px solid transparent; border-right: 6px solid transparent;
+            border-top: 8px solid #555;
+        }
+        .arrow .msg {
+            background: #2a2a3e; padding: 3px 10px; border-radius: 6px;
+            border: 1px solid #444; margin: 2px 0;
+            font-family: 'Courier New', monospace; font-size: 11px; color: #ffd54f;
+        }
+        .split { display: flex; gap: 20px; justify-content: center; align-items: flex-start; }
+        .split-col { display: flex; flex-direction: column; align-items: center; }
+        .phase {
+            text-align: center; font-size: 11px; color: #888;
+            text-transform: uppercase; letter-spacing: 2px;
+            margin: 24px 0 12px; border-top: 1px dashed #333;
+            padding-top: 14px; width: 100%;
+        }
+        .note {
+            background: #2a2a3e; border: 1px dashed #555; border-radius: 8px;
+            padding: 10px 16px; font-size: 11px; color: #aaa;
+            text-align: center; margin: 6px 0; max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+<div class="diagram">
+    <h1>Bambu AMS Dashboard — Full Data Flow</h1>
+
+    <!-- Phase 1: Spool Scan & Loading -->
+    <div class="phase">Phase 1 — Spool Scan & Loading</div>
+
+    <div class="row">
+        <div class="box nfc">
+            <div class="label">NFC Tag on Spool</div>
+            <div class="detail">UID, material, color, temps, weight</div>
+        </div>
+    </div>
+    <div class="arrow">
+        <div class="line"></div>
+        <div class="msg">scan</div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box scanner">
+            <div class="label">SpoolSense Scanner</div>
+            <div class="detail">Reads NFC tag → publishes to MQTT</div>
+        </div>
+    </div>
+
+    <div class="split">
+        <div class="split-col">
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">MQTT: spoolsense/{id}/tag/state</div>
+                <div class="detail" style="color:#aaa;font-size:10px">uid, material, color, remaining_g,<br>spoolman_id, temps</div>
+                <div class="head"></div>
+            </div>
+            <div class="row">
+                <div class="box ha">
+                    <div class="label">Home Assistant</div>
+                    <div class="detail">sensor.spoolsense_{id}_spool → "present"</div>
+                </div>
+            </div>
+        </div>
+        <div class="split-col">
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">HTTP: Spoolman UID lookup (async)</div>
+                <div class="head"></div>
+            </div>
+            <div class="row">
+                <div class="box spoolman" style="min-width:160px">
+                    <div class="label">Spoolman</div>
+                    <div class="detail">Returns weight, spoolman_id</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="arrow">
+        <div class="line"></div>
+        <div class="msg">trigger: sensor state → "present"</div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box blueprint">
+            <div class="label">Blueprint: SpoolSense → Bambu AMS</div>
+            <div class="detail">spoolsense_bambu_ams.yaml</div>
+        </div>
+    </div>
+
+    <div class="note">Waits for user to physically load spool into AMS tray<br>(wait_for_trigger: tray empty → not empty)</div>
+
+    <div class="split">
+        <div class="split-col">
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">bambu_lab.set_filament</div>
+                <div class="detail" style="color:#aaa;font-size:10px">tray_type, tray_color,<br>tray_info_idx, temps</div>
+                <div class="head"></div>
+            </div>
+            <div class="row">
+                <div class="box printer">
+                    <div class="label">Bambu Printer</div>
+                    <div class="detail">Updates AMS tray info</div>
+                </div>
+            </div>
+        </div>
+        <div class="split-col">
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">MQTT: cmd/tray_assign</div>
+                <div class="detail" style="color:#aaa;font-size:10px">{tray_index, uid, spoolman_id}</div>
+                <div class="head"></div>
+            </div>
+            <div class="row">
+                <div class="box scanner" style="min-width:180px">
+                    <div class="label">Scanner stores UID→Tray</div>
+                    <div class="detail">NVS: maps UID to tray index<br>Enqueues Spoolman weight lookup</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase 2: Dashboard Update -->
+    <div class="phase">Phase 2 — Dashboard Update</div>
+
+    <div class="row">
+        <div class="box printer">
+            <div class="label">Bambu Printer</div>
+            <div class="detail">Reports tray state via Bambu MQTT</div>
+        </div>
+    </div>
+    <div class="arrow">
+        <div class="line"></div>
+        <div class="msg">HA Bambu Lab Integration</div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box ha">
+            <div class="label">sensor.{printer}_ams_tray_{1-N}</div>
+            <div class="detail">type, color, empty, name</div>
+        </div>
+    </div>
+    <div class="arrow">
+        <div class="line"></div>
+        <div class="msg">trigger: any tray state change</div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box blueprint">
+            <div class="label">Blueprint: Bambu AMS Dashboard</div>
+            <div class="detail">spoolsense_bambu_dashboard.yaml</div>
+        </div>
+    </div>
+    <div class="arrow">
+        <div class="detail" style="color:#aaa;font-size:11px">Reads tray attributes (type, color, empty)<br>Builds JSON array, skips empty trays</div>
+        <div class="line"></div>
+        <div class="msg">MQTT: spoolsense/{id}/cmd/tray_update</div>
+        <div class="msg" style="font-size:10px;color:#ccc">[{tray_index, ams_id, material, color}, ...]</div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box scanner">
+            <div class="label">SpoolSense Scanner</div>
+            <div class="detail">Parses tray data → persists to NVS → renders dashboard</div>
+        </div>
+    </div>
+
+    <!-- Phase 3: Weight Enrichment -->
+    <div class="phase">Phase 3 — Weight Enrichment</div>
+
+    <div class="split">
+        <div class="split-col">
+            <div class="row">
+                <div class="box scanner" style="min-width:220px">
+                    <div class="label">Spoolman Weight Lookup</div>
+                    <div class="detail">Triggered by cmd/tray_assign<br>For trays with stored UIDs</div>
+                </div>
+            </div>
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">HTTP: streaming UID lookup</div>
+                <div class="head"></div>
+            </div>
+            <div class="row">
+                <div class="box spoolman">
+                    <div class="label">Spoolman</div>
+                    <div class="detail">Returns remaining weight for UID</div>
+                </div>
+            </div>
+            <div class="arrow">
+                <div class="line"></div>
+                <div class="msg">SPOOLMAN_SYNCED → update weight_g → re-render</div>
+                <div class="head"></div>
+            </div>
+        </div>
+        <div class="split-col" style="margin-top:10px">
+            <div class="row">
+                <div class="box scanner" style="min-width:200px">
+                    <div class="label">Deduction (follow-up)</div>
+                    <div class="detail">cmd/deduct_tray arrives →<br>scanner resolves tray → UID →<br>subtract weight → re-render</div>
+                </div>
+            </div>
+            <div class="note" style="max-width:200px;margin-top:10px">
+                Automatic weight updates<br>after every print —<br>pending print test verification
+            </div>
+        </div>
+    </div>
+
+    <div class="arrow">
+        <div class="line"></div>
+        <div class="head"></div>
+    </div>
+    <div class="row">
+        <div class="box tft">
+            <div class="label">TFT Dashboard</div>
+            <div class="detail">2x2 / 2x4 / 4x4 grid — color, material, weight per tray</div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

@@ -2,9 +2,10 @@ blueprint:
   name: "SpoolSense → Bambu Deduction"
   description: >
     Automatically deduct filament weight after a Bambu Lab print completes or is
-    canceled. Sends deductions to the SpoolSense scanner via MQTT, which updates
-    Spoolman and writes to NFC tags. No spoolman-homeassistant integration needed.
-    Requires the SpoolSense → Bambu AMS blueprint (which stores spool UIDs per tray).
+    canceled. Sends per-tray deductions to the SpoolSense scanner via MQTT, which
+    resolves the tray to a spool UID and updates Spoolman. No input_text helpers
+    or Spoolman HA integration needed — the scanner handles everything.
+    Requires the SpoolSense → Bambu AMS blueprint (which assigns UIDs to trays).
   domain: automation
   input:
     bambu_device:
@@ -17,7 +18,7 @@ blueprint:
       name: Print Weight Sensor
       description: >
         The Bambu print weight sensor (e.g., sensor.p1s_print_weight).
-        Its attributes contain per-tray weight breakdown after a print.
+        After a print, its attributes contain per-tray weight breakdown.
       selector:
         entity:
           filter:
@@ -25,8 +26,9 @@ blueprint:
     ams_tray_entities:
       name: AMS Tray Sensors
       description: >
-        Select the same AMS tray sensors as in the SpoolSense → Bambu AMS blueprint.
-        Must have matching input_text helpers created (see documentation).
+        Select the same AMS tray sensors as in the SpoolSense → Bambu AMS blueprint,
+        in the same order. The position in this list determines the tray index sent
+        to the scanner.
       selector:
         entity:
           multiple: true
@@ -67,25 +69,16 @@ actions:
       sequence:
         - variables:
             tray_entity: "{{ repeat.item }}"
-            tray_name_key: >
-              {% set parts = tray_entity.replace('sensor.', '').split('_ams_') %}
-              {% if parts | length == 2 %}
-                {% set ams_tray = parts[1].replace('tray_', '').split('_') %}
-                {% if ams_tray | length >= 1 %}
-                  AMS {{ ams_tray[0] | default(1) }} Tray {{ ams_tray[-1] | default(1) }}
-                {% endif %}
-              {% endif %}
-            tray_weight_used: "{{ state_attr(weight_sensor, tray_name_key | trim) | float(0) }}"
-            helper_uid: "input_text.spoolsense_{{ tray_entity | replace('sensor.', '') }}_uid"
-            stored_uid: "{{ states(helper_uid) | default('') }}"
+            tray_index: "{{ loop.index0 }}"
+            ams_num: "{{ (tray_index | int // 4) + 1 }}"
+            tray_in_ams: "{{ (tray_index | int % 4) + 1 }}"
+            tray_attr_key: "AMS {{ ams_num }} Tray {{ tray_in_ams }}"
+            tray_weight_used: "{{ state_attr(weight_sensor, tray_attr_key) | float(0) }}"
 
         - condition: template
           value_template: "{{ tray_weight_used | float(0) > 0 }}"
 
-        - condition: template
-          value_template: "{{ stored_uid != '' and stored_uid != 'unknown' }}"
-
         - action: mqtt.publish
           data:
-            topic: "spoolsense/{{ scanner_id }}/cmd/deduct/{{ stored_uid }}"
-            payload: '{"deduct_g": {{ tray_weight_used | float }}}'
+            topic: "spoolsense/{{ scanner_id }}/cmd/deduct_tray"
+            payload: '{"tray_index": {{ tray_index }}, "deduct_g": {{ tray_weight_used | float }}}'

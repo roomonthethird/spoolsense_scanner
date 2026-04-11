@@ -367,7 +367,17 @@ void setup() {
   }
 
   if (config.isTftEnabled()) {
-    if (tftManagerPtr && !config.isBambuDashboardEnabled()) tftManagerPtr->showReady();
+    if (tftManagerPtr && !config.isBambuDashboardEnabled()) {
+      tftManagerPtr->showReady();
+    } else if (tftManagerPtr && config.isBambuDashboardEnabled()) {
+      // Show cached dashboard or AMS Ready after full boot (TFT task is running)
+      const TrayDashboardState& cached = ApplicationManager::getInstance().getTrayDashboardState();
+      if (cached.has_data) {
+        tftManagerPtr->showTrayDashboard(cached);
+      } else {
+        tftManagerPtr->showText("SpoolSense", "AMS Ready");
+      }
+    }
   } else if (config.isLcdEnabled()) {
     ApplicationManager::getInstance().showStatusScreen();
   }

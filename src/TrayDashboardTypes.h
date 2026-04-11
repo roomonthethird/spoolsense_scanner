@@ -10,6 +10,8 @@ struct TrayData {
     uint8_t color[3];      // RGB
     uint16_t weight_g;     // remaining weight in grams
     bool populated;        // true if tray has a spool
+    char uid[17];          // SpoolSense NFC tag UID hex (up to 16 chars + null)
+    int32_t spoolman_id;   // Spoolman spool ID (-1 if unknown)
 };
 
 struct TrayDashboardState {

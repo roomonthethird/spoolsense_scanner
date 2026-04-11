@@ -63,7 +63,7 @@ bool ApplicationManager::begin(DisplayI* display) {
     Serial.println("ApplicationManager: Message queue created");
 
 #ifndef NATIVE_TEST
-    // Load cached tray dashboard from NVS
+    // Load cached tray dashboard from NVS (display handled by main.cpp after full boot)
     bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
     if (dashEnabled) {
         Preferences prefs;
@@ -71,15 +71,8 @@ bool ApplicationManager::begin(DisplayI* display) {
         size_t len = prefs.getBytesLength("tray_dash");
         if (len == sizeof(TrayDashboardState)) {
             prefs.getBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
-            if (trayDashboardState_.has_data && display_) {
-                display_->showTrayDashboard(trayDashboardState_);
-                Serial.printf("ApplicationManager: Loaded cached tray dashboard, %d trays\n",
-                              trayDashboardState_.tray_count);
-            } else if (display_) {
-                display_->showText("SpoolSense", "AMS Ready");
-            }
-        } else if (display_) {
-            display_->showText("SpoolSense", "AMS Ready");
+            Serial.printf("ApplicationManager: Loaded cached tray dashboard, %d trays\n",
+                          trayDashboardState_.tray_count);
         }
         prefs.end();
     }
@@ -298,6 +291,10 @@ void ApplicationManager::handleMessage(const AppMessage& msg) {
 
         case AppMessageType::TRAY_UPDATE:
             handleTrayUpdate();
+            break;
+
+        case AppMessageType::TRAY_ASSIGN:
+            handleTrayAssign();
             break;
     }
 }
@@ -965,6 +962,33 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
             }
         }
     }
+
+    // Update dashboard tray weight if this UID matches a tray
+    if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup) {
+        for (uint8_t i = 0; i < trayDashboardState_.tray_count; i++) {
+            if (strlen(trayDashboardState_.trays[i].uid) > 0 &&
+                strcasecmp(trayDashboardState_.trays[i].uid, msg.payload.spoolmanSynced.spool_id) == 0) {
+                uint16_t weightG = static_cast<uint16_t>(msg.payload.spoolmanSynced.kg_remaining * 1000.0f);
+                if (weightG != trayDashboardState_.trays[i].weight_g) {
+                    trayDashboardState_.trays[i].weight_g = weightG;
+                    Serial.printf("ApplicationManager: Dashboard tray %d weight updated to %dg\n",
+                                  trayDashboardState_.trays[i].tray_index, weightG);
+#ifndef NATIVE_TEST
+                    Preferences prefs;
+                    prefs.begin("spoolsense", false);
+                    prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+                    prefs.end();
+
+                    bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
+                    if (dashEnabled && display_) {
+                        display_->showTrayDashboard(trayDashboardState_);
+                    }
+#endif
+                }
+                break;
+            }
+        }
+    }
 #endif
 }
 
@@ -1299,6 +1323,42 @@ void ApplicationManager::handleTrayUpdate() {
     if (dashEnabled && display_) {
         display_->showTrayDashboard(trayDashboardState_);
     }
+}
+
+void ApplicationManager::handleTrayAssign() {
+    uint8_t idx = pendingAssignTrayIndex_;
+    if (idx >= MAX_TRAYS) {
+        Serial.printf("ApplicationManager: tray_assign rejected — index %d out of range\n", idx);
+        return;
+    }
+
+    for (uint8_t i = 0; i < trayDashboardState_.tray_count; i++) {
+        if (trayDashboardState_.trays[i].tray_index == idx) {
+            strncpy(trayDashboardState_.trays[i].uid, pendingAssignUid_, sizeof(trayDashboardState_.trays[i].uid) - 1);
+            trayDashboardState_.trays[i].uid[sizeof(trayDashboardState_.trays[i].uid) - 1] = '\0';
+            trayDashboardState_.trays[i].spoolman_id = pendingAssignSpoolmanId_;
+
+            Serial.printf("ApplicationManager: Tray %d assigned UID=%s spoolman_id=%d\n",
+                          idx, pendingAssignUid_, pendingAssignSpoolmanId_);
+
+#ifndef NATIVE_TEST
+            Preferences prefs;
+            prefs.begin("spoolsense", false);
+            prefs.putBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
+            prefs.end();
+
+            if (strlen(pendingAssignUid_) > 0 && SpoolmanManager::getInstance().isConfigured()) {
+                SpoolmanSyncRequest req = {};
+                strncpy(req.spool_id, pendingAssignUid_, sizeof(req.spool_id) - 1);
+                req.lookup_only = true;
+                SpoolmanManager::getInstance().enqueueSync(req);
+            }
+#endif
+            return;
+        }
+    }
+
+    Serial.printf("ApplicationManager: tray_assign — index %d not in current dashboard, assignment ignored\n", idx);
 }
 
 bool ApplicationManager::sendAssignSpool(const char* toolNumber) {

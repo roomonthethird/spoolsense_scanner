@@ -32,6 +32,7 @@ enum class AppMessageType {
     KEYPAD_CONFIRM,
     KEYPAD_CANCEL,
     TRAY_UPDATE,
+    TRAY_ASSIGN,
 };
 
 enum class AutomationMode : uint8_t {
@@ -184,6 +185,14 @@ public:
     SmartTagEnrichment getSmartTagEnrichment() const { return smartTagEnrichment_; }
     void updateTrayDashboard(const TrayDashboardState& state);
     const TrayDashboardState& getTrayDashboardState() const;
+
+    // Tray dashboard state (written by HomeAssistantManager commands, read by display)
+    TrayDashboardState trayDashboardState_ = {};
+
+    // Tray assign staging (written by HomeAssistantManager, consumed by handleTrayAssign)
+    uint8_t pendingAssignTrayIndex_ = 0;
+    char pendingAssignUid_[17] = {0};
+    int32_t pendingAssignSpoolmanId_ = -1;
 #ifdef NATIVE_TEST
     void resetForTest() {
         if (messageQueue) { vQueueDelete(messageQueue); messageQueue = nullptr; }
@@ -251,8 +260,6 @@ private:
     // Enrichment data from Spoolman UID lookup for the current smart tag
     SmartTagEnrichment smartTagEnrichment_;
 
-    // Bambu AMS tray dashboard state
-    TrayDashboardState trayDashboardState_ = {};
     uint32_t dashboardRevertAt_ = 0;
     static constexpr uint32_t DASHBOARD_REVERT_DELAY_MS = 5000;
 
@@ -272,6 +279,7 @@ private:
     void handleKeypadConfirm();
     void handleKeypadCancel();
     void handleTrayUpdate();
+    void handleTrayAssign();
     bool sendAssignSpool(const char* toolNumber);
     void finishPrint(float gramsUsed, bool canceled);
     void enqueueSpoolmanSync(const SpoolDetectedPayload& spool);

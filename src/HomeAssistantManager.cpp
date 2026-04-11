@@ -937,6 +937,96 @@ void HomeAssistantManager::handleCommand(const char* topic, const char* payload)
         return;
     }
 
+    // tray_assign: loading blueprint assigns a scanned UID to a specific AMS tray
+    if (strcmp(command, "tray_assign") == 0) {
+        StaticJsonDocument<128> assignDoc;
+        if (deserializeJson(assignDoc, payload)) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+
+        uint8_t trayIndex = assignDoc["tray_index"] | 0;
+        const char* uid = assignDoc["uid"] | "";
+        int32_t spoolmanId = assignDoc["spoolman_id"] | -1;
+
+        ApplicationManager& app = ApplicationManager::getInstance();
+        app.pendingAssignTrayIndex_ = trayIndex;
+        strncpy(app.pendingAssignUid_, uid, sizeof(app.pendingAssignUid_) - 1);
+        app.pendingAssignUid_[sizeof(app.pendingAssignUid_) - 1] = '\0';
+        app.pendingAssignSpoolmanId_ = spoolmanId;
+
+        AppMessage msg = {};
+        msg.type = AppMessageType::TRAY_ASSIGN;
+        app.sendMessage(msg);
+
+        publishCommandResponse(command, true, nullptr);
+        return;
+    }
+
+    // deduct_tray: deduction blueprint sends tray_index + grams after print finishes
+    if (strcmp(command, "deduct_tray") == 0) {
+        StaticJsonDocument<128> deductDoc;
+        if (deserializeJson(deductDoc, payload)) {
+            publishCommandResponse(command, false, "invalid_json");
+            return;
+        }
+
+        uint8_t trayIndex = deductDoc["tray_index"] | 0;
+        float deductG = deductDoc["deduct_g"] | 0.0f;
+        if (deductG <= 0.0f) {
+            publishCommandResponse(command, false, "invalid_deduct_g");
+            return;
+        }
+
+        // Resolve tray_index → UID from dashboard state
+        const TrayDashboardState& dash = ApplicationManager::getInstance().getTrayDashboardState();
+        const char* resolvedUid = nullptr;
+        for (uint8_t i = 0; i < dash.tray_count; i++) {
+            if (dash.trays[i].tray_index == trayIndex && strlen(dash.trays[i].uid) > 0) {
+                resolvedUid = dash.trays[i].uid;
+                break;
+            }
+        }
+
+        if (resolvedUid == nullptr) {
+            Serial.printf("HomeAssistantManager: deduct_tray — no UID for tray %d\n", trayIndex);
+            publishCommandResponse(command, false, "no_uid_for_tray");
+            return;
+        }
+
+        Serial.printf("HomeAssistantManager: deduct_tray — tray %d → UID %s, %.1fg\n",
+                      trayIndex, resolvedUid, deductG);
+
+        DeductionManager::getInstance().storePending(resolvedUid, deductG);
+
+        // Try Spoolman direct deduction (spool not on scanner)
+        if (SpoolmanManager::getInstance().isConfigured()) {
+            float spDeducted = SpoolmanManager::getInstance().deductFromSpoolman(resolvedUid, deductG);
+            if (spDeducted > 0.0f) {
+                DeductionManager::getInstance().clearPending(resolvedUid);
+            }
+        }
+
+        // Update dashboard tray weight
+        ApplicationManager& app = ApplicationManager::getInstance();
+        for (uint8_t i = 0; i < app.getTrayDashboardState().tray_count; i++) {
+            if (app.trayDashboardState_.trays[i].tray_index == trayIndex) {
+                uint16_t currentWeight = app.trayDashboardState_.trays[i].weight_g;
+                uint16_t deductWeight = static_cast<uint16_t>(deductG);
+                app.trayDashboardState_.trays[i].weight_g =
+                    (currentWeight > deductWeight) ? (currentWeight - deductWeight) : 0;
+                // Trigger dashboard re-render
+                AppMessage dashMsg = {};
+                dashMsg.type = AppMessageType::TRAY_UPDATE;
+                app.sendMessage(dashMsg);
+                break;
+            }
+        }
+
+        publishCommandResponse(command, true, nullptr);
+        return;
+    }
+
     // Parse command payload (JSON with optional uid, filament_type, color, etc.)
     ParsedHACommandPayload cmdPayload;
     if (!parseHACommandPayload(payload, cmdPayload)) {
