@@ -63,7 +63,7 @@ bool ApplicationManager::begin(DisplayI* display) {
     Serial.println("ApplicationManager: Message queue created");
 
 #ifndef NATIVE_TEST
-    // Load cached tray dashboard from NVS
+    // Load cached tray dashboard from NVS (display handled by main.cpp after full boot)
     bool dashEnabled = ConfigurationManager::getInstance().isBambuDashboardEnabled();
     if (dashEnabled) {
         Preferences prefs;
@@ -71,15 +71,8 @@ bool ApplicationManager::begin(DisplayI* display) {
         size_t len = prefs.getBytesLength("tray_dash");
         if (len == sizeof(TrayDashboardState)) {
             prefs.getBytes("tray_dash", &trayDashboardState_, sizeof(TrayDashboardState));
-            if (trayDashboardState_.has_data && display_) {
-                display_->showTrayDashboard(trayDashboardState_);
-                Serial.printf("ApplicationManager: Loaded cached tray dashboard, %d trays\n",
-                              trayDashboardState_.tray_count);
-            } else if (display_) {
-                display_->showText("SpoolSense", "AMS Ready");
-            }
-        } else if (display_) {
-            display_->showText("SpoolSense", "AMS Ready");
+            Serial.printf("ApplicationManager: Loaded cached tray dashboard, %d trays\n",
+                          trayDashboardState_.tray_count);
         }
         prefs.end();
     }
