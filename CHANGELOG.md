@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.7.0] - 2026-04-11
+
+### Added
+
+- **Bambu AMS tray dashboard on TFT** — persistent colored grid showing AMS tray status (material, color, weight) on the 240x240 TFT display. Auto-detects grid layout: 2x2 for 1-4 trays, 2x4 for 5-8, 4x4 for 9-16. (#148)
+- **HA dashboard blueprint** — new `spoolsense_bambu_dashboard.yaml` watches Bambu AMS tray entities and publishes tray state to the scanner via MQTT.
+- **HA tray assignment** — loading blueprint sends `cmd/tray_assign` to store UID-to-tray mapping on the scanner. No HA input_text helpers needed.
+- **HA deduction by tray** — updated deduction blueprint sends `cmd/deduct_tray` with tray index. Scanner resolves tray to UID and deducts from Spoolman.
+- **Spoolman weight on dashboard** — after tray assignment, scanner queries Spoolman for remaining weight and displays it on the dashboard.
+- **NVS dashboard cache** — tray state persists across reboots for instant display on power-on.
+- **Configurable low-spool threshold** — replaces hardcoded 100g, configurable via web config page. (#137)
+- **cmd/low_spool MQTT handler** — middleware/HA triggers LED breathing mid-print. (#137)
+- **Bambu AMS deduction via scanner** — cmd/deduct with Spoolman-direct fallback for non-writable tags. (#141)
+
+### Improved
+
+- Dashboard reverts to tray view 5 seconds after scanning a spool.
+- Boot sequence skips WiFi/ready screens when dashboard is enabled.
+- MQTT client buffer increased to 2048 bytes for large tray payloads.
+- Millis() wrap-safe timer for dashboard revert.
+
+### Fixed
+
+- Fixed broken input_text helper writes in loading blueprint (silently failed since helpers were never created).
+- Fixed cold boot blank screen when Bambu dashboard enabled.
+- Fixed material string null termination in tray_update handler.
+
+### Breaking Changes
+
+- Loading blueprint (`spoolsense_bambu_ams.yaml`) now requires `scanner_device_id` input — re-import and recreate automation.
+- Deduction blueprint (`spoolsense_bambu_deduction.yaml`) rewritten to use `cmd/deduct_tray` — re-import and recreate automation.
+
+---
+
 ## [1.6.17] - 2026-04-10
 
 ### Added
