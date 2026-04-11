@@ -47,9 +47,8 @@ actions:
           {% set empty = state_attr(entity, 'empty') | default(true) %}
           {% if not empty and a != '' and a != 'Empty' %}
             {% set color_raw = state_attr(entity, 'color') | default('#000000FF') %}
-            {% set color = color_raw | replace('#', '') %}
-            {% set color = color[:6] if color | length >= 8 else color[:6] %}
-            {% set tray = '{"tray_index":' ~ loop.index0 ~ ',"ams_id":' ~ (loop.index0 // 4) ~ ',"material":"' ~ a ~ '","color":"' ~ color ~ '"}' %}
+            {% set color = (color_raw | replace('#', ''))[:6] %}
+            {% set tray = {"tray_index": loop.index0, "ams_id": (loop.index0 // 4), "material": a, "color": color} | tojson %}
             {% set ns.trays = ns.trays + [tray] %}
           {% endif %}
         {% endfor %}

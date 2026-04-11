@@ -16,7 +16,8 @@ blueprint:
     ams_tray_entities:
       name: AMS Tray Sensors
       description: >
-        Select all AMS tray sensor entities to monitor. When filament is loaded
+        Select all AMS tray sensor entities to monitor. Order matters — the first
+        entity is tray index 0, second is index 1, etc. When filament is loaded
         into any of these trays after a scan, the spool data is pushed to that tray.
       selector:
         entity:

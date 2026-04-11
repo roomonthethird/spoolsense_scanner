@@ -1358,7 +1358,7 @@ void ApplicationManager::handleTrayAssign() {
         }
     }
 
-    Serial.printf("ApplicationManager: tray_assign — index %d not in current dashboard, caching\n", idx);
+    Serial.printf("ApplicationManager: tray_assign — index %d not in current dashboard, assignment ignored\n", idx);
 }
 
 bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
