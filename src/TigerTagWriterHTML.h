@@ -10,7 +10,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>TigerTag Writer &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css?v=1.7.0" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
 </head>
 <body>
   <div class="wrap">
@@ -331,7 +331,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">TigerTag V1.0 Maker format &mdash; 40 bytes, pages 4-13</div>
   </div>
 
-  <script src="/js/shared.js?v=1.7.0"></script>
+  <script src="/js/shared.js?v=)rawliteral" FIRMWARE_VERSION R"rawliteral("></script>
   <script>
     var writerForm = document.getElementById('writerForm');
 

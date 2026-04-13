@@ -10,7 +10,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Configuration &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css?v=1.7.0" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
   <style>
     .toggle-row{
       display:flex;align-items:center;justify-content:space-between;
@@ -250,7 +250,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">Settings are saved to NVS and persist across OTA updates.</div>
   </div>
 
-  <script src="/js/shared.js?v=1.7.0"></script>
+  <script src="/js/shared.js?v=)rawliteral" FIRMWARE_VERSION R"rawliteral("></script>
   <script>
     function togglePass(id, btn) {
       var el = document.getElementById(id);
