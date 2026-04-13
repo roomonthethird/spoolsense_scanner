@@ -1250,8 +1250,10 @@ bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails
 }
 
 void SpoolmanManager::setPendingLink(int32_t spoolId) {
-    pendingLinkSpoolId_.store(spoolId);
+    // Store timestamp before ID so that any reader seeing a valid ID is
+    // guaranteed the timestamp is already set (happens-before).
     pendingLinkSetAt_.store(millis());
+    pendingLinkSpoolId_.store(spoolId);
     Serial.printf("SpoolmanManager: Pending link set for spool %d\n", spoolId);
 }
 
@@ -1330,9 +1332,12 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
 
     // If the writer pre-registered a spool to link, consume it and patch nfc_id before syncing.
     // This prevents auto-sync from creating a duplicate when a pre-selected spool exists.
+    // Read timestamp before exchange: setPendingLink stores time before ID, so a valid ID
+    // guarantees the timestamp is already set (no race window on the age check).
+    uint32_t linkSetAt = pendingLinkSetAt_.load();
     int32_t linkSpoolId = pendingLinkSpoolId_.exchange(-1);
     if (linkSpoolId > 0) {
-        uint32_t age = millis() - pendingLinkSetAt_.load();
+        uint32_t age = millis() - linkSetAt;
         if (age < PENDING_LINK_TIMEOUT_MS) {
             char patchBody[64];
             snprintf(patchBody, sizeof(patchBody), "{\"extra\":{\"nfc_id\":\"\\\"%s\\\"\"}}", req.spool_id);
