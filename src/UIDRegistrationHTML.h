@@ -13,7 +13,7 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>UID Registration &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=1.7.0" />
 </head>
 <body>
   <div class="wrap">
@@ -187,7 +187,7 @@ const char UID_REGISTRATION_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">UID Registration &mdash; Spoolman spool via NFC tag UID</div>
   </div>
 
-  <script src="/js/shared.js"></script>
+  <script src="/js/shared.js?v=1.7.0"></script>
   <script>
     var registerForm = document.getElementById('registerForm');
     var uidValue = document.getElementById('uidValue');

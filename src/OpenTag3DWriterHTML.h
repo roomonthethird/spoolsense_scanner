@@ -10,7 +10,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>OpenTag3D Writer &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=1.7.0" />
 </head>
 <body>
   <div class="wrap">
@@ -322,7 +322,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">OpenTag3D v1.000 &mdash; NTAG215/216</div>
   </div>
 
-  <script src="/js/shared.js"></script>
+  <script src="/js/shared.js?v=1.7.0"></script>
   <script>
     var writerForm = document.getElementById('writerForm');
 

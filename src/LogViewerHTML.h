@@ -10,7 +10,7 @@ const char LOG_VIEWER_HTML[] PROGMEM = R"=====(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Serial Log &mdash; SpoolSense</title>
-    <link rel="stylesheet" href="/css/shared.css" />
+    <link rel="stylesheet" href="/css/shared.css?v=1.7.0" />
     <style>
         .subtitle {
             color: var(--muted);
