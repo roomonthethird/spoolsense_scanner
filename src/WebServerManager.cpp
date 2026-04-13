@@ -1200,7 +1200,7 @@ void WebServerManager::serializeEnrichment(JsonDocument& doc) {
 
     JsonObject sp = doc.createNestedObject("spoolman");
     sp["spool_id"] = enrichment.spoolman_id;
-    sp["remaining_g"] = enrichment.remaining_g;
+    if (enrichment.remaining_g > 0) sp["remaining_g"] = enrichment.remaining_g;
     if (enrichment.bed_temp > 0) sp["bed_temp"] = enrichment.bed_temp;
     if (enrichment.extruder_temp > 0) sp["extruder_temp"] = enrichment.extruder_temp;
     if (enrichment.density > 0) sp["density"] = enrichment.density;
