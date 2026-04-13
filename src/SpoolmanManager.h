@@ -1,6 +1,7 @@
 #ifndef SPOOLMAN_MANAGER_H
 #define SPOOLMAN_MANAGER_H
 
+#include <atomic>
 #include <cstdint>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -53,6 +54,9 @@ public:
     bool isConfigured() const;
     bool getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetails);
     void invalidateCachedSpoolmanId(const char* spoolId);
+    // Pre-emptively link the next detected tag to an existing spool instead of auto-creating.
+    // Set before write flow starts; consumed on first tag sync within PENDING_LINK_TIMEOUT_MS.
+    void setPendingLink(int32_t spoolId);
 
     // Deduct weight directly in Spoolman for non-writable tags.
     // Returns grams deducted, or 0 on failure (caller should retry later).
@@ -99,6 +103,10 @@ private:
     static constexpr UBaseType_t TASK_PRIORITY = 1;
     static constexpr TickType_t HTTP_MUTEX_TIMEOUT = pdMS_TO_TICKS(10000);
     static constexpr uint32_t SYNC_CACHE_TTL_MS = 2 * 60 * 60 * 1000;  // 2 hours
+    static constexpr uint32_t PENDING_LINK_TIMEOUT_MS = 120000;         // 2 minutes
+
+    std::atomic<int32_t> pendingLinkSpoolId_{-1};
+    std::atomic<uint32_t> pendingLinkSetAt_{0};
 };
 
 #endif // SPOOLMAN_MANAGER_H
