@@ -269,41 +269,7 @@ bool PN5180ISO14443::mifareHalt() {
 
 bool PN5180ISO14443::mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t *key,
                                         const uint8_t *uid, uint8_t uidLen) {
-	uint8_t cmd[12];
-	cmd[0] = keyType;
-	cmd[1] = blockNo;
-	memcpy(&cmd[2], key, 6);
-	memcpy(&cmd[8], uid, 4);
-
-	writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000040);
-	clearIRQStatus(0x000FFFFF);
-
-	if (!sendData(cmd, 12, 0x00)) {
-		writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFBF);
-		writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFF8);
-		clearIRQStatus(0x000FFFFF);
-		return false;
-	}
-
-	bool rxReceived = false;
-	bool errorSeen = false;
-	for (int i = 0; i < 150; i++) {
-		uint32_t irq = getIRQStatus();
-		if (irq & GENERAL_ERROR_IRQ_STAT) { errorSeen = true; break; }
-		if (irq & RX_IRQ_STAT) { rxReceived = true; break; }
-		delay(1);
-	}
-
-	clearIRQStatus(0x000FFFFF);
-
-	if (!rxReceived || errorSeen) {
-		writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFBF);
-		writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFF8);
-		clearIRQStatus(0x000FFFFF);
-		return false;
-	}
-
-	return true;
+	return mfcAuthenticate(key, keyType, blockNo, uid);
 }
 
 uint8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {

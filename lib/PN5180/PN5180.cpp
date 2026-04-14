@@ -409,6 +409,34 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
 }
 
 /*
+ * MFC_AUTHENTICATE - 0x1C
+ * MIFARE Classic authentication using the PN5180 internal Crypto1 engine.
+ * Returns true if authentication succeeded (response byte == 0).
+ */
+bool PN5180::mfcAuthenticate(const uint8_t *key, uint8_t keyType, uint8_t blockNo, const uint8_t *uid) {
+  // PN5180 host command 0x0C: [cmd][key(6)][keyType(0x60/0x61)][block][uid(4)]
+  uint8_t cmd[13];
+  cmd[0] = 0x0C;
+  memcpy(&cmd[1], key, 6);
+  cmd[7] = keyType;
+  cmd[8] = blockNo;
+  memcpy(&cmd[9], uid, 4);
+
+  uint8_t response = 0xFF;
+  pn5180_spi.beginTransaction(PN5180_SPI_SETTINGS);
+  bool ok = transceiveCommand(cmd, 13, &response, 1);
+  pn5180_spi.endTransaction();
+
+  if (!ok || response != 0x00) {
+    Serial.printf("PN5180: mfcAuthenticate block %d failed (ok=%d resp=0x%02X)\n", blockNo, ok, response);
+    writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFBF);  // clear Crypto1
+    writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFF8);  // force idle
+    clearIRQStatus(0x000FFFFF);
+  }
+  return ok && (response == 0x00);
+}
+
+/*
  * RF_ON - 0x16
  * This command is used to switch on the internal RF field. If enabled the TX_RFON_IRQ is
  * set after the field is switched on.

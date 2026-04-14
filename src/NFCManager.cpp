@@ -2414,6 +2414,7 @@ bool NFCManager::readBambuTag(const uint8_t* uid, uint8_t uidLength, BambuTagDat
         if (sector != lastAuthSector) {
             if (!connection_->mifareAuthenticate(blockNo, 0x60, keys.blockKey(blockNo))) {
                 Serial.printf("NFCManager: Bambu auth failed on block %d (sector %d)\n", blockNo, sector);
+                LogBuffer::getInstance().logPrintf("Bambu auth fail blk %d sec %d\n", blockNo, sector);
                 if (i == 0) return false;
                 continue;
             }
