@@ -218,6 +218,18 @@ void HardwareNFCConnectionPN532::logDiagnostics() {
     }
 }
 
+bool HardwareNFCConnectionPN532::mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t* key) {
+    if (!pn532_ || !ready_) return false;
+    uint8_t keyNumber = (keyType == 0x61) ? 1 : 0;
+    return pn532_->mifareclassic_AuthenticateBlock(
+        currentUid_, currentUidLen_, blockNo, keyNumber, const_cast<uint8_t*>(key));
+}
+
+bool HardwareNFCConnectionPN532::mifareClassicRead(uint8_t blockNo, uint8_t* buffer) {
+    if (!pn532_ || !ready_) return false;
+    return pn532_->mifareclassic_ReadDataBlock(blockNo, buffer);
+}
+
 bool HardwareNFCConnectionPN532::ntagGetVersion(uint8_t* versionOut) {
     if (!pn532_ || !ready_ || !versionOut) return false;
 
