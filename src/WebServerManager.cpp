@@ -230,13 +230,13 @@ void WebServerManager::handleOpenSpoolWriter() {
 
 void WebServerManager::handleSharedCSS() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.sendHeader("Cache-Control", "no-store");
     _server.send_P(200, "text/css", SHARED_CSS);
 }
 
 void WebServerManager::handleSharedJS() {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    _server.sendHeader("Cache-Control", "public, max-age=86400");
+    _server.sendHeader("Cache-Control", "no-store");
     _server.send_P(200, "application/javascript", SHARED_JS);
 }
 

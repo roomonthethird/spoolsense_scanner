@@ -923,6 +923,7 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
     }
 
     outDetails.spoolman_id = doc["id"] | -1;
+    float usedWeight = doc["used_weight"] | 0.0f;
     outDetails.remaining_weight_g = doc["remaining_weight"] | 0.0f;
     outDetails.initial_weight_g = doc["initial_weight"] | 0.0f;
 
@@ -953,6 +954,12 @@ bool SpoolmanManager::getSpoolDetails(int32_t spoolmanId, SpoolDetails& outDetai
             const char* vendorName = vendor["name"] | "";
             strncpy(outDetails.manufacturer, vendorName, sizeof(outDetails.manufacturer) - 1);
         }
+    }
+
+    if (outDetails.initial_weight_g == 0.0f) outDetails.initial_weight_g = 1000.0f;
+    if (outDetails.remaining_weight_g == 0.0f) {
+        float calculated = outDetails.initial_weight_g - usedWeight;
+        outDetails.remaining_weight_g = calculated > 0.0f ? calculated : 0.0f;
     }
 
     bool hasId = outDetails.spoolman_id > 0;

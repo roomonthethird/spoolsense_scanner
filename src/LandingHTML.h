@@ -10,7 +10,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SpoolSense Scanner</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
 </head>
 <body>
   <div class="wrap">
@@ -126,7 +126,7 @@ const char LANDING_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note" id="footerHostname" style="margin-top:28px">SpoolSense Scanner &mdash; spoolsense.local</div>
   </div>
 
-  <script src="/js/shared.js"></script>
+  <script src="/js/shared.js?v=)rawliteral" FIRMWARE_VERSION R"rawliteral("></script>
   <script>
     fetch('/api/status').then(function(r){return r.json()}).then(function(d){
       if(d.device_id) document.getElementById('deviceId').textContent = d.device_id;

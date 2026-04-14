@@ -10,7 +10,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>TigerTag Writer &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
 </head>
 <body>
   <div class="wrap">
@@ -331,7 +331,7 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">TigerTag V1.0 Maker format &mdash; 40 bytes, pages 4-13</div>
   </div>
 
-  <script src="/js/shared.js"></script>
+  <script src="/js/shared.js?v=)rawliteral" FIRMWARE_VERSION R"rawliteral("></script>
   <script>
     var writerForm = document.getElementById('writerForm');
 
@@ -642,6 +642,19 @@ const char TIGERTAG_WRITER_HTML[] PROGMEM = R"rawliteral(
         if (tt.dry_time_hours) setVal('dry_time', tt.dry_time_hours);
         if (tt.material_id !== undefined) document.getElementById('material_id').value = tt.material_id;
         if (tt.brand_id !== undefined) document.getElementById('brand_id').value = tt.brand_id;
+        if (tt.diameter_mm) {
+          var dVal = tt.diameter_mm < 2 ? '56' : '221';
+          document.getElementById('diameter_id').value = dVal;
+        }
+        function selectByText(selId, name) {
+          if (!name) return;
+          var sel = document.getElementById(selId);
+          for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].text === name) { sel.value = sel.options[i].value; return; }
+          }
+        }
+        selectByText('aspect1_id', tt.aspect1_name);
+        selectByText('aspect2_id', tt.aspect2_name);
         syncMaterialId();
       },
       fillEnrichment: function(status) {

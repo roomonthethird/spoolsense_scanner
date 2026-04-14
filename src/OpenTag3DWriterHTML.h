@@ -10,7 +10,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>OpenTag3D Writer &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
 </head>
 <body>
   <div class="wrap">
@@ -322,7 +322,7 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
     <div class="footer-note">OpenTag3D v1.000 &mdash; NTAG215/216</div>
   </div>
 
-  <script src="/js/shared.js"></script>
+  <script src="/js/shared.js?v=)rawliteral" FIRMWARE_VERSION R"rawliteral("></script>
   <script>
     var writerForm = document.getElementById('writerForm');
 
@@ -604,6 +604,10 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
           if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
         }
         if (ot.color_name) setVal('color_name', ot.color_name);
+        setVal('material_modifiers', ot.modifiers || '');
+        setVal('serial_number', ot.serial_number || '');
+        setVal('measured_filament_weight_g', ot.measured_weight_g || '');
+        setVal('empty_spool_weight_g', ot.empty_spool_g || '');
         var matEl = document.getElementById('base_material');
         if (matEl) matEl.dispatchEvent(new Event('input'));
       },

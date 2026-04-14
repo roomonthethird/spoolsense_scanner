@@ -10,7 +10,7 @@ const char TROUBLESHOOTING_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Troubleshooting &mdash; SpoolSense</title>
-  <link rel="stylesheet" href="/css/shared.css" />
+  <link rel="stylesheet" href="/css/shared.css?v=)rawliteral" FIRMWARE_VERSION R"rawliteral(" />
   <style>
     .device-id-box {
       background: rgba(99,102,241,.12);
