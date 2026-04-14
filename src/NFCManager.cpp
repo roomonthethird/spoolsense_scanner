@@ -2,6 +2,8 @@
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
 #include "OpenSpoolParser.h"
+#include "BambuKeyDeriver.h"
+#include "BambuTagParser.h"
 #ifndef NATIVE_TEST
   #include "ApplicationManager.h"
   #include "HardwareNFCConnection.h"
@@ -119,6 +121,15 @@ bool NFCManager::getLastOpenSpoolData(OpenSpoolData& out) {
     if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
     bool valid = lastOpenSpoolValid_;
     if (valid) out = lastOpenSpool_;
+    xSemaphoreGive(tagMutex);
+    return valid;
+}
+
+bool NFCManager::getLastBambuTagData(BambuTagData& out) {
+    if (tagMutex == nullptr) return false;
+    if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool valid = lastBambuTagValid_;
+    if (valid) out = lastBambuTag_;
     xSemaphoreGive(tagMutex);
     return valid;
 }
@@ -473,8 +484,10 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
     Serial.println("NFCManager: New spool detected, reading tag...");
     TagScanResult scan = classifyTag(uid, uidLength);
 
-    // Bambu tags use MIFARE Classic (encrypted) — we can only read the UID
     if (scan.kind == TagKind::BambuTag) {
+        BambuTagData bambuData;
+        bool readOk = readBambuTag(uid, uidLength, bambuData);
+
         if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             memcpy(currentSpool.spool_id, scan.uid_hex, sizeof(scan.uid_hex));
             memcpy(currentSpool.uid, uid, uidLength);
@@ -483,16 +496,29 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
             currentSpool.blank_tag_present = false;
             currentSpool.kind = TagKind::BambuTag;
             currentSpool.variant = NtagVariant::Unknown;
-            currentSpool.tag_data_valid = false;
+            currentSpool.tag_data_valid = readOk;
+            lastBambuTagValid_ = readOk;
+            if (readOk) lastBambuTag_ = bambuData;
             lastTigerTagValid_ = false;
-            memcpy(lastSeenUid, uid, uidLength);  // dedup: don't re-read same tag next cycle
+            lastOpenTag3DValid_ = false;
+            lastOpenSpoolValid_ = false;
+            memcpy(lastSeenUid, uid, uidLength);
             lastSeenUidLength = uidLength;
             lastSeenValid = true;
             lastSeenMs = millis();
             xSemaphoreGive(tagMutex);
         }
-        Serial.printf("NFCManager: Bambu Lab tag — UID=%s (encrypted, no data access)\n", scan.uid_hex);
-        LogBuffer::getInstance().logPrintf("Bambu Lab tag: %s (encrypted)\n", scan.uid_hex);
+
+        if (readOk) {
+            Serial.printf("NFCManager: Bambu tag — %s, %ug, #%02X%02X%02X\n",
+                          bambuData.filament_type, bambuData.weight_g,
+                          bambuData.color_r, bambuData.color_g, bambuData.color_b);
+            LogBuffer::getInstance().logPrintf("Bambu: %s %ug\n",
+                          bambuData.filament_type, bambuData.weight_g);
+        } else {
+            Serial.printf("NFCManager: Bambu tag — UID=%s (auth failed, no data)\n", scan.uid_hex);
+            LogBuffer::getInstance().logPrintf("Bambu tag: %s (no data)\n", scan.uid_hex);
+        }
         sendGenericTagMessage();
         return;
     }
@@ -2374,4 +2400,31 @@ void NFCManager::updateRecentSpoolSyncStatus(const char* spool_id, bool synced) 
 bool NFCManager::isWriteQueueEmpty() const {
     if (!writeQueue) return true;
     return uxQueueMessagesWaiting(writeQueue) == 0;
+}
+
+bool NFCManager::readBambuTag(const uint8_t* uid, uint8_t uidLength, BambuTagData& out) {
+    BambuKeys keys = deriveBambuKeys(uid, uidLength);
+    uint8_t blocks[BAMBU_BLOCK_COUNT][16];
+    uint8_t lastAuthSector = 0xFF;
+
+    for (uint8_t i = 0; i < BAMBU_BLOCK_COUNT; i++) {
+        uint8_t blockNo = BAMBU_BLOCKS[i];
+        uint8_t sector = blockNo / 4;
+
+        if (sector != lastAuthSector) {
+            if (!connection_->mifareAuthenticate(blockNo, 0x60, keys.blockKey(blockNo))) {
+                Serial.printf("NFCManager: Bambu auth failed on block %d (sector %d)\n", blockNo, sector);
+                if (i == 0) return false;
+                continue;
+            }
+            lastAuthSector = sector;
+        }
+
+        if (!connection_->mifareClassicRead(blockNo, blocks[i])) {
+            Serial.printf("NFCManager: Bambu block read failed on block %d\n", blockNo);
+            memset(blocks[i], 0, 16);
+        }
+    }
+
+    return parseBambuBlocks(blocks, out);
 }

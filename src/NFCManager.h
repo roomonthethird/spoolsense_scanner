@@ -14,6 +14,7 @@
 #include "TigerTagParser.h"
 #include "OpenSpoolParser.h"
 #include "opentag3d_lib.h"
+#include "BambuTagParser.h"
 
 // Sidecar for WRITE_ATOMIC: filled by HTTP handler, consumed by scan task.
 // All fields are optional — only those with has_* = true are applied.
@@ -77,6 +78,7 @@ public:
     bool getLastTigerTagData(TigerTagData& out);
     bool getLastOpenTag3DData(opentag3d_t& out);
     bool getLastOpenSpoolData(OpenSpoolData& out);
+    bool getLastBambuTagData(BambuTagData& out);
     // Returns reader identification string (e.g. "PN5180 v3.4", "PN532 v1.6")
     bool getNfcReaderInfo(char* buf, size_t len) const;
     void pauseScanTask();
@@ -143,6 +145,7 @@ private:
     bool executeOpenTag3DWrite(const NFCWriteRequest& request);
     bool executeOpenSpoolWrite(const NFCWriteRequest& request);
     bool executeAtomicWrite(const NFCWriteRequest& request);
+    bool readBambuTag(const uint8_t* uid, uint8_t uidLength, BambuTagData& out);
     void forceRescan();
     void sendSpoolUpdatedMessage(uint32_t request_id, NFCWriteType type, bool success);
 
@@ -173,6 +176,8 @@ private:
     bool lastOpenTag3DValid_ = false;
     OpenSpoolData lastOpenSpool_;
     bool lastOpenSpoolValid_ = false;
+    BambuTagData lastBambuTag_;
+    bool lastBambuTagValid_ = false;
 
     // Resolved Spoolman data for the current generic UID tag
     GenericTagSpoolInfo lastGenericTagSpoolInfo_ = {};
