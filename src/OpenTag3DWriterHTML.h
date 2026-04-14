@@ -604,10 +604,10 @@ const char OPENTAG3D_WRITER_HTML[] PROGMEM = R"rawliteral(
           if (dEl) dEl.value = Math.round(ot.diameter_mm * 1000);
         }
         if (ot.color_name) setVal('color_name', ot.color_name);
-        if (ot.modifiers) setVal('material_modifiers', ot.modifiers);
-        if (ot.serial_number) setVal('serial_number', ot.serial_number);
-        if (ot.measured_weight_g) setVal('measured_filament_weight_g', ot.measured_weight_g);
-        if (ot.empty_spool_g) setVal('empty_spool_weight_g', ot.empty_spool_g);
+        setVal('material_modifiers', ot.modifiers || '');
+        setVal('serial_number', ot.serial_number || '');
+        setVal('measured_filament_weight_g', ot.measured_weight_g || '');
+        setVal('empty_spool_weight_g', ot.empty_spool_g || '');
         var matEl = document.getElementById('base_material');
         if (matEl) matEl.dispatchEvent(new Event('input'));
       },

@@ -687,18 +687,22 @@ function setupReadButton(config) {
     setReadWaiting(false);
   }
 
+  var enrichTimer = null;
   function pollForEnrichment() {
+    if (enrichTimer) clearInterval(enrichTimer);
     var attempts = 0;
-    var timer = setInterval(function() {
+    enrichTimer = setInterval(function() {
       attempts++;
       if (attempts > 8) {
-        clearInterval(timer);
+        clearInterval(enrichTimer);
+        enrichTimer = null;
         if (config.showMatchBadge) config.showMatchBadge('no Spoolman match');
         return;
       }
       fetch('/api/status').then(function(r) { return r.json(); }).then(function(s) {
         if (s.spoolman && s.spoolman.spool_id > 0) {
-          clearInterval(timer);
+          clearInterval(enrichTimer);
+          enrichTimer = null;
           if (config.fillEnrichment) config.fillEnrichment(s);
           if (config.showMatchBadge) config.showMatchBadge('Spool #' + s.spoolman.spool_id + ' matched');
         }
