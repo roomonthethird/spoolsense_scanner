@@ -515,11 +515,12 @@ void NFCManager::handleNewTag(uint8_t* uid, uint8_t uidLength) {
                           bambuData.color_r, bambuData.color_g, bambuData.color_b);
             LogBuffer::getInstance().logPrintf("Bambu: %s %ug\n",
                           bambuData.filament_type, bambuData.weight_g);
+            sendBambuDetectedMessage();
         } else {
             Serial.printf("NFCManager: Bambu tag — UID=%s (auth failed, no data)\n", scan.uid_hex);
             LogBuffer::getInstance().logPrintf("Bambu tag: %s (no data)\n", scan.uid_hex);
+            sendGenericTagMessage();
         }
-        sendGenericTagMessage();
         return;
     }
 
@@ -968,6 +969,49 @@ void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
             s.primary_color[0], s.primary_color[1], s.primary_color[2],
             s.kg_remaining * 1000.0f);
     }
+
+    ApplicationManager::getInstance().sendMessage(msg);
+}
+
+void NFCManager::sendBambuDetectedMessage() {
+    if (!lastBambuTagValid_) return;
+
+    const BambuTagData& bt = lastBambuTag_;
+    AppMessage msg;
+    msg.type = AppMessageType::SPOOL_DETECTED;
+    memset(&msg.payload.spoolDetected, 0, sizeof(msg.payload.spoolDetected));
+
+    strncpy(msg.payload.spoolDetected.spool_id, currentSpool.spool_id,
+            sizeof(msg.payload.spoolDetected.spool_id) - 1);
+
+    msg.payload.spoolDetected.material_type = materialTypeFromString(bt.filament_type);
+    strncpy(msg.payload.spoolDetected.material_name, bt.filament_type,
+            sizeof(msg.payload.spoolDetected.material_name) - 1);
+
+    msg.payload.spoolDetected.primary_color[0] = bt.color_r;
+    msg.payload.spoolDetected.primary_color[1] = bt.color_g;
+    msg.payload.spoolDetected.primary_color[2] = bt.color_b;
+    msg.payload.spoolDetected.has_color = true;
+
+    msg.payload.spoolDetected.kg_remaining = bt.weight_g / 1000.0f;
+    msg.payload.spoolDetected.initial_weight_g = bt.weight_g;
+    msg.payload.spoolDetected.diameter = bt.diameter_mm;
+    msg.payload.spoolDetected.min_print_temp = bt.hotend_min;
+    msg.payload.spoolDetected.max_print_temp = bt.hotend_max;
+    msg.payload.spoolDetected.min_bed_temp = bt.bed_temp;
+    msg.payload.spoolDetected.dry_temp = bt.drying_temp;
+    msg.payload.spoolDetected.dry_time_hours = bt.drying_time;
+    msg.payload.spoolDetected.spoolman_id = -1;
+
+    strncpy(msg.payload.spoolDetected.tag_format, "bambu",
+            sizeof(msg.payload.spoolDetected.tag_format) - 1);
+
+    Serial.printf("--- BambuDetected payload ---\n");
+    Serial.printf("  uid:      %s\n", msg.payload.spoolDetected.spool_id);
+    Serial.printf("  material: %s\n", bt.filament_type);
+    Serial.printf("  color:    #%02X%02X%02X\n", bt.color_r, bt.color_g, bt.color_b);
+    Serial.printf("  weight:   %ug  diameter: %.2fmm\n", bt.weight_g, bt.diameter_mm);
+    Serial.printf("-----------------------------\n");
 
     ApplicationManager::getInstance().sendMessage(msg);
 }
@@ -2424,6 +2468,10 @@ bool NFCManager::readBambuTag(const uint8_t* uid, uint8_t uidLength, BambuTagDat
         if (!connection_->mifareClassicRead(blockNo, blocks[i])) {
             Serial.printf("NFCManager: Bambu block read failed on block %d\n", blockNo);
             memset(blocks[i], 0, 16);
+        } else {
+            Serial.printf("NFCManager: Bambu block %d: ", blockNo);
+            for (int b = 0; b < 16; b++) Serial.printf("%02X ", blocks[i][b]);
+            Serial.println();
         }
     }
 

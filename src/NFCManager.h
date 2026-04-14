@@ -146,6 +146,7 @@ private:
     bool executeOpenSpoolWrite(const NFCWriteRequest& request);
     bool executeAtomicWrite(const NFCWriteRequest& request);
     bool readBambuTag(const uint8_t* uid, uint8_t uidLength, BambuTagData& out);
+    void sendBambuDetectedMessage();
     void forceRescan();
     void sendSpoolUpdatedMessage(uint32_t request_id, NFCWriteType type, bool success);
 

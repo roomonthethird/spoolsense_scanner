@@ -39,21 +39,22 @@ bool parseBambuBlocks(const uint8_t blocks[][16], BambuTagData& out) {
     out.weight_g = readU16LE(&blocks[3][4]);
     out.diameter_mm = readFloatLE(&blocks[3][8]);
 
-    // blocks[4] = block 6: drying_temp (uint16 LE at 0), drying_time (uint16 LE at 2),
-    // bed_temp (uint16 LE at 4), hotend_min (uint16 LE at 6), hotend_max (uint16 LE at 8)
+    // blocks[4] = block 6: layout from raw data analysis
+    // [0-1] drying_temp, [2-3] drying_time, [4-7] reserved,
+    // [8-9] hotend_max, [10-11] hotend_min
     out.drying_temp = readU16LE(&blocks[4][0]);
     out.drying_time = readU16LE(&blocks[4][2]);
     out.bed_temp = readU16LE(&blocks[4][4]);
-    out.hotend_min = readU16LE(&blocks[4][6]);
     out.hotend_max = readU16LE(&blocks[4][8]);
+    out.hotend_min = readU16LE(&blocks[4][10]);
 
     // blocks[5] = block 13: Production date (null-terminated ASCII)
     memcpy(out.production_date, blocks[5], 16);
     out.production_date[19] = '\0';
     trimString(out.production_date, 19);
 
-    // blocks[6] = block 14: Filament length (uint16 LE at offset 0, in meters)
-    out.filament_length_m = readU16LE(&blocks[6][0]);
+    // blocks[6] = block 14: Filament length (uint16 LE at offset 4, in meters)
+    out.filament_length_m = readU16LE(&blocks[6][4]);
 
     // blocks[7] = block 16: Extended color data (raw 16 bytes)
     memcpy(out.color_extended, blocks[7], 16);
