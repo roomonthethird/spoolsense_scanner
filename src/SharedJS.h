@@ -658,6 +658,7 @@ function setupReadButton(config) {
   async function startRead() {
     setReadWaiting(true);
     var deadline = Date.now() + 30000;
+    var wrongKindSeen = 0;
     while (readWaiting && Date.now() < deadline) {
       try {
         var status = await fetch('/api/status').then(function(r) { return r.json(); });
@@ -668,18 +669,41 @@ function setupReadButton(config) {
             if (status.spoolman && status.spoolman.spool_id > 0) {
               config.showMatchBadge('Spool #' + status.spoolman.spool_id + ' matched');
             } else {
-              config.showMatchBadge('no Spoolman match');
+              config.showMatchBadge('Looking up Spoolman...');
+              pollForEnrichment();
             }
           }
           break;
         } else if (status.present) {
-          if (config.showMatchBadge) config.showMatchBadge(config.wrongKindMsg);
-          break;
+          wrongKindSeen++;
+          if (wrongKindSeen >= 4) {
+            if (config.showMatchBadge) config.showMatchBadge(config.wrongKindMsg);
+            break;
+          }
         }
       } catch(e) {}
       await new Promise(function(r) { setTimeout(r, 500); });
     }
     setReadWaiting(false);
+  }
+
+  function pollForEnrichment() {
+    var attempts = 0;
+    var timer = setInterval(function() {
+      attempts++;
+      if (attempts > 8) {
+        clearInterval(timer);
+        if (config.showMatchBadge) config.showMatchBadge('no Spoolman match');
+        return;
+      }
+      fetch('/api/status').then(function(r) { return r.json(); }).then(function(s) {
+        if (s.spoolman && s.spoolman.spool_id > 0) {
+          clearInterval(timer);
+          if (config.fillEnrichment) config.fillEnrichment(s);
+          if (config.showMatchBadge) config.showMatchBadge('Spool #' + s.spoolman.spool_id + ' matched');
+        }
+      }).catch(function(){});
+    }, 1000);
   }
 
   readBtn.onclick = startRead;
