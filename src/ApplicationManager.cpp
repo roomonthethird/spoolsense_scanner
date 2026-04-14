@@ -481,7 +481,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         f.tag_data_valid = true;
         f.tag_format = "unknown";
 #ifndef NATIVE_TEST
-        CurrentSpoolState spoolState;
+        CurrentSpoolState spoolState = {};
         if (NFCManager::getInstance().getCurrentSpoolState(spoolState))
             f.tag_format = tagKindToMqttFormat(spoolState.kind);
 #endif
@@ -499,6 +499,23 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
         f.max_bed_temp = s.max_bed_temp;
         f.density = s.density;
         f.diameter_mm = s.diameter;
+
+#ifndef NATIVE_TEST
+        BambuTagData bambuData;
+        if (spoolState.kind == TagKind::BambuTag && NFCManager::getInstance().getLastBambuTagData(bambuData)) {
+            strncpy(f.material_name, bambuData.filament_type, sizeof(f.material_name) - 1);
+            strncpy(f.material_type, bambuData.filament_type, sizeof(f.material_type) - 1);
+            snprintf(f.color, sizeof(f.color), "#%02X%02X%02X",
+                     bambuData.color_r, bambuData.color_g, bambuData.color_b);
+            f.initial_weight_g = bambuData.weight_g;
+            f.remaining_g = bambuData.weight_g;
+            f.min_print_temp = bambuData.hotend_min;
+            f.max_print_temp = bambuData.hotend_max;
+            f.min_bed_temp = bambuData.bed_temp;
+            f.diameter_mm = bambuData.diameter_mm;
+            f.filament_length_m = bambuData.filament_length_m;
+        }
+#endif
 
         char json[512];
         buildTagStateJson(json, sizeof(json), f);
