@@ -206,6 +206,32 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
       return html;
     }
 
+    function renderBambu(s) {
+      var t = s.bambu || {};
+      var html = '';
+      html += row('Format', 'Bambu Lab');
+      html += row('UID', s.uid || '&mdash;');
+      if (t.filament_type) html += row('Filament', t.filament_type);
+      if (t.material_variant) html += row('Variant', t.material_variant);
+      if (t.color_hex) html += row('Color', colorValue(t.color_hex));
+      if (t.weight_g !== undefined) html += row('Weight', t.weight_g + ' g');
+      if (t.diameter_mm) html += row('Diameter', t.diameter_mm + ' mm');
+      if (t.hotend_min && t.hotend_max) html += row('Nozzle Temp', t.hotend_min + ' \u2013 ' + t.hotend_max + ' \u00B0C');
+      if (t.bed_temp) html += row('Bed Temp', t.bed_temp + ' \u00B0C');
+      if (t.drying_temp) html += row('Dry', t.drying_temp + ' \u00B0C / ' + (t.drying_time || '?') + ' hrs');
+      if (t.production_date) html += row('Produced', t.production_date);
+      if (t.filament_length_m) html += row('Filament Length', t.filament_length_m + ' m');
+      if (s.spoolman) {
+        if (s.spoolman.remaining_g !== undefined) {
+          html += row('Remaining', s.spoolman.remaining_g.toFixed(1) + ' g' + spoolmanBadge());
+        }
+        if (s.spoolman.spool_id !== undefined && s.spoolman.spool_id > 0) {
+          html += row('Spoolman ID', '#' + s.spoolman.spool_id + spoolmanBadge());
+        }
+      }
+      return html;
+    }
+
     function renderGenericUid(s) {
       var html = '';
       html += row('Format', tagKindLabel(s.tag_kind));
@@ -347,6 +373,8 @@ const char READER_HTML[] PROGMEM = R"rawliteral(
         html = renderOpenTag3D(s);
       } else if (kind === 'OpenSpoolTag' && s.openspool) {
         html = renderOpenSpool(s);
+      } else if (kind === 'BambuTag' && s.bambu) {
+        html = renderBambu(s);
       } else if (kind === 'OpenPrintTag' || (s.tag_data_valid && !kind)) {
         html = renderOpenPrintTag(s);
       } else {

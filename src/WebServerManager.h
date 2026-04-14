@@ -92,6 +92,7 @@ private:
     void serializeTigerTagStatus(JsonDocument& doc);
     void serializeOpenTag3DStatus(JsonDocument& doc);
     void serializeOpenSpoolStatus(JsonDocument& doc);
+    void serializeBambuTagStatus(JsonDocument& doc);
     void serializeGenericUidStatus(JsonDocument& doc);
     void serializeOpenPrintTagStatus(JsonDocument& doc, const CurrentSpoolState& state);
     void serializeEnrichment(JsonDocument& doc);
