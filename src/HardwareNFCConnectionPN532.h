@@ -19,6 +19,8 @@ public:
     uint8_t getLastSAK() const override { return lastSAK_; }
     uint16_t getLastATQA() const override { return lastATQA_; }
     bool ntagGetVersion(uint8_t* versionOut) override;
+    bool mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t* key) override;
+    bool mifareClassicRead(uint8_t blockNo, uint8_t* buffer) override;
     void setCurrentUid(const uint8_t* uid, uint8_t length) override;
     opt_nfc_hal_t* getHal() override;
     // keepSession is ignored: PN532 manages tag activation per-page via reactivateTag()

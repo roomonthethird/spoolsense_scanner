@@ -30,6 +30,12 @@ public:
     // NTAG GET_VERSION (0x60) — returns 8-byte version info for NTAG/Ultralight EV1.
     virtual bool ntagGetVersion(uint8_t* versionOut) { return false; }
 
+    // MIFARE Classic authentication. keyType: 0x60=Key A, 0x61=Key B.
+    virtual bool mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t* key) { return false; }
+
+    // Read a single MIFARE Classic 16-byte block (requires prior authentication).
+    virtual bool mifareClassicRead(uint8_t blockNo, uint8_t* buffer) { return false; }
+
     // Set current UID for addressed read/write commands
     virtual void setCurrentUid(const uint8_t* uid, uint8_t length) = 0;
 

@@ -39,6 +39,8 @@ public:
   uint8_t mifareBlockWrite16(uint8_t blockno, uint8_t *buffer);
   bool mifareBlockWrite4(uint8_t pageno, const uint8_t *data);
   bool mifareHalt();
+  bool mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t *key,
+                          const uint8_t *uid, uint8_t uidLen);
   /*
    * Helper functions
    */

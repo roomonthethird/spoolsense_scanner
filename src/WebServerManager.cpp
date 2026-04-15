@@ -34,6 +34,7 @@
 #include "ApplicationManager.h"
 #include "ConversionUtils.h"
 #include "TigerTagParser.h"
+#include "BambuTagParser.h"
 #include "HomeAssistantManager.h"
 #include "SpoolmanManager.h"
 #include "DisplayI.h"
@@ -1150,6 +1151,29 @@ void WebServerManager::serializeOpenSpoolStatus(JsonDocument& doc) {
     if (os.max_temp > 0) obj["max_temp"] = os.max_temp;
 }
 
+void WebServerManager::serializeBambuTagStatus(JsonDocument& doc) {
+    BambuTagData bt;
+    if (!NFCManager::getInstance().getLastBambuTagData(bt) || !bt.valid) return;
+
+    JsonObject obj = doc.createNestedObject("bambu");
+    obj["filament_type"] = bt.filament_type;
+    obj["material_variant"] = bt.material_variant;
+
+    char colorHex[8];
+    snprintf(colorHex, sizeof(colorHex), "#%02X%02X%02X", bt.color_r, bt.color_g, bt.color_b);
+    obj["color_hex"] = colorHex;
+
+    obj["weight_g"] = bt.weight_g;
+    if (bt.diameter_mm > 0.0f) obj["diameter_mm"] = bt.diameter_mm;
+    if (bt.hotend_min > 0) obj["hotend_min"] = bt.hotend_min;
+    if (bt.hotend_max > 0) obj["hotend_max"] = bt.hotend_max;
+    if (bt.bed_temp > 0) obj["bed_temp"] = bt.bed_temp;
+    if (bt.drying_temp > 0) obj["drying_temp"] = bt.drying_temp;
+    if (bt.drying_time > 0) obj["drying_time"] = bt.drying_time;
+    if (bt.production_date[0]) obj["production_date"] = bt.production_date;
+    if (bt.filament_length_m > 0) obj["filament_length_m"] = bt.filament_length_m;
+}
+
 void WebServerManager::serializeGenericUidStatus(JsonDocument& doc) {
     GenericTagSpoolInfo spoolInfo;
     NFCManager::getInstance().getGenericTagSpoolInfo(spoolInfo);
@@ -1256,7 +1280,7 @@ void WebServerManager::handleApiStatus() {
             case TagKind::OpenTag3D:    serializeOpenTag3DStatus(doc); break;
             case TagKind::OpenSpoolTag: serializeOpenSpoolStatus(doc); break;
             case TagKind::GenericUidTag: serializeGenericUidStatus(doc); break;
-            case TagKind::BambuTag:     break;
+            case TagKind::BambuTag:     serializeBambuTagStatus(doc); break;
             default:                    serializeOpenPrintTagStatus(doc, state); break;
         }
 

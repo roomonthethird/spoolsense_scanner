@@ -27,6 +27,7 @@ struct TagStateFields {
     int16_t max_bed_temp;
     float density;
     float diameter_mm;
+    uint32_t filament_length_m;
 };
 
 // Build full tag state JSON. Optional temp/density/diameter fields included only when non-zero.
@@ -50,8 +51,9 @@ inline size_t buildTagStateJson(char* out, size_t outSize, const TagStateFields&
     if (f.max_print_temp != 0) doc["max_print_temp"] = f.max_print_temp;
     if (f.min_bed_temp != 0)   doc["min_bed_temp"] = f.min_bed_temp;
     if (f.max_bed_temp != 0)   doc["max_bed_temp"] = f.max_bed_temp;
-    if (f.density > 0.0f)      doc["density"] = f.density;
-    if (f.diameter_mm > 0.0f)  doc["diameter_mm"] = f.diameter_mm;
+    if (f.density > 0.0f)           doc["density"] = f.density;
+    if (f.diameter_mm > 0.0f)       doc["diameter_mm"] = f.diameter_mm;
+    if (f.filament_length_m > 0)    doc["filament_length_m"] = f.filament_length_m;
 
     return serializeJson(doc, out, outSize);
 }

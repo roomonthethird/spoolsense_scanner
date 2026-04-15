@@ -26,3 +26,5 @@ build/
 lancedb/
 .mex/
 .ragcode/
+.DS_Store
+.superpowers/
