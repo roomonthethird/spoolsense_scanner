@@ -500,6 +500,16 @@ void HardwareNFCConnection::logDiagnostics() {
     #endif
 }
 
+bool HardwareNFCConnection::mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t* key) {
+    if (!iso14443a_) return false;
+    return iso14443a_->mifareAuthenticate(blockNo, keyType, key, currentUid_, 4);
+}
+
+bool HardwareNFCConnection::mifareClassicRead(uint8_t blockNo, uint8_t* buffer) {
+    if (!iso14443a_) return false;
+    return iso14443a_->mifareBlockRead(blockNo, buffer);
+}
+
 bool HardwareNFCConnection::ntagGetVersion(uint8_t* versionOut) {
     // Returns cached version from detectTag() — GET_VERSION must be sent while the tag
     // is in ACTIVE state (after SELECT, before HALT). Can't send it here because the

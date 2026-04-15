@@ -77,7 +77,7 @@ const char* tagKindToMqttFormat(TagKind kind) {
         case TagKind::OpenTag3D:    return "opentag3d";
         case TagKind::OpenSpoolTag: return "openspool";
         case TagKind::GenericUidTag: return "uid_only";
-        case TagKind::BambuTag:     return "uid_only";
+        case TagKind::BambuTag:     return "bambu";
         default:                    return "unknown";
     }
 }
