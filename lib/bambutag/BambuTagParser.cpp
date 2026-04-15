@@ -6,9 +6,10 @@ static uint16_t readU16LE(const uint8_t* p) {
 }
 
 static float readFloatLE(const uint8_t* p) {
-    union { uint32_t i; float f; } u;
-    u.i = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-    return u.f;
+    uint32_t bits = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    float val;
+    memcpy(&val, &bits, sizeof(float));
+    return val;
 }
 
 static void trimString(char* str, size_t max_len) {
@@ -39,9 +40,8 @@ bool parseBambuBlocks(const uint8_t blocks[][16], BambuTagData& out) {
     out.weight_g = readU16LE(&blocks[3][4]);
     out.diameter_mm = readFloatLE(&blocks[3][8]);
 
-    // blocks[4] = block 6: layout from raw data analysis
-    // [0-1] drying_temp, [2-3] drying_time, [4-7] reserved,
-    // [8-9] hotend_max, [10-11] hotend_min
+    // blocks[4] = block 6: [0-1] drying_temp, [2-3] drying_time, [4-5] bed_temp,
+    // [6-7] unused, [8-9] hotend_max, [10-11] hotend_min
     out.drying_temp = readU16LE(&blocks[4][0]);
     out.drying_time = readU16LE(&blocks[4][2]);
     out.bed_temp = readU16LE(&blocks[4][4]);

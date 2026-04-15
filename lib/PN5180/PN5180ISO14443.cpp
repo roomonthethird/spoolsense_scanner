@@ -269,7 +269,9 @@ bool PN5180ISO14443::mifareHalt() {
 
 bool PN5180ISO14443::mifareAuthenticate(uint8_t blockNo, uint8_t keyType, const uint8_t *key,
                                         const uint8_t *uid, uint8_t uidLen) {
-	return mfcAuthenticate(key, keyType, blockNo, uid);
+	if (uidLen < 4) return false;
+	// MIFARE Classic auth uses last 4 bytes of UID (matters for 7-byte UIDs)
+	return mfcAuthenticate(key, keyType, blockNo, uid + (uidLen - 4));
 }
 
 uint8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {

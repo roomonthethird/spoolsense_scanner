@@ -409,7 +409,7 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
 }
 
 /*
- * MFC_AUTHENTICATE - 0x1C
+ * MFC_AUTHENTICATE - 0x0C
  * MIFARE Classic authentication using the PN5180 internal Crypto1 engine.
  * Returns true if authentication succeeded (response byte == 0).
  */

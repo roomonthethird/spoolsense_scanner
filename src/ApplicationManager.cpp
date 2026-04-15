@@ -512,6 +512,7 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
             f.min_print_temp = bambuData.hotend_min;
             f.max_print_temp = bambuData.hotend_max;
             f.min_bed_temp = bambuData.bed_temp;
+            f.max_bed_temp = bambuData.bed_temp;
             f.diameter_mm = bambuData.diameter_mm;
             f.filament_length_m = bambuData.filament_length_m;
         }

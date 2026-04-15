@@ -120,7 +120,7 @@ public:
   /* cmd 0x0a */
   uint8_t * readData(int len, uint8_t *buffer = NULL);
 
-  /* cmd 0x1C */
+  /* cmd 0x0C */
   bool mfcAuthenticate(const uint8_t *key, uint8_t keyType, uint8_t blockNo, const uint8_t *uid);
 
   /* cmd 0x11 */
