@@ -689,7 +689,7 @@ bool NFCManager::readAndParseTag(uint8_t* uid, uint8_t uid_length) {
 
     Serial.printf("NFCManager: Parsed spool %s\n", currentSpool.spool_id);
 
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
 
     // Update dedup state
     memcpy(lastSeenUid, uid, uid_length);
@@ -801,7 +801,7 @@ bool NFCManager::formatNewSpool() {
 
                 if (queueEmpty) {
                     // No batched writes - send SpoolDetected immediately
-                    sendSpoolDetectedMessage();
+                    sendOpenPrintTagMessage();
                     Serial.println("NFCManager: formatNewSpool() complete - verified (queue empty, sent SpoolDetected)");
                 } else {
                     // Batched writes pending - set suppression flag
@@ -845,7 +845,7 @@ bool NFCManager::formatNewSpool() {
 
     if (queueEmpty) {
         // No batched writes - send SpoolDetected immediately
-        sendSpoolDetectedMessage();
+        sendOpenPrintTagMessage();
         Serial.println("NFCManager: formatNewSpool() complete - unverified (queue empty, sent SpoolDetected)");
     } else {
         // Batched writes pending - set suppression flag
@@ -859,7 +859,7 @@ bool NFCManager::formatNewSpool() {
     return true;
 }
 
-void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
+void NFCManager::sendOpenPrintTagMessage(bool suppress_spoolman_sync) {
     if (!currentSpool.tag_data_valid) {
         return;
     }
@@ -1535,9 +1535,9 @@ void NFCManager::processWriteQueue() {
             suppressReDetectionUid_[0] = '\0';
             batchHadSuppressSync_ = false;
 
-            // Send SpoolDetected under mutex — sendSpoolDetectedMessage reads currentSpool.tag_data
+            // Send SpoolDetected under mutex — sendOpenPrintTagMessage reads currentSpool.tag_data
             if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                sendSpoolDetectedMessage(hadSuppressSync);
+                sendOpenPrintTagMessage(hadSuppressSync);
                 xSemaphoreGive(tagMutex);
             }
         }
@@ -1585,7 +1585,7 @@ bool NFCManager::writeRawTag() {
                 currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;  // Force re-detection on next scan
                 addToRecentSpools();
-                sendSpoolDetectedMessage();
+                sendOpenPrintTagMessage();
                 xSemaphoreGive(tagMutex);
 
                 rawWritePending_ = false;
@@ -1618,7 +1618,7 @@ bool NFCManager::writeRawTag() {
     currentSpool.kind = TagKind::OpenPrintTag;
     lastSeenValid = false;
     addToRecentSpools();
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
     xSemaphoreGive(tagMutex);
 
     rawWritePending_ = false;
@@ -1964,7 +1964,7 @@ bool NFCManager::executeAtomicWrite(const NFCWriteRequest& request) {
     currentSpool.blank_tag_present = false;
     currentSpool.kind = TagKind::OpenPrintTag;
     addToRecentSpools();
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
     xSemaphoreGive(tagMutex);
 
     Serial.println("NFCManager: WRITE_ATOMIC complete");
@@ -2071,7 +2071,7 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
                 currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;
                 addToRecentSpools();
-                sendSpoolDetectedMessage();
+                sendOpenPrintTagMessage();
                 xSemaphoreGive(tagMutex);
                 return true;
             }

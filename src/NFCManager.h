@@ -130,7 +130,7 @@ private:
                               uint8_t* outBuf, uint16_t outBufSize);
     bool formatNewSpool();
     TagScanResult classifyTag(const uint8_t* uid, uint8_t uid_length);
-    void sendSpoolDetectedMessage(bool suppress_spoolman_sync = false);
+    void sendOpenPrintTagMessage(bool suppress_spoolman_sync = false);
     void sendBlankTagMessage();
     void sendGenericTagMessage();
     void sendTigerTagMessage(const TigerTagData& tt);
