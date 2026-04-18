@@ -96,6 +96,16 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
                 </div>
               </div>
             </div>
+            <div class="toggle-row" style="margin-top:10px">
+              <div>
+                <span id="wifi_keep_awake_label" class="toggle-label">Keep WiFi radio awake</span>
+                <div style="font-size:11px;color:#71717A;margin-top:4px">Disables modem sleep. Improves RSSI and response time on weak signals, uses slightly more power.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="wifi_keep_awake" aria-labelledby="wifi_keep_awake_label" />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
           </section>
 
           <section>
@@ -126,9 +136,9 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           <section>
             <h2 class="section-title">Spoolman</h2>
             <div class="toggle-row" style="margin-bottom:14px">
-              <span class="toggle-label">Enable Spoolman</span>
+              <span id="spoolman_on_label" class="toggle-label">Enable Spoolman</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="spoolman_on" />
+                <input type="checkbox" id="spoolman_on" aria-labelledby="spoolman_on_label" />
                 <span class="toggle-track"></span>
               </label>
             </div>
@@ -151,9 +161,9 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
             <h2 class="section-title">PrusaLink</h2>
             <div class="hint" style="margin-bottom:12px">Connect to a Prusa printer for automatic filament tracking. Get the API key from your printer's web interface.</div>
             <div class="toggle-row" style="margin-bottom:14px">
-              <span class="toggle-label">Enable PrusaLink</span>
+              <span id="prusalink_on_label" class="toggle-label">Enable PrusaLink</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="prusalink_on" />
+                <input type="checkbox" id="prusalink_on" aria-labelledby="prusalink_on_label" />
                 <span class="toggle-track"></span>
               </label>
             </div>
@@ -185,36 +195,36 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
             <div class="hint" style="margin-bottom:12px">Enable or disable optional hardware peripherals. Changes take effect after reboot.</div>
             <div style="display:grid;gap:10px">
               <div class="toggle-row">
-                <span class="toggle-label">LCD Display</span>
+                <span id="lcd_enabled_label" class="toggle-label">LCD Display</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="lcd_enabled" />
+                  <input type="checkbox" id="lcd_enabled" aria-labelledby="lcd_enabled_label" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="toggle-row">
-                <span class="toggle-label">Status LED</span>
+                <span id="led_enabled_label" class="toggle-label">Status LED</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="led_enabled" />
+                  <input type="checkbox" id="led_enabled" aria-labelledby="led_enabled_label" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="toggle-row">
-                <span class="toggle-label">3x4 Matrix Keypad</span>
+                <span id="keypad_enabled_label" class="toggle-label">3x4 Matrix Keypad</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="keypad_enabled" />
+                  <input type="checkbox" id="keypad_enabled" aria-labelledby="keypad_enabled_label" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="toggle-row">
-                <span class="toggle-label">TFT Display (240x240)</span>
+                <span id="tft_enabled_label" class="toggle-label">TFT Display (240x240)</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="tft_enabled" />
+                  <input type="checkbox" id="tft_enabled" aria-labelledby="tft_enabled_label" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="toggle-row" id="tft_driver_row" style="display:none">
-                <span class="toggle-label">TFT Driver</span>
-                <select id="tft_driver" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
+                <span id="tft_driver_label" class="toggle-label">TFT Driver</span>
+                <select id="tft_driver" aria-labelledby="tft_driver_label" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
                   <option value="st7789">ST7789 (square)</option>
                   <option value="gc9a01">GC9A01 (round)</option>
                 </select>
@@ -222,15 +232,15 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
             </div>
             <div style="display:grid;gap:10px">
               <div class="toggle-row">
-                <span class="toggle-label">Bambu AMS Dashboard (TFT)</span>
+                <span id="bambu_dashboard_label" class="toggle-label">Bambu AMS Dashboard (TFT)</span>
                 <label class="toggle-switch">
-                  <input type="checkbox" id="bambu_dashboard" />
+                  <input type="checkbox" id="bambu_dashboard" aria-labelledby="bambu_dashboard_label" />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="toggle-row">
-                <span class="toggle-label">NFC Reader</span>
-                <select id="nfc_reader" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
+                <span id="nfc_reader_label" class="toggle-label">NFC Reader</span>
+                <select id="nfc_reader" aria-labelledby="nfc_reader_label" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
                   <option value="pn5180">PN5180 (ISO15693 + ISO14443A)</option>
                   <option value="pn532">PN532 (ISO14443A only)</option>
                 </select>
@@ -284,6 +294,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       });
       if (cfg.nfc_reader) document.getElementById('nfc_reader').value = cfg.nfc_reader;
       document.getElementById('bambu_dashboard').checked = !!cfg.bambu_dashboard;
+      document.getElementById('wifi_keep_awake').checked = !!cfg.wifi_keep_awake;
       maybeSetValue('moonraker_url', cfg.moonraker_url);
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
@@ -342,7 +353,8 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         prusalink_on: document.getElementById('prusalink_on').checked ? 1 : 0,
         prusalink_url: document.getElementById('prusalink_url').value.trim(),
         prusalink_api_key: document.getElementById('prusalink_api_key').value,
-        bambu_dashboard: document.getElementById('bambu_dashboard').checked ? 1 : 0
+        bambu_dashboard: document.getElementById('bambu_dashboard').checked ? 1 : 0,
+        wifi_keep_awake: document.getElementById('wifi_keep_awake').checked ? 1 : 0
       };
 
       fetch('/api/config', {
