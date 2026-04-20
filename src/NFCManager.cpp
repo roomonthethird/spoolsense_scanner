@@ -689,7 +689,7 @@ bool NFCManager::readAndParseTag(uint8_t* uid, uint8_t uid_length) {
 
     Serial.printf("NFCManager: Parsed spool %s\n", currentSpool.spool_id);
 
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
 
     // Update dedup state
     memcpy(lastSeenUid, uid, uid_length);
@@ -801,7 +801,7 @@ bool NFCManager::formatNewSpool() {
 
                 if (queueEmpty) {
                     // No batched writes - send SpoolDetected immediately
-                    sendSpoolDetectedMessage();
+                    sendOpenPrintTagMessage();
                     Serial.println("NFCManager: formatNewSpool() complete - verified (queue empty, sent SpoolDetected)");
                 } else {
                     // Batched writes pending - set suppression flag
@@ -845,7 +845,7 @@ bool NFCManager::formatNewSpool() {
 
     if (queueEmpty) {
         // No batched writes - send SpoolDetected immediately
-        sendSpoolDetectedMessage();
+        sendOpenPrintTagMessage();
         Serial.println("NFCManager: formatNewSpool() complete - unverified (queue empty, sent SpoolDetected)");
     } else {
         // Batched writes pending - set suppression flag
@@ -859,7 +859,7 @@ bool NFCManager::formatNewSpool() {
     return true;
 }
 
-void NFCManager::sendSpoolDetectedMessage(bool suppress_spoolman_sync) {
+void NFCManager::sendOpenPrintTagMessage(bool suppress_spoolman_sync) {
     if (!currentSpool.tag_data_valid) {
         return;
     }
@@ -1535,9 +1535,9 @@ void NFCManager::processWriteQueue() {
             suppressReDetectionUid_[0] = '\0';
             batchHadSuppressSync_ = false;
 
-            // Send SpoolDetected under mutex — sendSpoolDetectedMessage reads currentSpool.tag_data
+            // Send SpoolDetected under mutex — sendOpenPrintTagMessage reads currentSpool.tag_data
             if (xSemaphoreTake(tagMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                sendSpoolDetectedMessage(hadSuppressSync);
+                sendOpenPrintTagMessage(hadSuppressSync);
                 xSemaphoreGive(tagMutex);
             }
         }
@@ -1585,7 +1585,7 @@ bool NFCManager::writeRawTag() {
                 currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;  // Force re-detection on next scan
                 addToRecentSpools();
-                sendSpoolDetectedMessage();
+                sendOpenPrintTagMessage();
                 xSemaphoreGive(tagMutex);
 
                 rawWritePending_ = false;
@@ -1618,7 +1618,7 @@ bool NFCManager::writeRawTag() {
     currentSpool.kind = TagKind::OpenPrintTag;
     lastSeenValid = false;
     addToRecentSpools();
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
     xSemaphoreGive(tagMutex);
 
     rawWritePending_ = false;
@@ -1759,16 +1759,82 @@ bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
     if (!validateWriteUid(request.expected_spool_id, "WRITE_TIGERTAG")) return false;
     if (!checkWriteCapacity(4, 10, "WRITE_TIGERTAG")) return false;
 
-    bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
-    if (ok) {
-        Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
-        LogBuffer::getInstance().logPrintf("Write TigerTag: OK\n");
-        forceRescan();
-    } else {
-        Serial.println("NFCManager: WRITE_TIGERTAG failed");
-        LogBuffer::getInstance().logPrintf("Write TigerTag: FAILED\n");
+    // Pre-read current tag contents so we can write only the pages that actually changed.
+    // TigerTag has a fixed binary layout across pages 4–13, so byte offsets never shift
+    // and page-granular partial writes are safe.
+    uint8_t current[40];
+    uint16_t bytesRead = connection_->readISO14443Pages(4, 10, current, sizeof(current), true);
+    if (bytesRead < 40) {
+        Serial.printf("NFCManager: WRITE_TIGERTAG pre-read returned %u bytes, falling back to full write\n",
+                      bytesRead);
+        LogBuffer::getInstance().logPrintf("Write TigerTag: pre-read failed, full write\n");
+        bool ok = connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40);
+        if (ok) {
+            Serial.println("NFCManager: WRITE_TIGERTAG succeeded");
+            LogBuffer::getInstance().logPrintf("Write TigerTag: OK\n");
+            forceRescan();
+        } else {
+            Serial.println("NFCManager: WRITE_TIGERTAG failed");
+            LogBuffer::getInstance().logPrintf("Write TigerTag: FAILED\n");
+        }
+        return ok;
     }
-    return ok;
+
+    // Build contiguous runs of changed pages. 10 pages alternating → at most 5 runs.
+    struct PageRun { uint8_t startPage; uint8_t pageCount; };
+    PageRun runs[5];
+    uint8_t runCount = 0;
+    bool inRun = false;
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        bool changed = memcmp(&request.data.tigertag_data[i * 4], &current[i * 4], 4) != 0;
+        if (changed) {
+            if (!inRun) {
+                runs[runCount].startPage = 4 + i;
+                runs[runCount].pageCount = 1;
+                inRun = true;
+            } else {
+                runs[runCount].pageCount++;
+            }
+        } else if (inRun) {
+            runCount++;
+            inRun = false;
+        }
+    }
+    if (inRun) runCount++;
+
+    if (runCount == 0) {
+        Serial.println("NFCManager: WRITE_TIGERTAG no changes, skipping write");
+        LogBuffer::getInstance().logPrintf("Write TigerTag: no changes\n");
+        return true;
+    }
+
+    uint8_t totalPages = 0;
+    for (uint8_t r = 0; r < runCount; ++r) {
+        const PageRun& run = runs[r];
+        const uint8_t* data = request.data.tigertag_data + (run.startPage - 4) * 4;
+        if (!connection_->writeISO14443Pages(run.startPage, run.pageCount, data, run.pageCount * 4)) {
+            Serial.printf("NFCManager: WRITE_TIGERTAG run %u failed (page %u, %u pages), attempting full rewrite\n",
+                          r, run.startPage, run.pageCount);
+            LogBuffer::getInstance().logPrintf("Write TigerTag: run failed, full rewrite\n");
+            if (connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40)) {
+                Serial.println("NFCManager: WRITE_TIGERTAG full rewrite succeeded");
+                LogBuffer::getInstance().logPrintf("Write TigerTag: OK (full rewrite)\n");
+                forceRescan();
+                return true;
+            }
+            Serial.println("NFCManager: WRITE_TIGERTAG full rewrite failed");
+            LogBuffer::getInstance().logPrintf("Write TigerTag: FAILED\n");
+            return false;
+        }
+        totalPages += run.pageCount;
+    }
+
+    Serial.printf("NFCManager: WRITE_TIGERTAG wrote %u/10 pages in %u run(s)\n", totalPages, runCount);
+    LogBuffer::getInstance().logPrintf("Write TigerTag: OK (%u/10 pages, %u run%s)\n",
+                                       totalPages, runCount, runCount == 1 ? "" : "s");
+    forceRescan();
+    return true;
 }
 
 bool NFCManager::executeOpenTag3DWrite(const NFCWriteRequest& request) {
@@ -1964,7 +2030,7 @@ bool NFCManager::executeAtomicWrite(const NFCWriteRequest& request) {
     currentSpool.blank_tag_present = false;
     currentSpool.kind = TagKind::OpenPrintTag;
     addToRecentSpools();
-    sendSpoolDetectedMessage();
+    sendOpenPrintTagMessage();
     xSemaphoreGive(tagMutex);
 
     Serial.println("NFCManager: WRITE_ATOMIC complete");
@@ -2071,7 +2137,7 @@ bool NFCManager::executeWrite(const NFCWriteRequest& request) {
                 currentSpool.kind = TagKind::OpenPrintTag;
                 lastSeenValid = false;
                 addToRecentSpools();
-                sendSpoolDetectedMessage();
+                sendOpenPrintTagMessage();
                 xSemaphoreGive(tagMutex);
                 return true;
             }
