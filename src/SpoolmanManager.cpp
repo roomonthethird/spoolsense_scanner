@@ -1256,6 +1256,14 @@ bool SpoolmanManager::lookupSpoolByUid(const char* uid, SpoolDetails& outDetails
     return ok;
 }
 
+void SpoolmanManager::setPendingLink(int32_t spoolId) {
+    // Store timestamp before ID so that any reader seeing a valid ID is
+    // guaranteed the timestamp is already set (happens-before).
+    pendingLinkSetAt_.store(millis());
+    pendingLinkSpoolId_.store(spoolId);
+    Serial.printf("SpoolmanManager: Pending link set for spool %d\n", spoolId);
+}
+
 float SpoolmanManager::deductFromSpoolman(const char* uid, float grams) {
     if (!isConfigured()) return 0.0f;
     if (xSemaphoreTake(httpMutex_, HTTP_MUTEX_TIMEOUT) != pdTRUE) {
@@ -1328,6 +1336,32 @@ bool SpoolmanManager::syncSpool(const SpoolmanSyncRequest& req, int& resolvedSpo
 
     resolvedSpoolmanId = -1;
     bool success = false;
+
+    // If the writer pre-registered a spool to link, consume it and patch nfc_id before syncing.
+    // This prevents auto-sync from creating a duplicate when a pre-selected spool exists.
+    // Read timestamp before exchange: setPendingLink stores time before ID, so a valid ID
+    // guarantees the timestamp is already set (no race window on the age check).
+    uint32_t linkSetAt = pendingLinkSetAt_.load();
+    int32_t linkSpoolId = pendingLinkSpoolId_.exchange(-1);
+    if (linkSpoolId > 0) {
+        uint32_t age = millis() - linkSetAt;
+        if (age < PENDING_LINK_TIMEOUT_MS) {
+            char patchBody[64];
+            snprintf(patchBody, sizeof(patchBody), "{\"extra\":{\"nfc_id\":\"\\\"%s\\\"\"}}", req.spool_id);
+            char patchPath[48];
+            snprintf(patchPath, sizeof(patchPath), "/api/v1/spool/%d", linkSpoolId);
+            String patchResp;
+            int patchCode = httpPatch(patchPath, patchBody, patchResp);
+            if (patchCode == 200) {
+                storeCachedSpoolmanId(req.spool_id, linkSpoolId);
+                Serial.printf("SpoolmanManager: Linked nfc_id=%s to spool %d via pending link\n", req.spool_id, linkSpoolId);
+            } else {
+                Serial.printf("SpoolmanManager: Pending link PATCH failed (HTTP %d) for spool %d\n", patchCode, linkSpoolId);
+            }
+        } else {
+            Serial.printf("SpoolmanManager: Pending link for spool %d expired (%ums old), discarding\n", linkSpoolId, age);
+        }
+    }
 
     // Prefer a known-good ID for this spool UID over potentially stale tag data.
     int32_t preferredSpoolmanId = req.spoolman_id;

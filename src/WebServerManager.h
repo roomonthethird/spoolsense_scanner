@@ -69,6 +69,7 @@ private:
     void handleApiRegisterUid();
     void handleApiSpoolmanSpools();
     void handleApiSpoolmanLink();
+    void handleApiSpoolmanPendingLink();
     void handleApiSpoolmanFindVendor();
     void handleApiSpoolmanFindFilament();
     void handleApiSpoolmanSaveEnrichment();

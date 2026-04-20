@@ -136,7 +136,8 @@ bool WebServerManager::begin(bool apMode, uint16_t port) {
     _server.on("/api/write-openspool", HTTP_POST, [this]() { handleApiWriteOpenSpool(); });
     _server.on("/api/register-uid",    HTTP_POST, [this]() { handleApiRegisterUid(); });
     _server.on("/api/spoolman/spools", HTTP_GET,  [this]() { handleApiSpoolmanSpools(); });
-    _server.on("/api/spoolman/link",   HTTP_POST, [this]() { handleApiSpoolmanLink(); });
+    _server.on("/api/spoolman/link",         HTTP_POST, [this]() { handleApiSpoolmanLink(); });
+    _server.on("/api/spoolman/pending-link", HTTP_POST, [this]() { handleApiSpoolmanPendingLink(); });
     _server.on("/api/spoolman/find-vendor",     HTTP_GET,  [this]() { handleApiSpoolmanFindVendor(); });
     _server.on("/api/spoolman/find-filament",   HTTP_GET,  [this]() { handleApiSpoolmanFindFilament(); });
     _server.on("/api/spoolman/save-enrichment", HTTP_POST, [this]() { handleApiSpoolmanSaveEnrichment(); });
@@ -612,6 +613,26 @@ void WebServerManager::handleApiSpoolmanLink() {
     }
 
     xSemaphoreGive(g_httpMutex);
+    _server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebServerManager::handleApiSpoolmanPendingLink() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, _server.arg("plain"))) {
+        sendError(400, "Invalid JSON");
+        return;
+    }
+
+    int spoolId = doc["spool_id"] | -1;
+    if (spoolId <= 0) {
+        sendError(400, "spool_id required");
+        return;
+    }
+
+    SpoolmanManager::getInstance().setPendingLink(spoolId);
+    Serial.printf("WebServerManager: Pending link set for spool %d\n", spoolId);
     _server.send(200, "application/json", "{\"success\":true}");
 }
 

@@ -371,6 +371,7 @@ function prefillFromTag(fieldMap) {
 
 var _spoolmanPickerSpools = [];
 var _spoolmanPickerFieldMap = {};
+var _selectedSpoolId = -1;
 
 function renderSpoolmanPicker(containerId, fieldMap) {
   var container = document.getElementById(containerId);
@@ -434,6 +435,7 @@ function filterSpoolmanPicker(spools, query, fieldMap) {
 }
 
 function selectSpoolmanSpool(spoolId) {
+  _selectedSpoolId = spoolId;
   var spool = _spoolmanPickerSpools.find(function(s) { return s.id === spoolId; });
   if (spool) fillFromSpoolman(spool, _spoolmanPickerFieldMap);
 }
@@ -555,6 +557,17 @@ async function sharedWriteFlow(config) {
   statusView.classList.remove('hidden');
   backBtn.classList.add('hidden');
   anotherBtn.classList.add('hidden');
+
+  if (_selectedSpoolId > 0) {
+    try {
+      await api('/api/spoolman/pending-link', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({spool_id: _selectedSpoolId})
+      });
+    } catch(e) {}
+    _selectedSpoolId = -1;
+  }
 
   try {
     var presentStatus = await waitForTag(8000);
