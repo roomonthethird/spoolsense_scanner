@@ -1814,8 +1814,16 @@ bool NFCManager::executeTigerTagWrite(const NFCWriteRequest& request) {
         const PageRun& run = runs[r];
         const uint8_t* data = request.data.tigertag_data + (run.startPage - 4) * 4;
         if (!connection_->writeISO14443Pages(run.startPage, run.pageCount, data, run.pageCount * 4)) {
-            Serial.printf("NFCManager: WRITE_TIGERTAG failed at run %u (page %u, %u pages)\n",
+            Serial.printf("NFCManager: WRITE_TIGERTAG run %u failed (page %u, %u pages), attempting full rewrite\n",
                           r, run.startPage, run.pageCount);
+            LogBuffer::getInstance().logPrintf("Write TigerTag: run failed, full rewrite\n");
+            if (connection_->writeISO14443Pages(4, 10, request.data.tigertag_data, 40)) {
+                Serial.println("NFCManager: WRITE_TIGERTAG full rewrite succeeded");
+                LogBuffer::getInstance().logPrintf("Write TigerTag: OK (full rewrite)\n");
+                forceRescan();
+                return true;
+            }
+            Serial.println("NFCManager: WRITE_TIGERTAG full rewrite failed");
             LogBuffer::getInstance().logPrintf("Write TigerTag: FAILED\n");
             return false;
         }
