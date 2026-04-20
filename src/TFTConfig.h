@@ -95,7 +95,7 @@ public:
     }
 };
 
-#else // WROOM
+#else // WROOM or C3
 
 class LGFX : public lgfx::LGFX_Device {
     lgfx::Panel_ST7789  _panel_st7789;
@@ -105,10 +105,15 @@ class LGFX : public lgfx::LGFX_Device {
 
 public:
     LGFX(TFTDriver driver = TFTDriver::ST7789) {
-        // SPI bus — VSPI. PN5180 uses HSPI via dedicated SPIClass instance.
+        // SPI bus — WROOM uses VSPI (PN5180 on HSPI). C3 has no VSPI; TFT is
+        // out of scope for C3 builds but LGFX must still link, so fall back to SPI2.
         {
             auto cfg = _bus_instance.config();
+#if defined(BOARD_ESP32_C3)
+            cfg.spi_host   = SPI2_HOST;  // C3 only has SPI2 — TFT not supported at runtime
+#else
             cfg.spi_host   = VSPI_HOST;
+#endif
             cfg.spi_mode   = 0;
             cfg.freq_write = 40000000;
             cfg.freq_read  = 16000000;
