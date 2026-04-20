@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.7.3] - 2026-04-20
+
+### Added
+
+- **WiFi keep-awake toggle** — new config option disables ESP32 modem sleep so the scanner stays consistently reachable on the network, at the cost of slightly higher idle current. Defaults off. (#163)
+- **`roomonthethird` case files** — community-contributed STEP/STL/F3D case models for the NFC reader, under `usermods/roomonthethird/`. (#165)
+
+### Improved
+
+- **TigerTag partial writes** — writes pre-read pages 4–13 and only send pages whose contents actually changed (grouped into contiguous runs). Full-rewrite fallback on any run failure preserves tag consistency. Reduces NFC transaction time and tag wear on field-level edits. (#13, #164)
+
+### Changed
+
+- **`sendSpoolDetectedMessage` renamed to `sendOpenPrintTagMessage`** — original name was misleading; the function only fires for OpenPrintTag detections. Internal rename, no user-facing behavior change. (#159, #162)
+
+---
+
+## [1.7.2] - 2026-04-14
+
+### Added
+
+- **Bambu Lab MIFARE Classic tag reading** — scanner authenticates to Bambu tags using HKDF-derived MIFARE Classic keys and decodes material, color, weight, remaining filament length, nozzle/bed temperature, and dry time. Published via MQTT `tag/state` and `/api/status`, and shown on the reader page alongside other tag formats. (#24)
+
+### Changed
+
+- Added `.superpowers` and `.DS_Store` to `.gitignore`.
+
+---
+
+## [1.7.1] - 2026-04-13
+
+### Added
+
+- **Pre-emptive spool link in writer flow** — when writing a tag after picking an existing Spoolman spool, the picker selection now links the spool's `nfc_id` to the written tag instead of the auto-sync creating a duplicate Spoolman entry. (#130)
+- **Writer Read enrichment polling** — writer pages poll briefly after a tag read to let Spoolman enrichment complete before rendering, plus a format-detection grace period. Avoids partially-populated forms. (#101)
+
+### Fixed
+
+- Writer Read now restores all fields for a full round-trip (prior behavior left some fields blank). (#101)
+- Clear stale fields and cancel prior enrichment timer when starting a new Read.
+- Skip `remaining_g` in enrichment payloads when the value is 0 to avoid wiping valid weight. (#128)
+- Default `initial_weight` to 1000g and derive `remaining` when Spoolman has no weight set. (#128)
+- Firefox stale-cache `ReferenceError` on writer pages — shared CSS/JS cache now versioned via `FIRMWARE_VERSION`. (#151)
+- Timestamp ordering in pending-link flow to prevent a write-vs-sync race condition.
+
+### Changed
+
+- **Pinned `espressif32@6.10.0`** in `platformio.ini` to prevent auto-upgrade to Arduino 3.x (breaking API changes in Arduino 3.x — e.g. `WiFiClient` includes, `esp_task_wdt_init` signature).
+
+---
+
 ## [1.7.0] - 2026-04-11
 
 ### Added
