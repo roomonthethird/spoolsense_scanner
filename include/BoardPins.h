@@ -84,6 +84,62 @@
   #define PIN_TFT_RST        9
   #define PIN_TFT_BL        -1
 
+#elif defined(BOARD_ESP32_C3)
+  // --- ESP32-C3 SuperMini pin mapping (HORNAXYS, Waveshare, etc.) ---
+  // Scoped variant: NFC SPI reader + I2C LCD + WS2812 only. No TFT, no keypad.
+  // Only one usable SPI controller, so TFT sharing is explicitly disabled here.
+  // Exposed GPIO: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21.
+  // Strap pins on C3: GPIO 2, 8, 9 — these sample their state at POR to select
+  // boot mode. GPIO 2 must be HIGH, GPIO 9 HIGH for SPI-flash boot (LOW =
+  // download), GPIO 8 controls boot-log output. GPIO 2 is intentionally left
+  // unused so the board's own pull-up handles it — do not wire anything that
+  // could drive GPIO 2 LOW at POR.
+  // PN5180 SPI
+  #define PIN_PN5180_SCK   4
+  #define PIN_PN5180_MISO  5
+  #define PIN_PN5180_MOSI  6
+  #define PIN_PN5180_NSS   7
+  #define PIN_PN5180_BUSY  3
+  #define PIN_PN5180_RST   0   // Non-strap GPIO — avoids GPIO 2 strap-pin risk if module drives RST low at POR
+  #define PIN_PN5180_IRQ   10
+  // GPIO 20/21 are the C3's UART0 default pins. With ARDUINO_USB_CDC_ON_BOOT=1
+  // (set in platformio.ini), Serial routes to USB-CDC and UART0 is free for
+  // reuse as plain GPIO. Do not re-init UART0 or change the USB-CDC flag
+  // without reassigning these pins first.
+  #define PIN_PN5180_GPIO  21
+  #define PIN_PN5180_AUX   20
+  // PN532 SPI (shares physical pins with PN5180; only one active at runtime)
+  #define PIN_PN532_SCK    PIN_PN5180_SCK
+  #define PIN_PN532_MOSI   PIN_PN5180_MOSI
+  #define PIN_PN532_MISO   PIN_PN5180_MISO
+  #define PIN_PN532_SS     PIN_PN5180_NSS
+  #define PIN_PN532_IRQ    PIN_PN5180_IRQ
+  #define PIN_PN532_RST    PIN_PN5180_RST
+  // LCD I2C — GPIO 8/9 are strap pins. I2C backpacks (PCF8574) provide the
+  // required external pull-ups and idle SDA/SCL HIGH, which satisfies the POR
+  // strap condition. Do not wire devices that can drive these lines LOW before
+  // firmware releases the bus.
+  #define PIN_LCD_SDA      8
+  #define PIN_LCD_SCL      9
+  // Status LED — external WS2812 (SuperMini onboard LED is single-color blue, not RGB)
+  #define PIN_STATUS_LED   1
+  // Keypad — not supported on C3 (pin budget too tight); sentinels keep build working
+  #define PIN_KEYPAD_ROW1  -1
+  #define PIN_KEYPAD_ROW2  -1
+  #define PIN_KEYPAD_ROW3  -1
+  #define PIN_KEYPAD_ROW4  -1
+  #define PIN_KEYPAD_COL1  -1
+  #define PIN_KEYPAD_COL2  -1
+  #define PIN_KEYPAD_COL3  -1
+  // TFT — not supported on C3 (single usable SPI bus is dedicated to NFC reader)
+  #define PIN_TFT_MOSI     -1
+  #define PIN_TFT_SCLK     -1
+  #define PIN_TFT_MISO     -1
+  #define PIN_TFT_CS       -1
+  #define PIN_TFT_DC       -1
+  #define PIN_TFT_RST      -1
+  #define PIN_TFT_BL       -1
+
 #elif defined(BOARD_ESP32_S3)
   // --- Generic ESP32-S3 fallback (same as S3-Zero) ---
   #define PIN_PN5180_RST   4

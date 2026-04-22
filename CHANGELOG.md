@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.4] - 2026-04-22
+
+### Added
+
+- **ESP32-C3 SuperMini board variant** — new `esp32c3` PlatformIO env targeting HORNAXYS/Waveshare C3 SuperMini boards. Scoped to NFC reader (PN5180 or PN532) + I2C LCD + WS2812 status LED; TFT and keypad intentionally unsupported (single usable SPI controller and tight pin budget). `PIN_PN5180_RST` wired to GPIO 0 rather than a strap pin so the reader cannot force the board into download mode at POR. (#171, #172)
+- **`roomonthethird` case** — STEP/STL/F3D files for the SpoolSense NFC reader case organized under `usermods/roomonthethird/`.
+
+---
+
 ## [1.7.3] - 2026-04-20
 
 ### Added
