@@ -1,4 +1,4 @@
-# plasticsnake's Standalone Enclosure
+# PlasticSnake's Standalone Enclosure
 
 A 3-part standalone enclosure for the SpoolSense scanner designed for the **ESP32-S3-Zero + PN5180 + 16x2 I2C LCD** hardware configuration.
 
@@ -81,4 +81,4 @@ Suggested file name: `images/completed-setup.jpg`
 
 ## Author
 
-plasticsnake
+PlasticSnake
