@@ -42,13 +42,13 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 
 ## Bill Of Materials
 
-- ESP32-S3-Zero
-- PN5180 NFC RF sensor
-- LCD1602 I2C display with PCF8574 adapter
-- 4x6 double-sided prototype PCB board
-- USB charging port module
-- JST connector kit (2-pin and 4-pin)
-- 2.54mm male and female breakaway pin headers
+- ESP32-S3-Zero (https://www.aliexpress.com/item/1005009890203011.html)
+- PN5180 NFC RF sensor (https://www.aliexpress.com/item/1005010338513783.html)
+- LCD1602 I2C display with PCF8574 adapter (https://www.aliexpress.com/item/1005006100081942.html)
+- 4x6 double-sided prototype PCB board (https://www.aliexpress.com/item/4000300483401.html)
+- USB charging port module (https://www.aliexpress.com/item/1005006544322183.html)
+- JST connector kit (2-pin and 4-pin) (https://www.aliexpress.com/item/33009421559.html)
+- 2.54mm male and female breakaway pin headers (https://www.aliexpress.com/item/1005007235591794.html)
 - 4 x M3 x 4mm screws for the PN5180 board
 - 4 x M3 x 5mm screws for the LCD screen
 - 4 x M3 x 5mm screws to hold the case together
