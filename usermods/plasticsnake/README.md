@@ -50,13 +50,13 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 
 ## Bill Of Materials
 
-- ESP32-S3-Zero (https://www.aliexpress.com/item/1005009890203011.html)
-- PN5180 NFC RF sensor (https://www.aliexpress.com/item/1005010338513783.html)
-- LCD1602 I2C display with PCF8574 adapter (https://www.aliexpress.com/item/1005006100081942.html)
-- 4x6 double-sided prototype PCB board (https://www.aliexpress.com/item/4000300483401.html)
-- USB charging port module (https://www.aliexpress.com/item/1005006544322183.html)
-- JST connector kit (2-pin and 4-pin) (https://www.aliexpress.com/item/33009421559.html)
-- 2.54mm male and female breakaway pin headers (https://www.aliexpress.com/item/1005007235591794.html)
+- [ESP32-S3-Zero](https://www.aliexpress.com/item/1005009890203011.html)
+- [PN5180 NFC RF sensor](https://www.aliexpress.com/item/1005010338513783.html)
+- [LCD1602 I2C display with PCF8574 adapter](https://www.aliexpress.com/item/1005006100081942.html)
+- [4x6 double-sided prototype PCB board](https://www.aliexpress.com/item/4000300483401.html)
+- [USB charging port module](https://www.aliexpress.com/item/1005006544322183.html)
+- [JST connector kit (2-pin and 4-pin)](https://www.aliexpress.com/item/33009421559.html)
+- [2.54mm male and female breakaway pin headers](https://www.aliexpress.com/item/1005007235591794.html)
 - 4 x M3 x 4mm screws for the PN5180 board
 - 4 x M3 x 5mm screws for the LCD screen
 - 4 x M3 x 5mm screws to hold the case together
@@ -64,8 +64,8 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 
 ## Build Notes
 
-- STL download: https://www.printables.com/model/1698547-spoolsense-standalone-scanner-case-esp32-s3-zero-p
-- Follow the main SpoolSense project for firmware, wiring, and setup guidance: https://spoolsense.org/intro/
+- STL download: [Printables](https://www.printables.com/model/1698547-spoolsense-standalone-scanner-case-esp32-s3-zero-p)
+- Follow the main SpoolSense project for firmware, wiring, and setup guidance: [spoolsense.org](https://spoolsense.org/intro/)
 - This enclosure is part of the SpoolSense ecosystem and is intended for a standalone scanner build.
 
 
@@ -75,12 +75,12 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 
 ### Finished PCB Photo
 
-![PCB Layout](images/esp_nfc_on_pcb.jpg)
+![Finished PCB](images/esp_nfc_on_pcb.jpg)
 
 ### Completed Setup Photo
-
-![PCB Layout](images/pcb_in_top.png)
-![PCB Layout](images/powerd_on.jpg)
+Please excuse my snake pit of a wiring job.
+![PCB in top case](images/pcb_in_top.png)
+![Completed setup powered on](images/powerd_on.jpg)
 
 
 ## Author
