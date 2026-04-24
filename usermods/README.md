@@ -9,7 +9,7 @@ Community-contributed modifications for the SpoolSense scanner. Each subdirector
 | [jims_enclosure](jims_enclosure/) | Jim | 3-piece scanner enclosure for ESP32-S3-Zero + PN5180 |
 | [linuxgangster](linuxgangster/) | LinuxGangster | Standalone case (S3-Zero + PN532) + BoxTurtle PN532 tray |
 | [roomonthethird](roomonthethird/) | roomonthethird | SpoolSense NFC reader case — two-piece base + lid (STEP/STL/F3D) |
-| [plasticsnake](plasticsnake/) | plasticsnake | 3-part standalone enclosure for ESP32-S3-Zero + PN5180 + 16x2 I2C LCD |
+| [plasticsnake](plasticsnake/) | plasticsnake | 4-part standalone enclosure for ESP32-S3-Zero + PN5180 + 16x2 I2C LCD |
 
 ## Contributing
 
