@@ -80,7 +80,7 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 ### Completed Setup Photo
 Please excuse my snake pit of a wiring job.
 ![PCB in top case](images/pcb_in_top.png)
-![Completed setup powered on](images/powerd_on.jpg)
+![Completed setup powered on](images/powered_on.jpg)
 
 
 ## Author
