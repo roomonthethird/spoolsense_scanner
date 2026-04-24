@@ -1,6 +1,8 @@
 # PlasticSnake's Standalone Enclosure
 
-A 3-part standalone enclosure for the SpoolSense scanner designed for the **ESP32-S3-Zero + PN5180 + 16x2 I2C LCD** hardware configuration.
+![PCB Layout](images/main_photo.jpg)
+
+A 4-part standalone enclosure for the SpoolSense scanner designed for the **ESP32-S3-Zero + PN5180 + 16x2 I2C LCD** hardware configuration.
 
 This design aims to create a clean, desk-friendly scanner unit that is easy to print, assemble, and use while keeping the NFC antenna as close as possible to the scan surface for reliable reads.
 
@@ -13,6 +15,7 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 | `Top` | Houses the display opening and NFC scan surface |
 | `Bottom` | Mounting base for electronics with internal standoffs |
 | `LED Diffuser` | Light diffuser for status LEDs |
+| `Foot` | Optional TPU feet |
 
 ## Print Notes
 
@@ -30,6 +33,11 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 - Light diffuser for status LEDs
 - Print in white or transparent filament for best effect
 - Recommended 0.1mm layer height
+
+### Foot (optional)
+
+- Print 4 feet
+- Print with TPU
 
 ## Print Settings
 
@@ -63,21 +71,17 @@ It is designed as a fully self-contained unit, making it well suited for use nex
 
 ### PCB Layout Diagram
 
-Placeholder: add an image showing the PCB layout or wiring arrangement.
-
-Suggested file name: `images/pcb-layout.png`
+![PCB Layout](images/pcb_layout.png)
 
 ### Finished PCB Photo
 
-Placeholder: add a photo of the assembled PCB.
-
-Suggested file name: `images/pcb-photo.jpg`
+![PCB Layout](images/esp_nfc_on_pcb.jpg)
 
 ### Completed Setup Photo
 
-Placeholder: add a photo of the fully assembled scanner.
+![PCB Layout](images/pcb_in_top.png)
+![PCB Layout](images/powerd_on.jpg)
 
-Suggested file name: `images/completed-setup.jpg`
 
 ## Author
 
