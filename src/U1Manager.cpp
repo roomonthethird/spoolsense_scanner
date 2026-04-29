@@ -351,7 +351,10 @@ void U1Manager::publishFromSpoolmanSync(const SpoolmanSyncedPayload& sync,
     // Smart-tag follow-up sync — only POST if a pending augment is active for
     // this UID and Spoolman supplied at least one field that POST 1 was missing.
     if (!pendingAugment_.active) return;
-    if (strcmp(pendingAugment_.uid, sync.spool_id) != 0) {
+    // Bound the compare to the UID buffer size so a non-null-terminated producer
+    // (defensive — both buffers are 17 bytes / 16 hex chars + null) can't make
+    // strcmp walk off the end.
+    if (strncmp(pendingAugment_.uid, sync.spool_id, sizeof(pendingAugment_.uid) - 1) != 0) {
         pendingAugment_.active = false;
         return;
     }

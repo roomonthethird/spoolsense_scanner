@@ -22,6 +22,13 @@ struct CurrentSpoolState;
 //
 // Both no-op when U1 integration is disabled in NVS, so callers can invoke
 // unconditionally without gating.
+//
+// Threading: must be called only from the ApplicationManager dispatch loop
+// (handleSpoolDetected / handleSpoolmanSynced). Internal state
+// (moonrakerBackoffUntilMs_, pendingAugment_) is not mutex-protected — the
+// dispatch loop is single-threaded so no synchronization is needed in the
+// current design. Cross-thread invocation would require revisiting both
+// fields, not just adding atomics around millis() math.
 class U1Manager {
 public:
     static U1Manager& getInstance();
