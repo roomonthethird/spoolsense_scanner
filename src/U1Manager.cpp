@@ -6,7 +6,7 @@
 
 #ifndef NATIVE_TEST
   #include "ApplicationManager.h"  // SpoolDetectedPayload, SpoolmanSyncedPayload
-  #include "NFCTypes.h"             // CurrentSpoolState
+  #include "NFCTypes.h"             // CurrentSpoolState, TagKind
   #include "ConfigurationManager.h"
   #include <Arduino.h>
   #include <WiFi.h>
@@ -22,20 +22,6 @@
 extern SemaphoreHandle_t g_httpMutex;
 
 namespace {
-
-// Internal U1 wire-format struct — what we POST after all conversions.
-struct U1FilamentInfo {
-    char vendor[64] = {};
-    char main_type[24] = {};   // uppercase, e.g. "PLA", "PETG"
-    char sub_type[24] = {};    // e.g. "Matte", "CF", may be empty
-    int  rgb_1 = -1;            // -1 = no color sent
-    int  alpha = 255;
-    int  hotend_min_temp = 0;   // 0 = not sent
-    int  hotend_max_temp = 0;
-    int  bed_temp = 0;
-    uint8_t card_uid[8] = {};
-    uint8_t card_uid_len = 0;
-};
 
 // Per-material defaults for OpenSpool (no bed temp on tag) and any tag that's
 // missing temps. Matches common slicer defaults (Orca/PrusaSlicer/Cura).
@@ -169,10 +155,9 @@ U1FilamentInfo buildFromDetection(const SpoolDetectedPayload& p) {
     return info;
 }
 
-// Build U1 wire info from a Spoolman sync result (generic UID tag path) plus
-// the current NFC state for fallback fields the sync may not have populated.
-U1FilamentInfo buildFromSpoolmanSync(const SpoolmanSyncedPayload& s,
-                                      const CurrentSpoolState& state) {
+// Build U1 wire info from a Spoolman sync result. Used by the generic-UID-tag
+// path where the tag itself carries no rich data — Spoolman is the only source.
+U1FilamentInfo buildFromSpoolmanSync(const SpoolmanSyncedPayload& s) {
     U1FilamentInfo info;
 
     if (s.manufacturer[0] != '\0') {
@@ -193,14 +178,62 @@ U1FilamentInfo buildFromSpoolmanSync(const SpoolmanSyncedPayload& s,
     if (s.bed_temp > 0) info.bed_temp = s.bed_temp;
 
     packCardUid(s.spool_id, info.card_uid, sizeof(info.card_uid), info.card_uid_len);
-
-    // CurrentSpoolState fallback for any field Spoolman didn't return — covers
-    // the rare case where a generic UID tag exists in Spoolman but with sparse
-    // metadata (color or temps left blank in the Spoolman record).
-    (void)state;  // reserved for future fallback logic when state fields land
-
     applyMaterialDefaults(info);
     return info;
+}
+
+// Merge non-empty Spoolman fields onto a base U1FilamentInfo (POST 1's data for
+// smart-tag augment). Returns true if anything actually changed — caller uses
+// this to skip a redundant POST when Spoolman didn't add or correct anything.
+bool overlaySpoolmanFields(U1FilamentInfo& info, const SpoolmanSyncedPayload& s) {
+    bool changed = false;
+
+    if (s.manufacturer[0] != '\0' && strcmp(s.manufacturer, info.vendor) != 0) {
+        strncpy(info.vendor, s.manufacturer, sizeof(info.vendor) - 1);
+        info.vendor[sizeof(info.vendor) - 1] = '\0';
+        changed = true;
+    }
+
+    if (s.material_name[0] != '\0') {
+        char newMain[sizeof(info.main_type)] = {0};
+        char newSub[sizeof(info.sub_type)] = {0};
+        splitMaterialName(s.material_name, newMain, sizeof(newMain),
+                                              newSub, sizeof(newSub));
+        if (newMain[0] != '\0' && strcmp(newMain, info.main_type) != 0) {
+            strncpy(info.main_type, newMain, sizeof(info.main_type) - 1);
+            info.main_type[sizeof(info.main_type) - 1] = '\0';
+            changed = true;
+        }
+        if (newSub[0] != '\0' && strcmp(newSub, info.sub_type) != 0) {
+            strncpy(info.sub_type, newSub, sizeof(info.sub_type) - 1);
+            info.sub_type[sizeof(info.sub_type) - 1] = '\0';
+            changed = true;
+        }
+    }
+
+    if (s.color_hex[0] != '\0') {
+        int newRgb = hexColorToRgb1(s.color_hex);
+        if (newRgb >= 0 && newRgb != info.rgb_1) {
+            info.rgb_1 = newRgb;
+            info.alpha = 255;
+            changed = true;
+        }
+    }
+
+    if (s.extruder_temp > 0
+            && (s.extruder_temp != info.hotend_min_temp
+                || s.extruder_temp != info.hotend_max_temp)) {
+        info.hotend_min_temp = s.extruder_temp;
+        info.hotend_max_temp = s.extruder_temp;
+        changed = true;
+    }
+
+    if (s.bed_temp > 0 && s.bed_temp != info.bed_temp) {
+        info.bed_temp = s.bed_temp;
+        changed = true;
+    }
+
+    return changed;
 }
 
 // Returns true if every U1-required field has a meaningful value. Used to
@@ -303,18 +336,16 @@ void U1Manager::publishFromDetection(const SpoolDetectedPayload& payload) {
     }
     moonrakerBackoffUntilMs_ = 0;
 
-    // Register pending augment if POST 1 was incomplete and Spoolman is configured
-    // (otherwise there's no way the augment could supply anything new).
+    // Register pending augment if POST 1 was incomplete and Spoolman is configured.
+    // Cache the exact info we just sent — POST 2 will start from this and overlay
+    // any non-empty Spoolman fields, so on-tag data is never overwritten by gaps
+    // in the Spoolman record.
     if (cfg.isSpoolmanEnabled() && !isComplete(info)) {
         pendingAugment_.active = true;
         strncpy(pendingAugment_.uid, payload.spool_id, sizeof(pendingAugment_.uid) - 1);
         pendingAugment_.uid[sizeof(pendingAugment_.uid) - 1] = '\0';
         pendingAugment_.expiresAtMs = millis() + PENDING_AUGMENT_TTL_MS;
-        pendingAugment_.wantVendor       = (info.vendor[0] == '\0');
-        pendingAugment_.wantMainType     = (info.main_type[0] == '\0');
-        pendingAugment_.wantColor        = (info.rgb_1 < 0);
-        pendingAugment_.wantHotendTemps  = (info.hotend_min_temp == 0 || info.hotend_max_temp == 0);
-        pendingAugment_.wantBedTemp      = (info.bed_temp == 0);
+        pendingAugment_.postedInfo = info;
     } else {
         pendingAugment_.active = false;
     }
@@ -335,8 +366,16 @@ void U1Manager::publishFromSpoolmanSync(const SpoolmanSyncedPayload& sync,
     }
 
     if (sync.is_uid_lookup) {
-        // Generic UID tag (NFC+) — Spoolman is the only data source. Single POST.
-        U1FilamentInfo info = buildFromSpoolmanSync(sync, state);
+        // Generic UID tag (NFC+) — Spoolman is the only data source.
+        // Defense: if the user removed the tag during the lookup (or swapped to a
+        // different tag), skip the POST. Mirrors the writeback guard in the
+        // ApplicationManager generic-tag-writeback path.
+        if (!state.present
+                || state.kind != TagKind::GenericUidTag
+                || strcmp(state.spool_id, sync.spool_id) != 0) {
+            return;
+        }
+        U1FilamentInfo info = buildFromSpoolmanSync(sync);
         int code = postFilamentDetectSet(channel, info);
         Serial.printf("U1Manager: publishFromSpoolmanSync(UID) channel=%u spool=%d — HTTP %d\n",
                       (unsigned)channel, sync.spoolman_id, code);
@@ -348,14 +387,17 @@ void U1Manager::publishFromSpoolmanSync(const SpoolmanSyncedPayload& sync,
         return;
     }
 
-    // Smart-tag follow-up sync — only POST if a pending augment is active for
-    // this UID and Spoolman supplied at least one field that POST 1 was missing.
+    // Smart-tag follow-up sync — augment POST 1's data with anything Spoolman
+    // supplied that POST 1 didn't already have (or had with a different value).
     if (!pendingAugment_.active) return;
     // Bound the compare to the UID buffer size so a non-null-terminated producer
     // (defensive — both buffers are 17 bytes / 16 hex chars + null) can't make
     // strcmp walk off the end.
     if (strncmp(pendingAugment_.uid, sync.spool_id, sizeof(pendingAugment_.uid) - 1) != 0) {
-        pendingAugment_.active = false;
+        // Late sync for a previous (different) tag — ignore but DON'T clear the
+        // current pending augment. A user scanning two tags within ~3s could have
+        // an earlier tag's sync arrive first; clearing here would sabotage the
+        // augment for the tag they just scanned.
         return;
     }
     if ((int32_t)(now - pendingAugment_.expiresAtMs) >= 0) {
@@ -363,17 +405,14 @@ void U1Manager::publishFromSpoolmanSync(const SpoolmanSyncedPayload& sync,
         return;
     }
 
-    bool augments = false;
-    if (pendingAugment_.wantVendor && sync.manufacturer[0] != '\0')        augments = true;
-    if (pendingAugment_.wantColor && sync.color_hex[0] != '\0')             augments = true;
-    if (pendingAugment_.wantHotendTemps && sync.extruder_temp > 0)          augments = true;
-    if (pendingAugment_.wantBedTemp && sync.bed_temp > 0)                   augments = true;
-    if (pendingAugment_.wantMainType && sync.material_name[0] != '\0')     augments = true;
+    // Start from POST 1's wire info, overlay non-empty Spoolman fields. Skip the
+    // POST if nothing actually changed — Spoolman had no data POST 1 was missing.
+    U1FilamentInfo merged = pendingAugment_.postedInfo;
+    bool changed = overlaySpoolmanFields(merged, sync);
 
     pendingAugment_.active = false;  // single-shot regardless of outcome
-    if (!augments) return;
+    if (!changed) return;
 
-    U1FilamentInfo merged = buildFromSpoolmanSync(sync, state);
     int code = postFilamentDetectSet(channel, merged);
     Serial.printf("U1Manager: publishFromSpoolmanSync(augment) channel=%u spool=%d — HTTP %d\n",
                   (unsigned)channel, sync.spoolman_id, code);

@@ -9,6 +9,22 @@ struct SpoolDetectedPayload;
 struct SpoolmanSyncedPayload;
 struct CurrentSpoolState;
 
+// U1's external filament-detection wire format. Built from on-tag data, then
+// possibly augmented from a Spoolman sync result; serialized into the JSON body
+// of POST /printer/filament_detect/set.
+struct U1FilamentInfo {
+    char vendor[64] = {};
+    char main_type[24] = {};   // uppercase, e.g. "PLA", "PETG"
+    char sub_type[24] = {};    // e.g. "Matte", "CF", may be empty
+    int  rgb_1 = -1;            // -1 = no color sent
+    int  alpha = 255;
+    int  hotend_min_temp = 0;   // 0 = not sent
+    int  hotend_max_temp = 0;
+    int  bed_temp = 0;
+    uint8_t card_uid[8] = {};
+    uint8_t card_uid_len = 0;
+};
+
 // U1Manager — Snapmaker U1 direct-mode bridge.
 //
 // Pushes scanner results to the U1's external filament-detection endpoint
@@ -40,10 +56,11 @@ public:
     void publishFromDetection(const SpoolDetectedPayload& payload);
 
     // Spoolman sync result path.
-    //  - For generic UID tags (is_uid_lookup): single POST using lookup result.
+    //  - For generic UID tags (is_uid_lookup): single POST using lookup
+    //    result; skipped if the reader no longer holds the same tag.
     //  - For smart tags (write update): if a pending augment was registered
     //    by publishFromDetection, merges Spoolman data over the prior POST
-    //    and re-publishes; otherwise no-op.
+    //    and re-publishes if Spoolman supplied something new; otherwise no-op.
     void publishFromSpoolmanSync(const SpoolmanSyncedPayload& sync,
                                   const CurrentSpoolState& state);
 
@@ -58,17 +75,14 @@ private:
     static constexpr uint32_t MOONRAKER_BACKOFF_MS = 30000;
 
     // Pending-augment tracking for smart tags that POSTed incomplete data and
-    // are waiting on a Spoolman sync to fill missing fields.
+    // are waiting on a Spoolman sync to fill missing fields. postedInfo holds
+    // the exact wire-format struct that POST 1 sent — POST 2 starts from this
+    // and overlays non-empty Spoolman fields, so on-tag data is never lost.
     struct PendingAugment {
         bool active = false;
         char uid[17] = {};
         uint32_t expiresAtMs = 0;
-        // What was missing in POST 1 — drives whether Spoolman data is worth a POST 2.
-        bool wantVendor = false;
-        bool wantMainType = false;
-        bool wantColor = false;
-        bool wantHotendTemps = false;
-        bool wantBedTemp = false;
+        U1FilamentInfo postedInfo;
     };
     PendingAugment pendingAugment_ = {};
     static constexpr uint32_t PENDING_AUGMENT_TTL_MS = 30000;
