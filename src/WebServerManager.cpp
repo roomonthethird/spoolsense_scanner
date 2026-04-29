@@ -746,6 +746,8 @@ void WebServerManager::handleApiGetConfig() {
     doc["low_spool_threshold_g"] = cfg.low_spool_threshold_g;
     doc["bambu_dashboard"] = cfg.bambu_dashboard;
     doc["wifi_keep_awake"] = cfg.wifi_keep_awake;
+    doc["u1_enabled"] = cfg.u1_enabled;
+    doc["u1_channel"] = cfg.u1_channel;
     doc["tft_enabled"] = cfg.tft_enabled;
     doc["tft_driver"] = cfg.tft_driver;
     doc["ap_mode"] = _apMode;
@@ -805,6 +807,11 @@ void WebServerManager::handleApiPostConfig() {
     update.low_spool_threshold_g = doc["low_spool_threshold_g"] | (uint16_t)100;
     update.bambu_dashboard = doc["bambu_dashboard"] | 0;
     update.wifi_keep_awake = doc["wifi_keep_awake"] | 0;
+    update.u1_enabled = doc["u1_enabled"] | (uint8_t)0;
+    {
+        uint8_t ch = doc["u1_channel"] | (uint8_t)0;
+        update.u1_channel = (ch <= 3) ? ch : 0;  // clamp invalid client input
+    }
 
     if (update.wifi_ssid[0] == '\0') {
         sendError(400, "WiFi SSID is required");

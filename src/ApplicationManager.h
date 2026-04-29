@@ -263,6 +263,11 @@ private:
     uint32_t dashboardRevertAt_ = 0;
     static constexpr uint32_t DASHBOARD_REVERT_DELAY_MS = 5000;
 
+    // Moonraker reachability backoff — skip publishToU1 after a transport failure
+    // so a misconfigured / offline U1 doesn't block the dispatch loop on every scan.
+    uint32_t moonrakerBackoffUntilMs_ = 0;
+    static constexpr uint32_t MOONRAKER_BACKOFF_MS = 30000;
+
     // Handlers
     void handlePrintStarted(const AppMessage& msg);
     void handlePrintEnded(const AppMessage& msg);
@@ -281,6 +286,10 @@ private:
     void handleTrayUpdate();
     void handleTrayAssign();
     bool sendAssignSpool(const char* toolNumber);
+    // Snapmaker U1 direct-mode (Phase 1 / fixed-channel): POST to extended firmware's
+    // /printer/filament_detect/set with the configured channel + filament info derived
+    // from the Spoolman sync result. No-op when U1 integration is disabled in config.
+    bool publishToU1(const SpoolmanSyncedPayload& sync);
     void finishPrint(float gramsUsed, bool canceled);
     void enqueueSpoolmanSync(const SpoolDetectedPayload& spool);
     void publishToHA(const char* topicSuffix, const char* payload, bool retained);
