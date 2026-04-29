@@ -19,7 +19,7 @@
   #include <WiFi.h>
   #include <HTTPClient.h>
   #include <Preferences.h>
-  #include <ArduinoJson.h>
+  #include "U1Manager.h"
   extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
@@ -527,6 +527,14 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
 
 #ifndef NATIVE_TEST
+    // Snapmaker U1 direct-mode: publish on-tag data to the U1 immediately. Smart tags
+    // already carry vendor/material/color/temps so this gives Fluidd a near-instant
+    // update without waiting on Spoolman. U1Manager handles per-material defaults
+    // for missing fields and registers a pending augment if Spoolman might fill gaps.
+    U1Manager::getInstance().publishFromDetection(msg.payload.spoolDetected);
+#endif
+
+#ifndef NATIVE_TEST
     // Spoolman sync: auto-update remaining weight (SELF_DIRECTED mode only)
     // Suppress flag can gate this per-tag (e.g., after batch write to Spoolman)
     if (automationMode == AutomationMode::SELF_DIRECTED &&
@@ -849,17 +857,14 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     float kgRemaining = msg.payload.spoolmanSynced.kg_remaining;
 
 #ifndef NATIVE_TEST
-    // Snapmaker U1 direct-mode (Phase 1): push channel state to the extended firmware's
-    // /printer/filament_detect/set endpoint. Only fires for generic UID tags — smart tag
-    // formats (OpenSpool, OPT, TigerTag, OT3D) carry their own data and will be published
-    // from handleSpoolDetected in a follow-up phase.
-    if (msg.payload.spoolmanSynced.success && msg.payload.spoolmanSynced.is_uid_lookup
-            && msg.payload.spoolmanSynced.spoolman_id > 0) {
-        CurrentSpoolState pubState;
-        if (NFCManager::getInstance().getCurrentSpoolState(pubState)
-                && pubState.kind == TagKind::GenericUidTag) {
-            publishToU1(msg.payload.spoolmanSynced);
-        }
+    // Snapmaker U1 direct-mode: hand the sync result to U1Manager. It handles
+    // the generic-UID single-POST path AND the smart-tag augment path (POST 2)
+    // when a pending augment was registered by handleSpoolDetected. No-op when
+    // U1 integration is disabled.
+    {
+        CurrentSpoolState u1State;
+        NFCManager::getInstance().getCurrentSpoolState(u1State);
+        U1Manager::getInstance().publishFromSpoolmanSync(msg.payload.spoolmanSynced, u1State);
     }
 #endif
 
@@ -1457,115 +1462,3 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
 #endif
 }
 
-bool ApplicationManager::publishToU1(const SpoolmanSyncedPayload& sync) {
-    // Snapmaker U1 direct-mode (Phase 1): POST scan result to extended firmware's
-    // /printer/filament_detect/set endpoint. Requires "Filament Detection: External" on the U1.
-    // Runs on the dispatch loop on every successful generic-UID Spoolman lookup, so this path
-    // must NOT block: short mutex wait + 30s reachability backoff after a transport failure.
-#ifndef NATIVE_TEST
-    auto& cfg = ConfigurationManager::getInstance();
-    if (!cfg.isU1Enabled()) return false;
-    if (sync.spoolman_id <= 0) return false;
-
-    uint32_t now = millis();
-    if (moonrakerBackoffUntilMs_ != 0 && (int32_t)(now - moonrakerBackoffUntilMs_) < 0) {
-        return false;
-    }
-
-    const char* moonrakerUrl = cfg.getMoonrakerURL();
-    if (!moonrakerUrl || moonrakerUrl[0] == '\0') return false;
-
-    uint8_t channel = cfg.getU1Channel();
-    if (channel > 3) return false;  // belt-and-braces; loader already clamps
-
-    extern SemaphoreHandle_t g_httpMutex;
-    if (g_httpMutex && xSemaphoreTake(g_httpMutex, pdMS_TO_TICKS(250)) != pdTRUE) {
-        Serial.println("ApplicationManager: HTTP mutex busy for publishToU1");
-        return false;
-    }
-
-    // Build the U1 extended-firmware schema. Optional fields are omitted when empty/zero
-    // so the firmware applies its own defaults rather than receiving "" / 0 sentinels.
-    StaticJsonDocument<512> body;
-    body["channel"] = channel;
-    JsonObject info = body.createNestedObject("info");
-
-    if (sync.manufacturer[0] != '\0') info["VENDOR"] = sync.manufacturer;
-
-    // material_name is e.g. "PLA" or "PLA Matte"; split on first space so the U1 can render
-    // "Matte" as a SUB_TYPE chip in Fluidd. Single-word names go to MAIN_TYPE only.
-    if (sync.material_name[0] != '\0') {
-        const char* mat = sync.material_name;
-        const char* space = strchr(mat, ' ');
-        if (space && space != mat) {
-            char main[16] = {0};
-            size_t mlen = (size_t)(space - mat);
-            if (mlen >= sizeof(main)) mlen = sizeof(main) - 1;
-            memcpy(main, mat, mlen);
-            info["MAIN_TYPE"] = main;
-            info["SUB_TYPE"] = space + 1;
-        } else {
-            info["MAIN_TYPE"] = mat;
-        }
-    }
-
-    if (sync.color_hex[0] != '\0') {
-        const char* h = (sync.color_hex[0] == '#') ? sync.color_hex + 1 : sync.color_hex;
-        unsigned int r = 0, g = 0, b = 0;
-        if (sscanf(h, "%02x%02x%02x", &r, &g, &b) == 3) {
-            info["RGB_1"] = (long)((r << 16) | (g << 8) | b);
-            info["ALPHA"] = 255;
-        }
-    }
-
-    // Spoolman exposes a single extruder/bed temp; the U1 schema wants min+max.
-    // Use the same value for both so the printer never under-shoots its hot-end target.
-    if (sync.extruder_temp > 0) {
-        info["HOTEND_MIN_TEMP"] = sync.extruder_temp;
-        info["HOTEND_MAX_TEMP"] = sync.extruder_temp;
-    }
-    if (sync.bed_temp > 0) info["BED_TEMP"] = sync.bed_temp;
-
-    // CARD_UID: parse spool_id hex string into byte array (e.g., "04A1B2C3" -> [4,161,178,195]).
-    JsonArray uidArr = info.createNestedArray("CARD_UID");
-    size_t hexLen = strlen(sync.spool_id);
-    for (size_t i = 0; i + 1 < hexLen; i += 2) {
-        char hex[3] = { sync.spool_id[i], sync.spool_id[i + 1], 0 };
-        uidArr.add((int)strtoul(hex, nullptr, 16));
-    }
-
-    String payload;
-    serializeJson(body, payload);
-
-    char url[192];
-    snprintf(url, sizeof(url), "%s/printer/filament_detect/set", moonrakerUrl);
-
-    WiFiClient client;
-    HTTPClient http;
-    http.setConnectTimeout(1000);
-    http.setTimeout(2000);
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    int code = http.POST(payload);
-    http.end();
-
-    if (g_httpMutex) xSemaphoreGive(g_httpMutex);
-
-    Serial.printf("ApplicationManager: publishToU1 channel=%u spool=%d — HTTP %d\n",
-                  (unsigned)channel, sync.spoolman_id, code);
-
-    if (code < 0) {
-        // HTTPClient transport failure (connect refused, timeout, etc.) — back off so the
-        // next scan doesn't re-block the dispatch loop on the same unreachable host.
-        moonrakerBackoffUntilMs_ = millis() + MOONRAKER_BACKOFF_MS;
-        Serial.printf("ApplicationManager: U1/Moonraker unreachable — backing off %u ms\n",
-                      (unsigned)MOONRAKER_BACKOFF_MS);
-        return false;
-    }
-    moonrakerBackoffUntilMs_ = 0;  // server responded — clear any prior backoff
-    return code >= 200 && code < 300;
-#else
-    (void)sync;
-    return true;
-#endif
-}
