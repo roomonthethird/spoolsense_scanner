@@ -41,6 +41,9 @@ struct ConfigUpdate {
     uint16_t low_spool_threshold_g;  // grams below which LED breathes (default 100)
     uint8_t bambu_dashboard;
     uint8_t wifi_keep_awake;  // disable WiFi modem sleep (better RSSI, more power)
+    // Snapmaker U1 direct-mode integration (extended firmware, Filament Detection: External)
+    uint8_t u1_enabled;       // 0 = off, 1 = post to /printer/filament_detect/set on scans
+    uint8_t u1_channel;       // 0..3 — toolhead this scanner is bound to
 };
 
 class ConfigurationManager {
@@ -94,6 +97,10 @@ public:
     // radio stays fully powered. Trades idle current for better RSSI/latency.
     bool isWifiKeepAwakeEnabled() const;
 
+    // Snapmaker U1 direct-mode (Phase 1 / fixed-channel)
+    bool isU1Enabled() const;
+    uint8_t getU1Channel() const;
+
     // Web config support
     void getCurrentConfig(ConfigUpdate& out) const;
     bool saveToNVS(const ConfigUpdate& update);
@@ -145,6 +152,10 @@ private:
     uint16_t _lowSpoolThreshold = 100;  // grams
     bool _bambuDashboard = false;
     bool _wifiKeepAwake = false;
+
+    // Snapmaker U1 direct-mode
+    bool _u1Enabled = false;
+    uint8_t _u1Channel = 0;
 
     bool _initialized = false;
 };

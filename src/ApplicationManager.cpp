@@ -19,6 +19,7 @@
   #include <WiFi.h>
   #include <HTTPClient.h>
   #include <Preferences.h>
+  #include "U1Manager.h"
   extern LEDManager ledManager;
 #else
   #include "platform/NativePlatform.h"
@@ -526,6 +527,14 @@ void ApplicationManager::handleSpoolDetected(const AppMessage& msg) {
     }
 
 #ifndef NATIVE_TEST
+    // Snapmaker U1 direct-mode: publish on-tag data to the U1 immediately. Smart tags
+    // already carry vendor/material/color/temps so this gives Fluidd a near-instant
+    // update without waiting on Spoolman. U1Manager handles per-material defaults
+    // for missing fields and registers a pending augment if Spoolman might fill gaps.
+    U1Manager::getInstance().publishFromDetection(msg.payload.spoolDetected);
+#endif
+
+#ifndef NATIVE_TEST
     // Spoolman sync: auto-update remaining weight (SELF_DIRECTED mode only)
     // Suppress flag can gate this per-tag (e.g., after batch write to Spoolman)
     if (automationMode == AutomationMode::SELF_DIRECTED &&
@@ -846,6 +855,18 @@ void ApplicationManager::handleSpoolmanSynced(const AppMessage& msg) {
     char materialName[32] = {0};
     strncpy(materialName, msg.payload.spoolmanSynced.material_name, sizeof(materialName) - 1);
     float kgRemaining = msg.payload.spoolmanSynced.kg_remaining;
+
+#ifndef NATIVE_TEST
+    // Snapmaker U1 direct-mode: hand the sync result to U1Manager. It handles
+    // the generic-UID single-POST path AND the smart-tag augment path (POST 2)
+    // when a pending augment was registered by handleSpoolDetected. No-op when
+    // U1 integration is disabled.
+    {
+        CurrentSpoolState u1State;
+        NFCManager::getInstance().getCurrentSpoolState(u1State);
+        U1Manager::getInstance().publishFromSpoolmanSync(msg.payload.spoolmanSynced, u1State);
+    }
+#endif
 
 #ifndef NATIVE_TEST
     // Generic tag writeback: populate NFC tag with Spoolman data if lookup succeeded
@@ -1440,3 +1461,4 @@ bool ApplicationManager::sendAssignSpool(const char* toolNumber) {
     return true;  // Native test: pretend success
 #endif
 }
+

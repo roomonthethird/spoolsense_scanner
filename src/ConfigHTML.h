@@ -158,6 +158,30 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
           </section>
 
           <section>
+            <h2 class="section-title">Snapmaker U1 Integration</h2>
+            <div class="hint" style="margin-bottom:12px">Push scan results directly to a Snapmaker U1 toolchanger. Requires <a href="https://github.com/paxx12/SnapmakerU1-Extended-Firmware" target="_blank">paxx12 Extended Firmware</a> with <strong>Filament Detection: External</strong> set in <code>http://&lt;printer-ip&gt;/firmware-config/</code>. Set the Moonraker URL above to your U1's IP.</div>
+            <div class="toggle-row" style="margin-bottom:14px">
+              <span id="u1_enabled_label" class="toggle-label">Enable U1 Integration</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="u1_enabled" aria-labelledby="u1_enabled_label" />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div id="u1_fields" style="display:none">
+              <div class="field">
+                <label for="u1_channel">Toolhead Channel</label>
+                <select id="u1_channel" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.95em">
+                  <option value="0">Channel 0 (T0)</option>
+                  <option value="1">Channel 1 (T1)</option>
+                  <option value="2">Channel 2 (T2)</option>
+                  <option value="3">Channel 3 (T3)</option>
+                </select>
+                <div style="font-size:11px;color:#71717A;margin-top:4px">Each scanner posts to one channel. Use four scanners (one per toolhead) for a full U1 setup, or one scanner if you only load filament into one slot.</div>
+              </div>
+            </div>
+          </section>
+
+          <section>
             <h2 class="section-title">PrusaLink</h2>
             <div class="hint" style="margin-bottom:12px">Connect to a Prusa printer for automatic filament tracking. Get the API key from your printer's web interface.</div>
             <div class="toggle-row" style="margin-bottom:14px">
@@ -296,6 +320,10 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
       document.getElementById('bambu_dashboard').checked = !!cfg.bambu_dashboard;
       document.getElementById('wifi_keep_awake').checked = !!cfg.wifi_keep_awake;
       maybeSetValue('moonraker_url', cfg.moonraker_url);
+      // Snapmaker U1 integration
+      document.getElementById('u1_enabled').checked = !!cfg.u1_enabled;
+      if (cfg.u1_channel !== undefined) document.getElementById('u1_channel').value = cfg.u1_channel;
+      document.getElementById('u1_fields').style.display = cfg.u1_enabled ? '' : 'none';
       // Password placeholders
       if (cfg.wifi_pass_set) document.getElementById('wifi_pass').placeholder = '(set) Leave blank to keep';
       if (cfg.mqtt_pass_set) document.getElementById('mqtt_pass').placeholder = '(set) Leave blank to keep';
@@ -316,6 +344,22 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
     // Show/hide PrusaLink fields based on toggle
     document.getElementById('prusalink_on').addEventListener('change', function() {
       document.getElementById('prusalink_fields').style.display = this.checked ? '' : 'none';
+    });
+
+    // Show/hide U1 fields based on toggle
+    document.getElementById('u1_enabled').addEventListener('change', function() {
+      document.getElementById('u1_fields').style.display = this.checked ? '' : 'none';
+    });
+
+    // Auto-suggest hostname when U1 channel changes — only if user hasn't customized
+    // beyond the default ("spoolsense" or empty). Saves the "what should I name this scanner?" decision.
+    document.getElementById('u1_channel').addEventListener('change', function() {
+      var hostInput = document.getElementById('hostname');
+      var current = (hostInput.value || '').trim();
+      var defaults = ['', 'spoolsense', 'spoolsense-t0', 'spoolsense-t1', 'spoolsense-t2', 'spoolsense-t3'];
+      if (defaults.indexOf(current) >= 0) {
+        hostInput.value = 'spoolsense-t' + this.value;
+      }
     });
 
     function normalizeHostname(v) {
@@ -354,7 +398,9 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
         prusalink_url: document.getElementById('prusalink_url').value.trim(),
         prusalink_api_key: document.getElementById('prusalink_api_key').value,
         bambu_dashboard: document.getElementById('bambu_dashboard').checked ? 1 : 0,
-        wifi_keep_awake: document.getElementById('wifi_keep_awake').checked ? 1 : 0
+        wifi_keep_awake: document.getElementById('wifi_keep_awake').checked ? 1 : 0,
+        u1_enabled: document.getElementById('u1_enabled').checked ? 1 : 0,
+        u1_channel: parseInt(document.getElementById('u1_channel').value) || 0
       };
 
       fetch('/api/config', {

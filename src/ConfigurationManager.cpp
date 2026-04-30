@@ -36,6 +36,8 @@ static const char* NVS_KEY_HOSTNAME      = "hostname";
 static const char* NVS_KEY_LOW_SPOOL     = "low_spool_g";
 static const char* NVS_KEY_BAMBU_DASH    = "bambu_dash";
 static const char* NVS_KEY_WIFI_AWAKE    = "wifi_awake";
+static const char* NVS_KEY_U1_ON         = "u1_on";
+static const char* NVS_KEY_U1_CHANNEL    = "u1_channel";
 
 // Sanitize hostname: enforce mDNS naming constraints (lowercase alphanum + hyphens,
 // no leading/trailing hyphens) and reject empty strings to avoid boot-time errors.
@@ -258,6 +260,15 @@ bool ConfigurationManager::loadFromNVS() {
         _wifiKeepAwake = prefs.getBool(NVS_KEY_WIFI_AWAKE, false);
         anyOverride = true;
     }
+    if (prefs.isKey(NVS_KEY_U1_ON)) {
+        _u1Enabled = prefs.getBool(NVS_KEY_U1_ON, false);
+        anyOverride = true;
+    }
+    if (prefs.isKey(NVS_KEY_U1_CHANNEL)) {
+        uint8_t ch = prefs.getUChar(NVS_KEY_U1_CHANNEL, 0);
+        _u1Channel = (ch <= 3) ? ch : 0;  // clamp invalid values from NVS
+        anyOverride = true;
+    }
 
     prefs.end();
     return anyOverride;
@@ -368,6 +379,14 @@ bool ConfigurationManager::isWifiKeepAwakeEnabled() const {
     return _wifiKeepAwake;
 }
 
+bool ConfigurationManager::isU1Enabled() const {
+    return _u1Enabled;
+}
+
+uint8_t ConfigurationManager::getU1Channel() const {
+    return _u1Channel;
+}
+
 void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     memset(&out, 0, sizeof(out));
     strncpy(out.wifi_ssid, _ssid, sizeof(out.wifi_ssid) - 1);
@@ -393,6 +412,8 @@ void ConfigurationManager::getCurrentConfig(ConfigUpdate& out) const {
     out.low_spool_threshold_g = _lowSpoolThreshold;
     out.bambu_dashboard = _bambuDashboard ? 1 : 0;
     out.wifi_keep_awake = _wifiKeepAwake ? 1 : 0;
+    out.u1_enabled = _u1Enabled ? 1 : 0;
+    out.u1_channel = _u1Channel;
 }
 
 #ifndef NATIVE_TEST
@@ -438,6 +459,8 @@ bool ConfigurationManager::saveToNVS(const ConfigUpdate& update) {
     prefs.putUShort(NVS_KEY_LOW_SPOOL, update.low_spool_threshold_g);
     prefs.putBool(NVS_KEY_BAMBU_DASH, update.bambu_dashboard != 0);
     prefs.putBool(NVS_KEY_WIFI_AWAKE, update.wifi_keep_awake != 0);
+    prefs.putBool(NVS_KEY_U1_ON, update.u1_enabled != 0);
+    prefs.putUChar(NVS_KEY_U1_CHANNEL, (update.u1_channel <= 3) ? update.u1_channel : 0);
 
     // Invalidate Spoolman enrichment cache on config change to force re-fetch
     // (config change could invalidate cached spool lookups)
