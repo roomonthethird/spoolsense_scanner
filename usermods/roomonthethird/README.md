@@ -18,10 +18,10 @@ Autodesk Fusion 360 files are included if you want to make your own edits.
 
 <img width="762" height="570" alt="Slicer Preview" src="https://github.com/user-attachments/assets/6ddc6953-1192-45dd-87ca-585f47ad2e97" />
 
-<img width="5712" height="4284" alt="IMG_6063" src="https://github.com/user-attachments/assets/e2792a34-2f78-4a3b-ba5e-b3352597afb8" />
+<img width="5712" height="4284" alt="IMG_6063" src="https://github.com/user-attachments/assets/a9dd8866-a027-45a5-ae0d-d2f02fd60232" />
 
-<img width="5712" height="4284" alt="IMG_6064" src="https://github.com/user-attachments/assets/7630d498-d9ce-4c92-ad60-59c75258a4ab" />
+<img width="5712" height="4284" alt="IMG_6064" src="https://github.com/user-attachments/assets/9dca6e79-17a4-4e8e-9d89-7f25a1511869" />
 
-<img width="4032" height="3024" alt="IMG_6065" src="https://github.com/user-attachments/assets/13cf5447-3df2-4989-8d54-23e5641d7b55" />
+<img width="4032" height="3024" alt="IMG_6065" src="https://github.com/user-attachments/assets/8c8aafe4-9c40-4638-82f9-bcc378fc31e1" />
 
 
